@@ -4,10 +4,8 @@ use crate::error::IggyError;
 use crate::http::client::HttpClient;
 use crate::http::HttpTransport;
 use crate::identifier::Identifier;
-use crate::messages::flush_unsaved_buffer::FlushUnsavedBuffer;
-use crate::messages::poll_messages::{PollMessages, PollingStrategy};
-use crate::messages::send_messages::{Message, Partitioning, SendMessages};
-use crate::models::batch::IggyBatch;
+use crate::messages::{Partitioning, PollingStrategy};
+use crate::models::IggyMessage;
 use async_trait::async_trait;
 
 #[async_trait]
@@ -21,7 +19,7 @@ impl MessageClient for HttpClient {
         strategy: &PollingStrategy,
         count: u32,
         auto_commit: bool,
-    ) -> Result<IggyBatch, IggyError> {
+    ) -> Result<Vec<IggyMessage>, IggyError> {
         /*
         let response = self
             .get_with_query(
@@ -51,7 +49,7 @@ impl MessageClient for HttpClient {
         stream_id: &Identifier,
         topic_id: &Identifier,
         partitioning: &Partitioning,
-        messages: &mut [Message],
+        messages: &mut [IggyMessage],
     ) -> Result<(), IggyError> {
         /*
         self.post(

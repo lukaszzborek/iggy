@@ -3,7 +3,7 @@ use crate::args::common::IggyBenchArgs;
 use crate::benchmarks::benchmark::{BenchmarkFutures, Benchmarkable};
 use crate::rate_limiter::RateLimiter;
 use async_trait::async_trait;
-use iggy::messages::poll_messages::PollingKind;
+use iggy::messages::PollingKind;
 use iggy_bench_report::benchmark_kind::BenchmarkKind;
 use integration::test_server::ClientFactory;
 use std::sync::atomic::AtomicI64;

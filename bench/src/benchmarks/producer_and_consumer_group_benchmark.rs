@@ -6,10 +6,8 @@ use crate::{
     rate_limiter::RateLimiter,
 };
 use async_trait::async_trait;
-use iggy::{
-    client::ConsumerGroupClient, clients::client::IggyClient, error::IggyError,
-    messages::poll_messages::PollingKind,
-};
+use iggy::messages::PollingKind;
+use iggy::{client::ConsumerGroupClient, clients::client::IggyClient, error::IggyError};
 use iggy_bench_report::benchmark_kind::BenchmarkKind;
 use integration::test_server::{login_root, ClientFactory};
 use std::sync::{atomic::AtomicI64, Arc};

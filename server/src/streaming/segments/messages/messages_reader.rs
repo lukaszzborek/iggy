@@ -3,7 +3,7 @@ use bytes::{Bytes, BytesMut};
 use error_set::ErrContext;
 use iggy::{
     error::IggyError,
-    models::batch::{IggyBatch, IggyHeader, IGGY_BATCH_OVERHEAD},
+    models::IggyMessages,
     utils::{byte_size::IggyByteSize, timestamp::IggyTimestamp},
 };
 use std::{
@@ -23,13 +23,13 @@ use tracing::{error, trace, warn};
 
 /// A dedicated struct for reading from the log file.
 #[derive(Debug)]
-pub struct SegmentLogReader {
+pub struct MessagesLogReader {
     file_path: String,
     file: Arc<File>,
     log_size_bytes: Arc<AtomicU64>,
 }
 
-impl SegmentLogReader {
+impl MessagesLogReader {
     /// Opens the log file in read mode.
     pub async fn new(file_path: &str, log_size_bytes: Arc<AtomicU64>) -> Result<Self, IggyError> {
         let file = OpenOptions::new()
@@ -78,40 +78,41 @@ impl SegmentLogReader {
         index_range: &IndexRange,
         start_offset: u64,
         end_offset: u64,
-    ) -> Result<Vec<IggyBatch>, IggyError> {
-        let mut file_size = self.file_size();
-        // TODO: Fix me
-        /*
-        if file_size == 0 {
-            trace!("Log file {} is empty.", self.file_path);
-            return Ok(Vec::new());
-        }
-        */
+    ) -> Result<IggyMessages, IggyError> {
+        todo!()
+        // let mut file_size = self.file_size();
+        // // TODO: Fix me
+        // /*
+        // if file_size == 0 {
+        //     trace!("Log file {} is empty.", self.file_path);
+        //     return Ok(Vec::new());
+        // }
+        // */
 
-        let mut position = index_range.start.position as u64;
-        let mut batches = Vec::new();
-        let mut last_batch_to_read = false;
+        // let mut position = index_range.start.position as u64;
+        // let mut batches = Vec::new();
+        // let mut last_batch_to_read = false;
 
-        while !last_batch_to_read && position < file_size {
-            file_size = self.file_size();
-            match self.maybe_read_next_batch(position, file_size).await? {
-                Some((batch, bytes_read)) => {
-                    position += bytes_read;
-                    let last_offset_in_batch =
-                        batch.header.base_offset + batch.header.last_offset_delta as u64;
-                    if last_offset_in_batch >= end_offset as u64 || position >= file_size {
-                        last_batch_to_read = true;
-                    }
-                    batches.push(batch);
-                }
-                None => {
-                    break;
-                }
-            }
-        }
-        //TODO: Fix me
-        //trace!("Loaded {} message batches.", batches);
-        Ok(batches)
+        // while !last_batch_to_read && position < file_size {
+        //     file_size = self.file_size();
+        //     match self.maybe_read_next_batch(position, file_size).await? {
+        //         Some((batch, bytes_read)) => {
+        //             position += bytes_read;
+        //             let last_offset_in_batch =
+        //                 batch.header.base_offset + batch.header.last_offset_delta as u64;
+        //             if last_offset_in_batch >= end_offset as u64 || position >= file_size {
+        //                 last_batch_to_read = true;
+        //             }
+        //             batches.push(batch);
+        //         }
+        //         None => {
+        //             break;
+        //         }
+        //     }
+        // }
+        // //TODO: Fix me
+        // //trace!("Loaded {} message batches.", batches);
+        // Ok(batches)
     }
 
     // TODO: This one is most likely not needed anymore.
@@ -237,60 +238,61 @@ impl SegmentLogReader {
         &self,
         position: u64,
         file_size: u64,
-    ) -> Result<Option<(IggyBatch, u64)>, IggyError> {
-        let batch_header_size = IGGY_BATCH_OVERHEAD;
-        if position + batch_header_size > file_size {
-            return Ok(None);
-        }
+    ) -> Result<Option<IggyMessages>, IggyError> {
+        todo!()
+        // let batch_header_size = IGGY_BATCH_OVERHEAD;
+        // if position + batch_header_size > file_size {
+        //     return Ok(None);
+        // }
 
-        let header_buf = match self.read_at(position, batch_header_size).await {
-            Ok(buf) => buf,
-            Err(error) if error.kind() == ErrorKind::UnexpectedEof => return Ok(None),
-            Err(error) => {
-                error!(
-                    "Error reading batch header at position {} in file {}: {error}",
-                    position, self.file_path
-                );
-                return Err(IggyError::CannotReadBatchBaseOffset);
-            }
-        };
-        if header_buf.len() < batch_header_size as usize {
-            warn!(
-                "Cannot read batch header at position {} in file {}. Possibly truncated.",
-                position, self.file_path
-            );
-            return Ok(None);
-        }
-        let header = IggyHeader::from_bytes(&header_buf);
-        let batch_length = header.batch_length as usize;
-        let batch_position = position + batch_header_size;
-        if batch_position + batch_length as u64 > file_size {
-            warn!(
-                "It's not possible to read the full batch payload ({} bytes) at position {} in file {} of size {}. Possibly truncated.",
-                batch_length, batch_position, self.file_path, file_size
-            );
-            return Ok(None);
-        }
+        // let header_buf = match self.read_at(position, batch_header_size).await {
+        //     Ok(buf) => buf,
+        //     Err(error) if error.kind() == ErrorKind::UnexpectedEof => return Ok(None),
+        //     Err(error) => {
+        //         error!(
+        //             "Error reading batch header at position {} in file {}: {error}",
+        //             position, self.file_path
+        //         );
+        //         return Err(IggyError::CannotReadBatchBaseOffset);
+        //     }
+        // };
+        // if header_buf.len() < batch_header_size as usize {
+        //     warn!(
+        //         "Cannot read batch header at position {} in file {}. Possibly truncated.",
+        //         position, self.file_path
+        //     );
+        //     return Ok(None);
+        // }
+        // let header = IggyHeader::from_bytes(&header_buf);
+        // let batch_length = header.batch_length as usize;
+        // let batch_position = position + batch_header_size;
+        // if batch_position + batch_length as u64 > file_size {
+        //     warn!(
+        //         "It's not possible to read the full batch payload ({} bytes) at position {} in file {} of size {}. Possibly truncated.",
+        //         batch_length, batch_position, self.file_path, file_size
+        //     );
+        //     return Ok(None);
+        // }
 
-        let batch_bytes = match self
-            .read_bytes_at(batch_position, batch_length as u64)
-            .await
-        {
-            Ok(buf) => buf,
-            Err(error) if error.kind() == ErrorKind::UnexpectedEof => return Ok(None),
-            Err(error) => {
-                error!(
-                    "Error reading batch payload at position {} in file {}: {error}",
-                    batch_position, self.file_path
-                );
-                return Err(IggyError::CannotReadBatchPayload);
-            }
-        };
+        // let batch_bytes = match self
+        //     .read_bytes_at(batch_position, batch_length as u64)
+        //     .await
+        // {
+        //     Ok(buf) => buf,
+        //     Err(error) if error.kind() == ErrorKind::UnexpectedEof => return Ok(None),
+        //     Err(error) => {
+        //         error!(
+        //             "Error reading batch payload at position {} in file {}: {error}",
+        //             batch_position, self.file_path
+        //         );
+        //         return Err(IggyError::CannotReadBatchPayload);
+        //     }
+        // };
 
-        let bytes_read = batch_header_size + batch_length as u64;
-        let batch = IggyBatch::new(header, batch_bytes);
+        // let bytes_read = batch_header_size + batch_length as u64;
+        // let batch = IggyBatch::new(header, batch_bytes);
 
-        Ok(Some((batch, bytes_read)))
+        // Ok(Some((batch, bytes_read)))
     }
 
     fn file_size(&self) -> u64 {

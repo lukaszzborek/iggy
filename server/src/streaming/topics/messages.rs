@@ -1,22 +1,20 @@
-use crate::streaming::batching::appendable_batch_info::AppendableBatchInfo;
 use crate::streaming::polling_consumer::PollingConsumer;
-use crate::streaming::segments::IggyBatchFetchResult;
 use crate::streaming::topics::topic::Topic;
 use crate::streaming::topics::COMPONENT;
 use crate::streaming::utils::file::folder_size;
 use crate::streaming::utils::hash;
 use ahash::AHashMap;
 use error_set::ErrContext;
-use iggy::confirmation::Confirmation;
 use iggy::error::IggyError;
 use iggy::locking::IggySharedMutFn;
-use iggy::messages::poll_messages::{PollingKind, PollingStrategy};
-use iggy::messages::send_messages::{Message, Partitioning, PartitioningKind};
-use iggy::models::batch::{IggyBatch, IggyMutableBatch};
+use iggy::messages::{PartitioningKind, PollingKind};
+use iggy::models::{IggyMessages, IggyMessagesMut};
+use iggy::prelude::Partitioning;
 use iggy::utils::byte_size::IggyByteSize;
 use iggy::utils::expiry::IggyExpiry;
 use iggy::utils::sizeable::Sizeable;
 use iggy::utils::timestamp::IggyTimestamp;
+use iggy::{confirmation::Confirmation, prelude::PollingStrategy};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tracing::{info, trace, warn};
@@ -32,7 +30,7 @@ impl Topic {
         partition_id: u32,
         strategy: PollingStrategy,
         count: u32,
-    ) -> Result<IggyBatchFetchResult, IggyError> {
+    ) -> Result<IggyMessages, IggyError> {
         if !self.has_partitions() {
             return Err(IggyError::NoPartitions(self.topic_id, self.stream_id));
         }
@@ -71,9 +69,8 @@ impl Topic {
 
     pub async fn append_messages(
         &self,
-        batch_size: IggyByteSize,
         partitioning: &Partitioning,
-        batch: IggyMutableBatch,
+        messages: IggyMessagesMut,
         confirmation: Option<Confirmation>,
     ) -> Result<(), IggyError> {
         if !self.has_partitions() {
@@ -104,8 +101,7 @@ impl Topic {
             }
         };
 
-        let appendable_batch_info = AppendableBatchInfo::new(batch_size, partition_id);
-        self.append_messages_to_partition(appendable_batch_info, batch, confirmation)
+        self.append_messages_to_partition(messages, partition_id, confirmation)
             .await
     }
 
@@ -129,22 +125,20 @@ impl Topic {
 
     async fn append_messages_to_partition(
         &self,
-        appendable_batch_info: AppendableBatchInfo,
-        batch: IggyMutableBatch,
+        messages: IggyMessagesMut,
+        partition_id: u32,
         confirmation: Option<Confirmation>,
     ) -> Result<(), IggyError> {
-        let partition = self.partitions.get(&appendable_batch_info.partition_id);
+        let partition = self.partitions.get(&partition_id);
         partition
-            .ok_or({
-                IggyError::PartitionNotFound(
-                    appendable_batch_info.partition_id,
-                    self.stream_id,
-                    self.stream_id,
-                )
-            })?
+            .ok_or(IggyError::PartitionNotFound(
+                partition_id,
+                self.stream_id,
+                self.stream_id,
+            ))?
             .write()
             .await
-            .append_messages(appendable_batch_info, batch, confirmation)
+            .append_messages(messages, confirmation)
             .await
             .with_error_context(|error| {
                 format!("{COMPONENT} (error: {error}) - failed to append messages")

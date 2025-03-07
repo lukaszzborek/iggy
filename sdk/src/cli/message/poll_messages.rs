@@ -3,10 +3,9 @@ use crate::cli_command::{CliCommand, PRINT_TARGET};
 use crate::client::Client;
 use crate::consumer::Consumer;
 use crate::identifier::Identifier;
-use crate::messages::poll_messages::{PollMessages, PollingStrategy};
-use crate::messages::send_messages::Message;
-use crate::models::batch::IggyBatch;
+use crate::messages::{PollMessages, PollingStrategy};
 use crate::models::header::{HeaderKey, HeaderKind};
+use crate::models::IggyMessage;
 use crate::utils::sizeable::Sizeable;
 use crate::utils::timestamp::IggyTimestamp;
 use crate::utils::{byte_size::IggyByteSize, duration::IggyDuration};
@@ -64,7 +63,7 @@ impl PollMessagesCmd {
 
     fn create_message_header_keys(
         &self,
-        polled_messages: &IggyBatch,
+        polled_messages: &Vec<IggyMessage>,
     ) -> HashSet<(HeaderKey, HeaderKind)> {
         //TODO: Fix me
         /*
@@ -106,7 +105,7 @@ impl PollMessagesCmd {
     }
 
     fn create_table_content(
-        polled_messages: &IggyBatch,
+        polled_messages: &Vec<IggyMessage>,
         message_header_keys: &HashSet<(HeaderKey, HeaderKind)>,
     ) -> Vec<Row> {
         //TODO: Fix me

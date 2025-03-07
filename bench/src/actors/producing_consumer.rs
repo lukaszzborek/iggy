@@ -8,8 +8,7 @@ use iggy::client::MessageClient;
 use iggy::clients::client::IggyClient;
 use iggy::consumer::Consumer as IggyConsumer;
 use iggy::error::IggyError;
-use iggy::messages::poll_messages::{PollingKind, PollingStrategy};
-use iggy::messages::send_messages::{Message, Partitioning};
+use iggy::prelude::*;
 use iggy::utils::byte_size::IggyByteSize;
 use iggy::utils::duration::IggyDuration;
 use iggy::utils::sizeable::Sizeable;
@@ -104,8 +103,8 @@ impl ProducingConsumer {
         let mut batch_total_bytes = 0;
         let mut messages = Vec::with_capacity(messages_per_batch as usize);
         for _ in 0..messages_per_batch {
-            let message = Message::from_str(&payload).unwrap();
-            batch_user_data_bytes += message.length as u64;
+            let message = IggyMessage::from_str(&payload).unwrap();
+            batch_user_data_bytes += message.payload.len() as u64;
             batch_total_bytes += message.get_size_bytes().as_bytes_u64();
             messages.push(message);
         }

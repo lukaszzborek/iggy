@@ -1,6 +1,5 @@
-use bytes::Bytes;
-
 use crate::error::IggyError;
+use bytes::Bytes;
 
 /// The trait represents the logic responsible for serializing and deserializing the struct to and from bytes.
 pub trait BytesSerializable {

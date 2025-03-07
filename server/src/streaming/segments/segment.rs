@@ -1,7 +1,7 @@
 use super::indexes::*;
-use super::logs::*;
+use super::messages::*;
+use super::messages_accumulator::MessagesAccumulator;
 use crate::configs::system::SystemConfig;
-use crate::streaming::batching::batch_accumulator::BatchAccumulator;
 use crate::streaming::segments::*;
 use error_set::ErrContext;
 use iggy::error::IggyError;
@@ -35,12 +35,12 @@ pub struct Segment {
     pub messages_count_of_parent_topic: Arc<AtomicU64>,
     pub messages_count_of_parent_partition: Arc<AtomicU64>,
     pub is_closed: bool,
-    pub(super) log_writer: Option<SegmentLogWriter>,
-    pub(super) log_reader: Option<SegmentLogReader>,
+    pub(super) log_writer: Option<MessagesLogWriter>,
+    pub(super) log_reader: Option<MessagesLogReader>,
     pub(super) index_writer: Option<SegmentIndexWriter>,
     pub(super) index_reader: Option<SegmentIndexReader>,
     pub message_expiry: IggyExpiry,
-    pub unsaved_messages: Option<BatchAccumulator>,
+    pub unsaved_messages: Option<MessagesAccumulator>,
     pub config: Arc<SystemConfig>,
     pub indexes: Option<Vec<Index>>,
     pub(super) log_size_bytes: Arc<AtomicU64>,
@@ -210,7 +210,7 @@ impl Segment {
         let max_file_operation_retries = self.config.state.max_file_operation_retries;
         let retry_delay = self.config.state.retry_delay;
 
-        let log_writer = SegmentLogWriter::new(
+        let log_writer = MessagesLogWriter::new(
             &self.log_path,
             self.log_size_bytes.clone(),
             log_fsync,
@@ -230,7 +230,8 @@ impl Segment {
     }
 
     pub async fn initialize_reading(&mut self) -> Result<(), IggyError> {
-        let log_reader = SegmentLogReader::new(&self.log_path, self.log_size_bytes.clone()).await?;
+        let log_reader =
+            MessagesLogReader::new(&self.log_path, self.log_size_bytes.clone()).await?;
         // TODO(hubcio): there is no need to store open fd for reader if we have index cache enabled
         let index_reader =
             SegmentIndexReader::new(&self.index_path, self.index_size_bytes.clone()).await?;

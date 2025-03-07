@@ -218,7 +218,7 @@ impl IggyCmdTestCase for TestMessageSendCmd {
 
         assert!(polled_messages.is_ok());
         let polled_messages = polled_messages.unwrap();
-        assert_eq!(polled_messages.messages.len(), self.messages.len());
+        assert_eq!(polled_messages.batch., self.messages.len());
         assert_eq!(
             polled_messages
                 .messages

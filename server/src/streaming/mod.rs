@@ -1,4 +1,3 @@
-pub mod batching;
 pub mod cache;
 pub mod clients;
 mod deduplication;

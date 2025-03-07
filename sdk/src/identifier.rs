@@ -164,6 +164,24 @@ impl Identifier {
             value: value.as_bytes().to_vec(),
         })
     }
+
+    /// Creates identifier from raw bytes
+    pub fn from_raw_bytes(bytes: &[u8]) -> Result<Self, IggyError> {
+        let kind = IdKind::from_code(bytes[0])?;
+        let length = bytes[1];
+        let value = bytes[2..2 + length as usize].to_vec();
+        if value.len() != length as usize {
+            return Err(IggyError::InvalidIdentifier);
+        }
+
+        let identifier = Identifier {
+            kind,
+            length,
+            value,
+        };
+        identifier.validate()?;
+        Ok(identifier)
+    }
 }
 
 impl Sizeable for Identifier {

@@ -12,9 +12,7 @@ use crate::error::IggyError;
 use crate::identifier::Identifier;
 use crate::locking::IggySharedMut;
 use crate::locking::IggySharedMutFn;
-use crate::messages::poll_messages::PollingStrategy;
-use crate::messages::send_messages::{Message, Partitioning};
-use crate::models::batch::IggyBatch;
+use crate::messages::PollingStrategy;
 use crate::models::client_info::{ClientInfo, ClientInfoDetails};
 use crate::models::consumer_group::{ConsumerGroup, ConsumerGroupDetails};
 use crate::models::consumer_offset_info::ConsumerOffsetInfo;
@@ -27,10 +25,11 @@ use crate::models::stream::{Stream, StreamDetails};
 use crate::models::topic::{Topic, TopicDetails};
 use crate::models::user_info::{UserInfo, UserInfoDetails};
 use crate::models::user_status::UserStatus;
+use crate::models::IggyMessage;
 use crate::partitioner::Partitioner;
+use crate::prelude::Partitioning;
 use crate::snapshot::{SnapshotCompression, SystemSnapshotType};
 use crate::tcp::client::TcpClient;
-use crate::utils::byte_size::IggyByteSize;
 use crate::utils::crypto::EncryptorKind;
 use crate::utils::duration::IggyDuration;
 use crate::utils::expiry::IggyExpiry;
@@ -543,7 +542,7 @@ impl MessageClient for IggyClient {
         strategy: &PollingStrategy,
         count: u32,
         auto_commit: bool,
-    ) -> Result<IggyBatch, IggyError> {
+    ) -> Result<Vec<IggyMessage>, IggyError> {
         if count == 0 {
             return Err(IggyError::InvalidMessagesCount);
         }
@@ -581,7 +580,7 @@ impl MessageClient for IggyClient {
         stream_id: &Identifier,
         topic_id: &Identifier,
         partitioning: &Partitioning,
-        messages: &mut [Message],
+        messages: &mut [IggyMessage],
     ) -> Result<(), IggyError> {
         if messages.is_empty() {
             return Err(IggyError::InvalidMessagesCount);
@@ -590,7 +589,7 @@ impl MessageClient for IggyClient {
         if let Some(encryptor) = &self.encryptor {
             for message in &mut *messages {
                 message.payload = Bytes::from(encryptor.encrypt(&message.payload)?);
-                message.length = message.payload.len() as u32;
+                message.header.payload_length = message.payload.len() as u32;
             }
         }
 

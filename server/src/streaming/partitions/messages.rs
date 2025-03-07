@@ -1,14 +1,12 @@
-use crate::streaming::batching::appendable_batch_info::AppendableBatchInfo;
 use crate::streaming::partitions::partition::Partition;
 use crate::streaming::partitions::COMPONENT;
 use crate::streaming::polling_consumer::PollingConsumer;
 use crate::streaming::segments::*;
 use error_set::ErrContext;
 use iggy::error::IggyError;
-use iggy::messages::send_messages::Message;
-use iggy::models::batch::IggyMutableBatch;
+use iggy::models::IggyMessages;
 use iggy::utils::timestamp::IggyTimestamp;
-use iggy::{confirmation::Confirmation, models::batch::IggyBatch};
+use iggy::{confirmation::Confirmation, models::IggyMessagesMut};
 use std::sync::{atomic::Ordering, Arc};
 use tracing::{trace, warn};
 
@@ -70,7 +68,7 @@ impl Partition {
         &self,
         start_offset: u64,
         count: u32,
-    ) -> Result<IggyBatchFetchResult, IggyError> {
+    ) -> Result<IggyMessages, IggyError> {
         trace!(
             "Getting messages for start offset: {start_offset} for partition: {}, current offset: {}...",
             self.partition_id,
@@ -104,12 +102,12 @@ impl Partition {
     }
 
     // Retrieves the first messages (up to a specified count).
-    pub async fn get_first_messages(&self, count: u32) -> Result<IggyBatchFetchResult, IggyError> {
+    pub async fn get_first_messages(&self, count: u32) -> Result<IggyMessages, IggyError> {
         self.get_messages_by_offset(0, count).await
     }
 
     // Retrieves the last messages (up to a specified count).
-    pub async fn get_last_messages(&self, count: u32) -> Result<IggyBatchFetchResult, IggyError> {
+    pub async fn get_last_messages(&self, count: u32) -> Result<IggyMessages, IggyError> {
         let mut requested_count = count as u64;
         if requested_count > self.current_offset + 1 {
             requested_count = self.current_offset + 1
@@ -124,7 +122,7 @@ impl Partition {
         &self,
         consumer: PollingConsumer,
         count: u32,
-    ) -> Result<IggyBatchFetchResult, IggyError> {
+    ) -> Result<IggyMessages, IggyError> {
         let (consumer_offsets, consumer_id) = match consumer {
             PollingConsumer::Consumer(consumer_id, _) => (&self.consumer_offsets, consumer_id),
             PollingConsumer::ConsumerGroup(group_id, _) => (&self.consumer_group_offsets, group_id),
@@ -192,32 +190,32 @@ impl Partition {
         segments: Vec<&Segment>,
         offset: u64,
         count: u32,
-    ) -> Result<Vec<IggyBatchSlice>, IggyError> {
-        //TODO: Figure out how to flatten those IggyBatchFetchResults.
-        let mut results = Vec::new();
-        let mut remaining_count = count;
-        for segment in segments {
-            if remaining_count == 0 {
-                break;
-            }
-            let slices = segment
-                .get_messages_by_offset(offset, remaining_count)
-                .await
-                .with_error_context(|error| {
-                    format!(
-                        "{COMPONENT} (error: {error}) - failed to get messages from segment, segment: {}, \
-                         offset: {}, count: {}",
-                        segment, offset, remaining_count
-                    )
-                })?;
-            let messages_count = slices
-                .iter()
-                .map(|slice| slice.header.last_offset_delta)
-                .sum();
-            remaining_count = remaining_count.saturating_sub(messages_count);
-            results.extend(slices);
-        }
-        Ok(results)
+    ) -> Result<IggyMessages, IggyError> {
+        todo!()
+        // let mut results = Vec::new();
+        // let mut remaining_count = count;
+        // for segment in segments {
+        //     if remaining_count == 0 {
+        //         break;
+        //     }
+        //     let slices = segment
+        //         .get_messages_by_offset(offset, remaining_count)
+        //         .await
+        //         .with_error_context(|error| {
+        //             format!(
+        //                 "{COMPONENT} (error: {error}) - failed to get messages from segment, segment: {}, \
+        //                  offset: {}, count: {}",
+        //                 segment, offset, remaining_count
+        //             )
+        //         })?;
+        //     let messages_count = slices
+        //         .iter()
+        //         .map(|slice| slice.header.last_offset_delta)
+        //         .sum();
+        //     remaining_count = remaining_count.saturating_sub(messages_count);
+        //     results.extend(slices);
+        // }
+        // Ok(results)
     }
 
     // Tries to retrieve messages from the in-memory cache.
@@ -361,8 +359,7 @@ impl Partition {
 
     pub async fn append_messages(
         &mut self,
-        appendable_batch_info: AppendableBatchInfo,
-        batch: IggyMutableBatch,
+        messages: IggyMessagesMut,
         confirmation: Option<Confirmation>,
     ) -> Result<(), IggyError> {
         {
@@ -380,8 +377,7 @@ impl Partition {
             }
         }
 
-        let mut batch = batch;
-        let batch_size = appendable_batch_info.batch_size;
+        let messages_size = messages.size();
         let current_offset = if !self.should_increment_offset {
             0
         } else {
@@ -422,18 +418,17 @@ impl Partition {
         */
 
         // Why are we even doing it this way ? XD
-        // What are those scopes
+        // What are those scope
         let messages_count = {
             let last_segment = self.segments.last_mut().ok_or(IggyError::SegmentNotFound)?;
-            let messages_count = last_segment
-                 .append_batch(current_offset, batch)
+            last_segment
+                 .append_batch(current_offset, messages)
                  .await
                  .with_error_context(|error| {
                      format!(
                          "{COMPONENT} (error: {error}) - failed to append batch into last segment: {last_segment}",
                      )
-                 })?;
-            messages_count
+                 })?
         };
         let last_offset = current_offset + messages_count as u64 - 1;
         if self.should_increment_offset {

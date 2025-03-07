@@ -28,6 +28,7 @@ pub mod models;
 pub mod partitioner;
 pub mod partitions;
 pub mod personal_access_tokens;
+pub mod prelude;
 pub mod quic;
 pub mod snapshot;
 pub mod stream_builder;

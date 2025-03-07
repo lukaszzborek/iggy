@@ -4,8 +4,8 @@ use crate::diagnostic::DiagnosticEvent;
 use crate::error::IggyError;
 use crate::identifier::{IdKind, Identifier};
 use crate::locking::{IggySharedMut, IggySharedMutFn};
-use crate::messages::poll_messages::{PollingKind, PollingStrategy};
-use crate::models::batch::IggyBatch;
+use crate::messages::PollingStrategy;
+use crate::models::IggyMessage;
 use crate::utils::byte_size::IggyByteSize;
 use crate::utils::crypto::EncryptorKind;
 use crate::utils::duration::IggyDuration;
@@ -28,7 +28,7 @@ use tracing::{error, info, trace, warn};
 //const EMPTY_MESSAGES: Vec<PolledMessage> = Vec::new();
 
 const ORDERING: std::sync::atomic::Ordering = std::sync::atomic::Ordering::SeqCst;
-type PollMessagesFuture = Pin<Box<dyn Future<Output = Result<IggyBatch, IggyError>>>>;
+type PollMessagesFuture = Pin<Box<dyn Future<Output = Result<Vec<IggyMessage>, IggyError>>>>;
 
 /// The auto-commit configuration for storing the offset on the server.
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -102,7 +102,7 @@ pub struct IggyConsumer {
     last_consumed_offsets: Arc<DashMap<u32, AtomicU64>>,
     current_offsets: Arc<DashMap<u32, AtomicU64>>,
     poll_future: Option<PollMessagesFuture>,
-    buffered_messages: VecDeque<IggyBatch>,
+    buffered_messages: VecDeque<Vec<IggyMessage>>,
     encryptor: Option<Arc<EncryptorKind>>,
     store_offset_sender: flume::Sender<(u32, u64)>,
     store_offset_after_each_message: bool,
@@ -566,7 +566,9 @@ impl IggyConsumer {
         });
     }
 
-    fn create_poll_messages_future(&self) -> impl Future<Output = Result<IggyBatch, IggyError>> {
+    fn create_poll_messages_future(
+        &self,
+    ) -> impl Future<Output = Result<Vec<IggyMessage>, IggyError>> {
         let stream_id = self.stream_id.clone();
         let topic_id = self.topic_id.clone();
         let partition_id = self.partition_id;
@@ -789,16 +791,16 @@ impl IggyConsumer {
     }
 }
 
-pub struct ReceivedMessage {
-    pub message: IggyBatch,
+pub struct ReceivedBatch {
+    pub messages: Vec<IggyMessage>,
     pub current_offset: u64,
     pub partition_id: u32,
 }
 
-impl ReceivedMessage {
-    pub fn new(message: IggyBatch, current_offset: u64, partition_id: u32) -> Self {
+impl ReceivedBatch {
+    pub fn new(messages: Vec<IggyMessage>, current_offset: u64, partition_id: u32) -> Self {
         Self {
-            message,
+            messages,
             current_offset,
             partition_id,
         }
@@ -806,7 +808,7 @@ impl ReceivedMessage {
 }
 
 impl Stream for IggyConsumer {
-    type Item = Result<ReceivedMessage, IggyError>;
+    type Item = Result<ReceivedBatch, IggyError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let partition_id = self.current_partition_id.load(ORDERING);

@@ -1,6 +1,5 @@
 use crate::compat::index_rebuilding::index_rebuilder::IndexRebuilder;
 use crate::state::system::PartitionState;
-use crate::streaming::batching::batch_accumulator::BatchAccumulator;
 use crate::streaming::partitions::partition::{ConsumerOffset, Partition};
 use crate::streaming::partitions::COMPONENT;
 use crate::streaming::persistence::persister::PersisterKind;

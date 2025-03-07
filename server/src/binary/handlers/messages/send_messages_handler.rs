@@ -1,17 +1,17 @@
+use std::time::Instant;
+
 use crate::binary::command::{BinaryServerCommand, ServerCommandHandler};
-use crate::binary::{handlers::messages::COMPONENT, sender::SenderKind};
+use crate::binary::sender::SenderKind;
 use crate::streaming::session::Session;
 use crate::streaming::systems::system::SharedSystem;
 use anyhow::Result;
-use bytes::{Bytes, BytesMut};
-use error_set::ErrContext;
+use bytes::{Buf, BytesMut};
 use iggy::bytes_serializable::BytesSerializable;
 use iggy::error::IggyError;
 use iggy::identifier::Identifier;
-use iggy::messages::send_messages::{Partitioning, SendMessages};
-use iggy::models::batch::{IggyHeader, IggyMutableBatch, IGGY_BATCH_OVERHEAD};
+use iggy::prelude::*;
 use iggy::utils::sizeable::Sizeable;
-use tracing::{debug, instrument};
+use tracing::instrument;
 
 impl ServerCommandHandler for SendMessages {
     fn code(&self) -> u32 {
@@ -26,49 +26,64 @@ impl ServerCommandHandler for SendMessages {
         partitioning = %self.partitioning
     ))]
     async fn handle(
-        self,
+        mut self,
         sender: &mut SenderKind,
         length: u32,
         session: &Session,
         system: &SharedSystem,
     ) -> Result<(), IggyError> {
-        let mut metadata_len_bytes = [0u8; 4];
-        sender.read(&mut metadata_len_bytes).await?;
-        let metadata_len = u32::from_le_bytes(metadata_len_bytes);
-
-        let mut metadata = vec![0u8; metadata_len as usize];
-        sender.read(&mut metadata).await?;
-        let metadata = Bytes::from(metadata);
-
-        let stream_id = Identifier::from_bytes(metadata.clone())?;
+        let function_start = Instant::now();
+        let length = length - 4;
+        let mut buffer = BytesMut::with_capacity(length as usize);
+        unsafe {
+            buffer.set_len(length as usize);
+        }
+        sender.read(&mut buffer).await?;
+        let mut offset = 0;
+        let stream_id = Identifier::from_raw_bytes(buffer.chunk())?;
+        offset += stream_id.get_size_bytes().as_bytes_usize();
         let mut position = stream_id.get_size_bytes().as_bytes_usize();
-        let topic_id = Identifier::from_bytes(metadata.slice(position..))?;
-        position += topic_id.get_size_bytes().as_bytes_usize();
-        let partitioning = Partitioning::from_bytes(metadata.slice(position..))?;
-
-        let mut header_bytes = [0u8; IGGY_BATCH_OVERHEAD as usize];
-        sender.read(&mut header_bytes).await?;
-        let header = IggyHeader::from_bytes(&header_bytes);
-
-        let batch_length = length - metadata_len - IGGY_BATCH_OVERHEAD as u32 - 4 - 4; // TODO(hubcio): magic numbers
-        let mut batch_buffer = BytesMut::with_capacity(batch_length as _);
-        unsafe { batch_buffer.set_len(batch_length as _) };
-        sender.read(&mut batch_buffer).await?;
-        let batch = IggyMutableBatch::new(header, batch_buffer);
-
-        debug!("session: {session}, command: {self}");
-
+        buffer.advance(position);
+        let topic_id = Identifier::from_raw_bytes(buffer.chunk())?;
+        offset += topic_id.get_size_bytes().as_bytes_usize();
+        position = topic_id.get_size_bytes().as_bytes_usize();
+        buffer.advance(position);
+        let partitioning = Partitioning::from_raw_bytes(buffer.chunk())?;
+        offset += partitioning.get_size_bytes().as_bytes_usize();
+        position = partitioning.get_size_bytes().as_bytes_usize();
+        buffer.advance(position);
+        let messages_count = buffer.get_u32_le();
+        let _metadata = buffer.split_to(offset);
+        let mut messages = IggyMessagesMut::new(buffer);
+        messages.set_count(messages_count);
+        let now = Instant::now();
         let system = system.read().await;
+        let lock_time = now.elapsed().as_micros();
+        let now = Instant::now();
         system
-            .append_messages(session, &stream_id, &topic_id, &partitioning, batch, None)
-            .await
-            .with_error_context(|error| {
-                format!(
-                    "{COMPONENT} (error: {error}) - failed to append messages, session: {session}"
-                )
-            })?;
-
+            .append_messages(
+                session,
+                &stream_id,
+                &topic_id,
+                &partitioning,
+                messages,
+                None,
+            )
+            .await?;
+        self.stream_id = stream_id;
+        self.topic_id = topic_id;
+        self.partitioning = partitioning;
+        let append_time = now.elapsed().as_micros();
+        let now = Instant::now();
         sender.send_empty_ok_response().await?;
+        let send_time = now.elapsed().as_micros();
+        tracing::error!(
+            "append_messages() took {} µs, system.read() took {} µs, send_empty_ok_response() took {} µs, entire function took {} µs",
+            append_time,
+            lock_time,
+            send_time,
+            function_start.elapsed().as_micros()
+        );
         Ok(())
     }
 }

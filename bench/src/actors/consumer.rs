@@ -7,7 +7,8 @@ use iggy::client::{ConsumerGroupClient, MessageClient};
 use iggy::clients::client::IggyClient;
 use iggy::consumer::Consumer as IggyConsumer;
 use iggy::error::IggyError;
-use iggy::messages::poll_messages::{PollingKind, PollingStrategy};
+use iggy::messages::PollingKind;
+use iggy::prelude::PollingStrategy;
 use iggy::utils::byte_size::IggyByteSize;
 use iggy::utils::duration::IggyDuration;
 use iggy::utils::sizeable::Sizeable;
@@ -230,7 +231,7 @@ impl Consumer {
             }
 
             let batch = batch.unwrap();
-            if batch.batch.is_empty() {
+            if batch.is_empty() {
                 // Store initial poll timestamp if this is the first attempt
                 if initial_poll_timestamp.is_none() {
                     initial_poll_timestamp = Some(before_poll);
@@ -295,8 +296,8 @@ impl Consumer {
 
             // We don't need to calculate the size whole batch every time by iterating over it - just always use the size of the first message
             if batch_user_size_bytes == 0 || batch_size_total_bytes == 0 {
-                batch_user_size_bytes = batch.batch.len() as u64;
-                batch_size_total_bytes = batch.batch.len() as u64;
+                batch_user_size_bytes = batch.len() as u64;
+                batch_size_total_bytes = batch.len() as u64;
             }
 
             total_user_data_bytes += IggyByteSize::from(batch_user_size_bytes);

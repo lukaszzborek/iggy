@@ -1,5 +1,4 @@
 use crate::streaming::cache::memory_tracker::CacheMemoryTracker;
-use crate::streaming::segments::IggyBatchFetchResult;
 use crate::streaming::session::Session;
 use crate::streaming::systems::system::System;
 use crate::streaming::systems::COMPONENT;
@@ -7,11 +6,7 @@ use bytes::Bytes;
 use error_set::ErrContext;
 use iggy::confirmation::Confirmation;
 use iggy::consumer::Consumer;
-use iggy::messages::poll_messages::PollingStrategy;
-use iggy::messages::send_messages::Partitioning;
-use iggy::models::batch::{IggyBatch, IggyMutableBatch};
-use iggy::utils::byte_size::IggyByteSize;
-use iggy::utils::sizeable::Sizeable;
+use iggy::prelude::*;
 use iggy::{error::IggyError, identifier::Identifier};
 use tracing::{error, trace};
 
@@ -24,7 +19,7 @@ impl System {
         topic_id: &Identifier,
         partition_id: Option<u32>,
         args: PollingArgs,
-    ) -> Result<IggyBatchFetchResult, IggyError> {
+    ) -> Result<IggyMessages, IggyError> {
         self.ensure_authenticated(session)?;
         if args.count == 0 {
             return Err(IggyError::InvalidMessagesCount);
@@ -124,11 +119,11 @@ impl System {
         stream_id: &Identifier,
         topic_id: &Identifier,
         partitioning: &Partitioning,
-        batch: IggyMutableBatch,
+        messages: IggyMessagesMut,
         confirmation: Option<Confirmation>,
     ) -> Result<(), IggyError> {
         self.ensure_authenticated(session)?;
-        let topic = self.find_topic(session, &stream_id, &topic_id).with_error_context(|error| format!("{COMPONENT} (error: {error}) - topic not found for stream_id: {stream_id}, topic_id: {topic_id}"))?;
+        let topic = self.find_topic(session, stream_id, topic_id).with_error_context(|error| format!("{COMPONENT} (error: {error}) - topic not found for stream_id: {stream_id}, topic_id: {topic_id}"))?;
         self.permissioner.append_messages(
             session.get_user_id(),
             topic.stream_id,
@@ -174,9 +169,8 @@ impl System {
             }
         }
         */
-        let batch_size_bytes = batch.get_size();
         topic
-            .append_messages(batch_size_bytes, partitioning, batch, confirmation)
+            .append_messages(partitioning, messages, confirmation)
             .await?;
         //TODO: Fix me
         //self.metrics.increment_messages(messages_count);

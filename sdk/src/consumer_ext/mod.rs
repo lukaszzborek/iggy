@@ -1,7 +1,7 @@
 mod consumer_message_ext;
 mod consumer_message_trait;
 
-use crate::clients::consumer::ReceivedMessage;
+use crate::clients::consumer::ReceivedBatch;
 use crate::error::IggyError;
 pub use consumer_message_trait::IggyConsumerMessageExt;
 
@@ -18,7 +18,7 @@ pub trait LocalMessageConsumer {
     /// # Errors
     ///
     /// * `IggyError` - If the message consumer fails to consume the message
-    async fn consume(&self, message: ReceivedMessage) -> Result<(), IggyError>;
+    async fn consume(&self, message: ReceivedBatch) -> Result<(), IggyError>;
 }
 
 // Default implementation for `&T`
@@ -33,7 +33,7 @@ impl<T: MessageConsumer + Send + Sync> MessageConsumer for &T {
     /// # Errors
     ///
     /// * `IggyError` - If the message consumer fails to consume the message
-    async fn consume(&self, message: ReceivedMessage) -> Result<(), IggyError> {
+    async fn consume(&self, message: ReceivedBatch) -> Result<(), IggyError> {
         (**self).consume(message).await
     }
 }

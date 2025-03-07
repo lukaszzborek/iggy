@@ -3,7 +3,7 @@ use error_set::ErrContext;
 use iggy::{
     confirmation::Confirmation,
     error::IggyError,
-    models::batch::{IggyBatch, IggyHeader, IggyMutableBatch, IGGY_BATCH_OVERHEAD},
+    models::{IggyMessages, IggyMessagesMut},
     utils::{byte_size::IggyByteSize, duration::IggyDuration, sizeable::Sizeable},
 };
 use std::{
@@ -22,7 +22,7 @@ use tracing::{error, trace};
 
 /// A dedicated struct for writing to the log file.
 #[derive(Debug)]
-pub struct SegmentLogWriter {
+pub struct MessagesLogWriter {
     file_path: String,
     /// Holds the file for synchronous writes; when asynchronous persistence is enabled, this will be None.
     file: Option<File>,
@@ -32,7 +32,7 @@ pub struct SegmentLogWriter {
     fsync: bool,
 }
 
-impl SegmentLogWriter {
+impl MessagesLogWriter {
     /// Opens the log file in write mode.
     ///
     /// If the server confirmation is set to `NoWait`, the file handle is transferred to the
@@ -92,20 +92,20 @@ impl SegmentLogWriter {
         })
     }
 
-    /// Append a message batch to the log file.
+    /// Append a messages to the log file.
     pub async fn save_batches(
         &mut self,
-        header: IggyHeader,
-        batches: Vec<IggyMutableBatch>,
+        messages: IggyMessages,
         confirmation: Confirmation,
     ) -> Result<IggyByteSize, IggyError> {
-        let batch_size = IGGY_BATCH_OVERHEAD + header.batch_length;
+        let messages_size = messages.size();
         match confirmation {
             Confirmation::Wait => {
-                self.write_batch(header, batches).await?;
-                self.log_size_bytes.fetch_add(batch_size, Ordering::AcqRel);
+                self.write_batch(messages).await?;
+                self.log_size_bytes
+                    .fetch_add(messages_size as u64, Ordering::AcqRel);
                 trace!(
-                    "Written batch of size {batch_size} bytes to log file: {}",
+                    "Written batch of size {messages_size} bytes to log file: {}",
                     self.file_path
                 );
                 if self.fsync {
@@ -114,7 +114,7 @@ impl SegmentLogWriter {
             }
             Confirmation::NoWait => {
                 if let Some(task) = &self.persister_task {
-                    task.persist(batch_size, header, batches).await;
+                    task.persist(messages).await;
                 } else {
                     panic!(
                         "Confirmation::NoWait is used, but LogPersisterTask is not set for log file: {}",
@@ -124,35 +124,19 @@ impl SegmentLogWriter {
             }
         }
 
-        Ok(batch_size.into())
+        Ok(IggyByteSize::from(messages_size as u64))
     }
 
     /// Write a batch of bytes to the log file and return the new file position.
-    async fn write_batch(
-        &mut self,
-        header: IggyHeader,
-        batches: Vec<IggyMutableBatch>,
-    ) -> Result<(), IggyError> {
+    async fn write_batch(&mut self, messages: IggyMessages) -> Result<(), IggyError> {
         if let Some(ref mut file) = self.file {
-            let mut slices = Vec::new();
+            file.write_all(messages.buffer())
+                .await
+                .with_error_context(|error| {
+                    format!("Failed to log to file: {}. {error}", self.file_path)
+                })
+                .map_err(|_| IggyError::CannotWriteToFile)?;
 
-            let header = header.as_bytes();
-            slices.push(IoSlice::new(&header));
-            batches.iter().for_each(|b| {
-                slices.push(IoSlice::new(&b.batch));
-            });
-
-            let slices = &mut slices.as_mut_slice();
-            while slices.len() > 0 {
-                let written = file
-                    .write_vectored(slices)
-                    .await
-                    .with_error_context(|error| {
-                        format!("Failed to log to file: {}. {error}", self.file_path)
-                    })
-                    .map_err(|_| IggyError::CannotWriteToFile)?;
-                IoSlice::advance_slices(slices, written);
-            }
             Ok(())
         } else {
             error!("File handle is not available for synchronous write.");
