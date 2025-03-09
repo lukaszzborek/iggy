@@ -6,7 +6,6 @@ use crate::consumer::{Consumer, ConsumerKind};
 use crate::error::IggyError;
 use crate::identifier::Identifier;
 use crate::utils::sizeable::Sizeable;
-use crate::utils::timestamp::IggyTimestamp;
 use crate::validatable::Validatable;
 use bytes::{BufMut, Bytes, BytesMut};
 use serde::{Deserialize, Serialize};
@@ -52,6 +51,44 @@ pub struct PollMessages {
 }
 
 impl PollMessages {
+    pub(crate) fn as_bytes(
+        stream_id: &Identifier,
+        topic_id: &Identifier,
+        partition_id: Option<u32>,
+        consumer: &Consumer,
+        strategy: &PollingStrategy,
+        count: u32,
+        auto_commit: bool,
+    ) -> Bytes {
+        let consumer_bytes = consumer.to_bytes();
+        let stream_id_bytes = stream_id.to_bytes();
+        let topic_id_bytes = topic_id.to_bytes();
+        let strategy_bytes = strategy.to_bytes();
+        let mut bytes = BytesMut::with_capacity(
+            9 + consumer_bytes.len()
+                + stream_id_bytes.len()
+                + topic_id_bytes.len()
+                + strategy_bytes.len(),
+        );
+        bytes.put_slice(&consumer_bytes);
+        bytes.put_slice(&stream_id_bytes);
+        bytes.put_slice(&topic_id_bytes);
+        if let Some(partition_id) = partition_id {
+            bytes.put_u32_le(partition_id);
+        } else {
+            bytes.put_u32_le(0);
+        }
+        bytes.put_slice(&strategy_bytes);
+        bytes.put_u32_le(count);
+        if auto_commit {
+            bytes.put_u8(1);
+        } else {
+            bytes.put_u8(0);
+        }
+
+        bytes.freeze()
+    }
+
     pub fn default_number_of_messages_to_poll() -> u32 {
         DEFAULT_NUMBER_OF_MESSAGES_TO_POLL
     }
@@ -67,7 +104,7 @@ impl Default for PollMessages {
             consumer: Consumer::default(),
             stream_id: Identifier::numeric(1).unwrap(),
             topic_id: Identifier::numeric(1).unwrap(),
-            partition_id: default_partition_id(),
+            partition_id: PollMessages::default_partition_id(),
             strategy: PollingStrategy::default(),
             count: PollMessages::default_number_of_messages_to_poll(),
             auto_commit: false,
@@ -81,14 +118,6 @@ impl Command for PollMessages {
     }
 }
 
-fn default_partition_id() -> Option<u32> {
-    Some(1)
-}
-
-fn default_value() -> u64 {
-    0
-}
-
 impl Validatable<IggyError> for PollMessages {
     fn validate(&self) -> Result<(), IggyError> {
         Ok(())
@@ -97,7 +126,7 @@ impl Validatable<IggyError> for PollMessages {
 
 impl BytesSerializable for PollMessages {
     fn to_bytes(&self) -> Bytes {
-        as_bytes(
+        PollMessages::as_bytes(
             &self.stream_id,
             &self.topic_id,
             self.partition_id,
@@ -163,45 +192,6 @@ impl BytesSerializable for PollMessages {
         };
         Ok(command)
     }
-}
-
-// This method is used by the new version of `IggyClient` to serialize `PollMessages` without cloning the args.
-pub(crate) fn as_bytes(
-    stream_id: &Identifier,
-    topic_id: &Identifier,
-    partition_id: Option<u32>,
-    consumer: &Consumer,
-    strategy: &PollingStrategy,
-    count: u32,
-    auto_commit: bool,
-) -> Bytes {
-    let consumer_bytes = consumer.to_bytes();
-    let stream_id_bytes = stream_id.to_bytes();
-    let topic_id_bytes = topic_id.to_bytes();
-    let strategy_bytes = strategy.to_bytes();
-    let mut bytes = BytesMut::with_capacity(
-        9 + consumer_bytes.len()
-            + stream_id_bytes.len()
-            + topic_id_bytes.len()
-            + strategy_bytes.len(),
-    );
-    bytes.put_slice(&consumer_bytes);
-    bytes.put_slice(&stream_id_bytes);
-    bytes.put_slice(&topic_id_bytes);
-    if let Some(partition_id) = partition_id {
-        bytes.put_u32_le(partition_id);
-    } else {
-        bytes.put_u32_le(0);
-    }
-    bytes.put_slice(&strategy_bytes);
-    bytes.put_u32_le(count);
-    if auto_commit {
-        bytes.put_u8(1);
-    } else {
-        bytes.put_u8(0);
-    }
-
-    bytes.freeze()
 }
 
 impl Display for PollMessages {

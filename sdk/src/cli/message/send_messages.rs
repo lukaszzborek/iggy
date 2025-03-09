@@ -3,7 +3,7 @@ use crate::cli_command::{CliCommand, PRINT_TARGET};
 use crate::client::Client;
 use crate::identifier::Identifier;
 use crate::models::header::{HeaderKey, HeaderValue};
-use crate::models::IggyMessage;
+use crate::prelude::IggyMessage;
 use crate::prelude::Partitioning;
 use crate::utils::sizeable::Sizeable;
 use anyhow::Context;

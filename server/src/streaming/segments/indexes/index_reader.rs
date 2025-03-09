@@ -81,7 +81,7 @@ impl SegmentIndexReader {
                     self.file_path
                 )
             })?;
-        if indexes.len() as u64 != file_size / INDEX_SIZE {
+        if indexes.len() as u32 != file_size / INDEX_SIZE {
             error!(
                 "Loaded {} indexes from disk, expected {}, file {} is probably corrupted!",
                 indexes.len(),
@@ -184,18 +184,65 @@ impl SegmentIndexReader {
         Ok(None)
     }
 
-    fn file_size(&self) -> u64 {
-        self.index_size_bytes.load(Ordering::Acquire)
+    fn file_size(&self) -> u32 {
+        self.index_size_bytes.load(Ordering::Acquire) as u32
     }
 
-    async fn read_at(&self, offset: u64, len: u64) -> Result<Vec<u8>, std::io::Error> {
+    /// Returns the total number of indexes stored in the file.
+    pub fn get_indexes_count(&self) -> u32 {
+        let file_size = self.file_size();
+        file_size / INDEX_SIZE
+    }
+
+    async fn read_at(&self, offset: u32, len: u32) -> Result<Vec<u8>, std::io::Error> {
         let file = self.file.clone();
         spawn_blocking(move || {
             let mut buf = vec![0u8; len as usize];
-            file.read_exact_at(&mut buf, offset)?;
+            file.read_exact_at(&mut buf, offset as u64)?;
             Ok(buf)
         })
         .await?
+    }
+
+    /// Gets the nth index from the index file.
+    ///
+    /// The index position is 0-based (first index is at position 0).
+    /// Returns None if the specified position is out of bounds.
+    pub async fn load_nth_index(&self, position: u32) -> Result<Option<Index>, IggyError> {
+        let file_size = self.file_size();
+        let total_indexes = file_size / INDEX_SIZE;
+
+        if position >= total_indexes {
+            trace!(
+                "Index position {} is out of bounds. Total indexes: {}",
+                position,
+                total_indexes
+            );
+            return Ok(None);
+        }
+
+        let offset = position * INDEX_SIZE;
+
+        let buf = match self.read_at(offset, INDEX_SIZE).await {
+            Ok(buf) => buf,
+            Err(error) if error.kind() == ErrorKind::UnexpectedEof => return Ok(None),
+            Err(error) => {
+                error!(
+                    "Error reading index at position {} (offset {}) in file {}: {error}",
+                    position, offset, self.file_path
+                );
+                return Err(IggyError::CannotReadFile);
+            }
+        };
+
+        let index = parse_index(&buf).with_error_context(|error| {
+            format!(
+                "Failed to parse index at position {} (offset {}) in file {}: {error}",
+                position, offset, self.file_path
+            )
+        })?;
+
+        Ok(Some(index))
     }
 }
 

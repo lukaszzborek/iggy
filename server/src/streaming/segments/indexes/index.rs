@@ -17,6 +17,14 @@ impl PartialEq<Self> for Index {
     }
 }
 
+#[derive(Debug, Eq, PartialEq, Clone, Copy, Default)]
+pub struct FetchIndex {
+    pub offset: u32,
+    pub position: u32,
+    pub timestamp: u64,
+    pub messages_count: u32,
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct IndexRange {
     pub start: Index,

@@ -1,6 +1,6 @@
 use super::{IggyMessagesMut, Index};
-use bytes::{Bytes, BytesMut};
-use iggy::prelude::{IggyMessageView, IggyMessages};
+use bytes::BytesMut;
+use iggy::prelude::IggyMessages;
 use iggy::utils::byte_size::IggyByteSize;
 use iggy::utils::timestamp::IggyTimestamp;
 use std::mem;
@@ -79,9 +79,9 @@ impl MessagesAccumulator {
 
             current_position += msg_size;
         }
-        let messages: Vec<u8> = batch.into_inner().into();
+        let mut messages: Vec<u8> = batch.into_inner().into();
 
-        self.messages.extend(messages);
+        self.messages.push(batch);
 
         self.messages_count += batch_messages_count;
         self.current_size += IggyByteSize::from(batch_size as u64);
@@ -92,33 +92,16 @@ impl MessagesAccumulator {
     }
 
     pub fn get_messages_by_offset(&self, start_offset: u64, end_offset: u64) -> IggyMessages {
-        let relative_start = start_offset - self.base_offset;
-        let relative_end = end_offset - self.base_offset;
-        let mut pos = 0;
-        let mut msg_index = 0;
-        let mut start_byte = None;
-        let mut end_byte = None;
-        while pos < self.messages.len() {
-            let view = IggyMessageView::new(&self.messages[pos..]).unwrap();
-            if msg_index == relative_start {
-                start_byte = Some(pos);
-            }
-            pos += view.size();
-            msg_index += 1;
-            if msg_index == relative_end + 1 {
-                end_byte = Some(pos);
-                break;
+        let mut messages = IggyMessages::default();
+
+        for message in self.messages.iter() {
+            if message.msg_header().unwrap().offset() >= start_offset
+                && message.msg_header().unwrap().offset() <= end_offset
+            {
+                messages.push(message.clone());
             }
         }
-        let start_byte = start_byte.unwrap_or(0);
-        let end_byte = end_byte.unwrap_or(self.messages.len());
-        let slice = &self.messages[start_byte..end_byte];
-        let count = if relative_end >= relative_start {
-            relative_end - relative_start + 1
-        } else {
-            0
-        };
-        IggyMessages::new(Bytes::copy_from_slice(slice), count as u32)
+        messages
     }
 
     /// Checks if the accumulator is empty
@@ -152,9 +135,7 @@ impl MessagesAccumulator {
     }
 
     /// Takes ownership of the accumulator and returns the messages
-    pub fn materialize(self) -> (IggyMessages, Vec<Index>) {
-        let messages = IggyMessages::new(Bytes::from(self.messages), self.messages_count);
-        let indexes = self.indexes;
-        (messages, indexes)
+    pub fn materialize(self) -> (Vec<IggyMessages>, Vec<Index>) {
+        (self.messages, self.indexes)
     }
 }

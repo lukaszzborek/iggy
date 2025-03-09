@@ -5,9 +5,7 @@ use crate::error::IggyError;
 use crate::identifier::Identifier;
 use crate::messages::{MAX_HEADERS_SIZE, MAX_PAYLOAD_SIZE};
 use crate::models::header::{HeaderKey, HeaderValue};
-use crate::models::{
-    IggyMessage, IggyMessageView, IggyMessageViewIterator, IggyMessages, IggyMessagesMut,
-};
+use crate::models::messaging::{IggyMessage, IggyMessageHeader, IggyMessageViewIterator};
 use crate::utils::byte_size::IggyByteSize;
 use crate::utils::sizeable::Sizeable;
 use crate::utils::varint::IggyVarInt;
@@ -21,8 +19,6 @@ use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 use uuid::Uuid;
-
-const EMPTY_KEY_VALUE: Vec<u8> = vec![];
 
 /// `SendMessages` command is used to send messages to a topic in a stream.
 /// It has additional payload:
@@ -122,19 +118,25 @@ impl Validatable<IggyError> for SendMessages {
                 Ok(message_view) => {
                     message_count += 1;
 
-                    if let Ok(Some(headers)) = message_view.headers() {
-                        for value in headers.values() {
-                            headers_size += value.value.len() as u32;
-                            if headers_size > MAX_HEADERS_SIZE {
-                                return Err(IggyError::TooBigHeadersPayload);
-                            }
-                        }
-                    }
+                    // // TODO: fix this
+                    // if let Ok(Some(headers)) = message_view.headers() {
+                    //     for value in headers.values() {
+                    //         headers_size += value.value.len() as u32;
+                    //         if headers_size > MAX_HEADERS_SIZE {
+                    //             return Err(IggyError::TooBigHeadersPayload);
+                    //         }
+                    //     }
+                    // }
 
                     let message_payload = message_view.payload();
                     payload_size += message_payload.len() as u32;
                     if payload_size > MAX_PAYLOAD_SIZE {
                         return Err(IggyError::TooBigMessagePayload);
+                    }
+
+                    // todo(hubcio): make it use IGGY_MESSAGE_HEADER_SIZE
+                    if message_payload.len() < 56 {
+                        return Err(IggyError::InvalidMessagePayloadLength);
                     }
                 }
                 Err(e) => return Err(e),
@@ -339,7 +341,7 @@ mod tests {
         let key = Partitioning::balanced();
         assert_eq!(key.kind, PartitioningKind::Balanced);
         assert_eq!(key.length, 0);
-        assert_eq!(key.value, EMPTY_KEY_VALUE);
+        assert!(key.value.is_empty());
         assert_eq!(
             PartitioningKind::from_code(1).unwrap(),
             PartitioningKind::Balanced

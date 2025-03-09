@@ -5,7 +5,7 @@ use crate::error::IggyError;
 use crate::identifier::{IdKind, Identifier};
 use crate::locking::{IggySharedMut, IggySharedMutFn};
 use crate::messages::PollingStrategy;
-use crate::models::IggyMessage;
+use crate::prelude::IggyMessage;
 use crate::utils::byte_size::IggyByteSize;
 use crate::utils::crypto::EncryptorKind;
 use crate::utils::duration::IggyDuration;

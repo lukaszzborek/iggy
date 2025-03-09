@@ -1,4 +1,5 @@
 use crate::streaming::polling_consumer::PollingConsumer;
+use crate::streaming::segments::IggyMessagesMut;
 use crate::streaming::topics::topic::Topic;
 use crate::streaming::topics::COMPONENT;
 use crate::streaming::utils::file::folder_size;
@@ -8,7 +9,7 @@ use error_set::ErrContext;
 use iggy::error::IggyError;
 use iggy::locking::IggySharedMutFn;
 use iggy::messages::{PartitioningKind, PollingKind};
-use iggy::models::{IggyMessages, IggyMessagesMut};
+use iggy::prelude::IggyMessages;
 use iggy::prelude::Partitioning;
 use iggy::utils::byte_size::IggyByteSize;
 use iggy::utils::expiry::IggyExpiry;

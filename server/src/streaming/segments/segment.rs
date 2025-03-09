@@ -35,8 +35,8 @@ pub struct Segment {
     pub messages_count_of_parent_topic: Arc<AtomicU64>,
     pub messages_count_of_parent_partition: Arc<AtomicU64>,
     pub is_closed: bool,
-    pub(super) log_writer: Option<MessagesLogWriter>,
-    pub(super) log_reader: Option<MessagesLogReader>,
+    pub(super) messages_writer: Option<MessagesWriter>,
+    pub(super) messages_reader: Option<MessagesReader>,
     pub(super) index_writer: Option<SegmentIndexWriter>,
     pub(super) index_reader: Option<SegmentIndexReader>,
     pub message_expiry: IggyExpiry,
@@ -93,8 +93,8 @@ impl Segment {
             indexes,
             unsaved_messages: None,
             is_closed: false,
-            log_writer: None,
-            log_reader: None,
+            messages_writer: None,
+            messages_reader: None,
             index_writer: None,
             index_reader: None,
             size_of_parent_stream,
@@ -116,7 +116,7 @@ impl Segment {
             self.log_path, self.index_path
         );
 
-        if self.log_reader.is_none() || self.index_reader.is_none() {
+        if self.messages_reader.is_none() || self.index_reader.is_none() {
             self.initialize_writing().await?;
             self.initialize_reading().await?;
         }
@@ -210,7 +210,7 @@ impl Segment {
         let max_file_operation_retries = self.config.state.max_file_operation_retries;
         let retry_delay = self.config.state.retry_delay;
 
-        let log_writer = MessagesLogWriter::new(
+        let log_writer = MessagesWriter::new(
             &self.log_path,
             self.log_size_bytes.clone(),
             log_fsync,
@@ -224,19 +224,18 @@ impl Segment {
             SegmentIndexWriter::new(&self.index_path, self.index_size_bytes.clone(), index_fsync)
                 .await?;
 
-        self.log_writer = Some(log_writer);
+        self.messages_writer = Some(log_writer);
         self.index_writer = Some(index_writer);
         Ok(())
     }
 
     pub async fn initialize_reading(&mut self) -> Result<(), IggyError> {
-        let log_reader =
-            MessagesLogReader::new(&self.log_path, self.log_size_bytes.clone()).await?;
+        let log_reader = MessagesReader::new(&self.log_path, self.log_size_bytes.clone()).await?;
         // TODO(hubcio): there is no need to store open fd for reader if we have index cache enabled
         let index_reader =
             SegmentIndexReader::new(&self.index_path, self.index_size_bytes.clone()).await?;
 
-        self.log_reader = Some(log_reader);
+        self.messages_reader = Some(log_reader);
         self.index_reader = Some(index_reader);
         Ok(())
     }
@@ -280,7 +279,7 @@ impl Segment {
     }
 
     pub async fn shutdown_reading(&mut self) {
-        if let Some(log_reader) = self.log_reader.take() {
+        if let Some(log_reader) = self.messages_reader.take() {
             drop(log_reader);
         }
         if let Some(index_reader) = self.index_reader.take() {
@@ -289,7 +288,7 @@ impl Segment {
     }
 
     pub async fn shutdown_writing(&mut self) {
-        if let Some(log_writer) = self.log_writer.take() {
+        if let Some(log_writer) = self.messages_writer.take() {
             tokio::spawn(async move {
                 let _ = log_writer.fsync().await;
                 log_writer.shutdown_persister_task().await;

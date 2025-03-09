@@ -1,11 +1,7 @@
-use super::{
-    message_view::IggyMessageViewMutIterator, IggyMessage, IggyMessageViewIterator, IggyMessages,
-};
-use crate::bytes_serializable::BytesSerializable;
-use crate::error::IggyError;
-use crate::utils::byte_size::IggyByteSize;
-use crate::utils::sizeable::Sizeable;
+use super::message_view_mut::IggyMessageViewMutIterator;
 use bytes::{BufMut, Bytes, BytesMut};
+use iggy::prelude::*;
+use lending_iterator::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// A container for mutable messages
@@ -96,5 +92,44 @@ impl IggyMessagesMut {
     /// Get the buffer
     pub fn into_inner(self) -> BytesMut {
         self.buffer
+    }
+
+    /// Prepares all messages in the batch for persistence by setting their offsets, timestamps,
+    /// and other necessary fields. This method should be called before the messages are written to disk.
+    ///
+    /// # Arguments
+    ///
+    /// * `base_offset` - The offset to start assigning from
+    /// * `timestamp` - The timestamp to use (if None, current timestamp will be used)
+    ///
+    /// # Returns
+    ///
+    /// The number of messages processed
+    pub fn prepare_for_persistence(&mut self, base_offset: u64, timestamp: u64) -> u32 {
+        let mut processed_count = 0;
+        let mut current_offset = base_offset;
+
+        let mut iterator = self.iter_mut();
+        while let Some(message_result) = LendingIterator::next(&mut iterator) {
+            if let Ok(mut message) = message_result {
+                // TODO(hubcio): remove unwraps
+                message.msg_header_mut().unwrap().set_offset(current_offset);
+
+                if message.msg_header().unwrap().timestamp() == 0 {
+                    message.msg_header_mut().unwrap().set_timestamp(timestamp);
+                }
+
+                message.update_checksum();
+
+                current_offset += 1;
+                processed_count += 1;
+            }
+        }
+
+        processed_count
+    }
+
+    pub fn make_immutable(self) -> IggyMessages {
+        IggyMessages::new(self.buffer.freeze(), self.count)
     }
 }

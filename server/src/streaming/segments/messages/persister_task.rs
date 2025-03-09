@@ -1,5 +1,5 @@
 use flume::{unbounded, Receiver};
-use iggy::{error::IggyError, models::IggyMessages, utils::duration::IggyDuration};
+use iggy::{error::IggyError, prelude::IggyMessages, utils::duration::IggyDuration};
 use std::{
     io::IoSlice,
     sync::{
@@ -220,14 +220,14 @@ impl PersisterTask {
     ) -> Result<u32, IggyError> {
         let mut attempts = 0;
         // TODO: This "retry" logic should be rewritten.
-        // There are certain kind of errors whom retyring is considered harmful, for example fsync failure
+        // There are certain kind of errors whom retrying is considered harmful, for example fsync failure
         // (https://www.usenix.org/system/files/atc20-rebello.pdf)
         // There are few errors which are worth retrying such as LSE (Latent sector error), as the file system
-        // might be able to realocate a new sector for the data and recover, but not every file system supports that.
+        // might be able to reallocate a new sector for the data and recover, but not every file system supports that.
         // In general this topic should be furthered researched rather than just naively retry when the write fails.
-
+        let messages_size = messages.size();
         loop {
-            let messages_size = messages.size();
+            // TODO: use vectored API
             match file.write_all(messages.buffer()).await {
                 Ok(_) => {
                     if fsync {

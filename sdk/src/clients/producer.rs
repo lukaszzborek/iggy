@@ -4,7 +4,7 @@ use crate::diagnostic::DiagnosticEvent;
 use crate::error::IggyError;
 use crate::identifier::{IdKind, Identifier};
 use crate::locking::{IggySharedMut, IggySharedMutFn};
-use crate::models::IggyMessage;
+use crate::prelude::IggyMessage;
 use crate::partitioner::Partitioner;
 use crate::prelude::Partitioning;
 use crate::utils::crypto::EncryptorKind;

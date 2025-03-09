@@ -3,10 +3,8 @@ use crate::streaming::partitions::COMPONENT;
 use crate::streaming::polling_consumer::PollingConsumer;
 use crate::streaming::segments::*;
 use error_set::ErrContext;
-use iggy::error::IggyError;
-use iggy::models::IggyMessages;
-use iggy::utils::timestamp::IggyTimestamp;
-use iggy::{confirmation::Confirmation, models::IggyMessagesMut};
+use iggy::confirmation::Confirmation;
+use iggy::prelude::*;
 use std::sync::{atomic::Ordering, Arc};
 use tracing::{trace, warn};
 
@@ -88,15 +86,15 @@ impl Partition {
         match segments.len() {
             0 => panic!("TODO"),
             1 => {
-                let slices = segments[0]
+                let messages = segments[0]
                     .get_messages_by_offset(start_offset, count)
                     .await?;
-                Ok(slices.into())
+                Ok(messages)
             }
             _ => {
-                let slices =
+                let messages =
                     Self::get_messages_from_segments(segments, start_offset, count).await?;
-                Ok(slices.into())
+                Ok(messages)
             }
         }
     }
@@ -216,145 +214,6 @@ impl Partition {
         //     results.extend(slices);
         // }
         // Ok(results)
-    }
-
-    // Tries to retrieve messages from the in-memory cache.
-    fn try_get_messages_from_cache(
-        &self,
-        start_offset: u64,
-        end_offset: u64,
-    ) -> Option<Vec<Arc<()>>> {
-        //TODO: Fix me
-        /*
-        let cache = self.cache.as_ref()?;
-        if cache.is_empty() || start_offset > end_offset || end_offset > self.current_offset {
-            return None;
-        }
-
-        let first_buffered_offset = cache[0].offset;
-        trace!(
-            "First buffered offset: {} for partition: {}",
-            first_buffered_offset,
-            self.partition_id
-        );
-
-        if start_offset >= first_buffered_offset {
-            cache.record_hit();
-            return Some(self.load_messages_from_cache(start_offset, end_offset));
-        }
-        cache.record_miss();
-        None
-        */
-        todo!()
-    }
-
-    pub async fn get_newest_messages_by_size(
-        &self,
-        size_bytes: u64,
-    ) -> Result<Vec<Arc<()>>, IggyError> {
-        //TODO: Fix me
-        /*
-        trace!(
-            "Getting messages for size: {} bytes for partition: {}...",
-            size_bytes,
-            self.partition_id
-        );
-
-        if self.segments.is_empty() {
-            return Ok(EMPTY_MESSAGES.into_iter().map(Arc::new).collect());
-        }
-
-        let mut remaining_size = size_bytes;
-        let mut batches = Vec::new();
-        for segment in self.segments.iter().rev() {
-            let segment_size_bytes = segment.size_bytes.as_bytes_u64();
-            if segment_size_bytes == 0 {
-                break;
-            }
-            if segment_size_bytes > remaining_size {
-                let partial_batches = segment
-                    .get_newest_batches_by_size(remaining_size)
-                    .await
-                    .with_error_context(|error| format!(
-                        "{COMPONENT} (error: {error}) - failed to get newest batches by size, segment: {}, remaining size: {}",
-                        segment, remaining_size,
-                    ))?
-                    .into_iter()
-                    .map(Arc::new);
-                batches.splice(..0, partial_batches);
-                break;
-            }
-
-            let segment_batches = segment
-                .get_all_batches()
-                .await
-                .with_error_context(|error| {
-                    format!("{COMPONENT} (error: {error}) - failed to retrieve all batches from segment: {segment}",)
-                })?
-                .into_iter()
-                .map(Arc::new);
-            batches.splice(..0, segment_batches);
-            remaining_size = remaining_size.saturating_sub(segment_size_bytes);
-            if remaining_size == 0 {
-                break;
-            }
-        }
-        let mut retained_messages = Vec::new();
-        for batch in batches {
-            let messages = batch.into_messages_iter().map(Arc::new).collect::<Vec<_>>();
-            retained_messages.extend(messages);
-        }
-        Ok(retained_messages)
-        */
-        todo!()
-    }
-
-    fn load_messages_from_cache(&self, start_offset: u64, end_offset: u64) -> Vec<Arc<()>> {
-        /*
-        trace!(
-            "Loading messages from cache, start offset: {}, end offset: {}...",
-            start_offset,
-            end_offset
-        );
-
-        if self.cache.is_none() || start_offset > end_offset {
-            return EMPTY_MESSAGES.into_iter().map(Arc::new).collect();
-        }
-
-        let cache = self.cache.as_ref().unwrap();
-        if cache.is_empty() {
-            return EMPTY_MESSAGES.into_iter().map(Arc::new).collect();
-        }
-
-        let first_offset = cache[0].offset;
-        let start_index = (start_offset - first_offset) as usize;
-        let end_index = usize::min(cache.len(), (end_offset - first_offset + 1) as usize);
-        let expected_messages_count = end_index - start_index;
-
-        let mut messages = Vec::with_capacity(expected_messages_count);
-        for i in start_index..end_index {
-            messages.push(cache[i].clone());
-        }
-
-        if messages.len() != expected_messages_count {
-            warn!(
-                "Loaded {} messages from cache, expected {}.",
-                messages.len(),
-                expected_messages_count
-            );
-            return EMPTY_MESSAGES.into_iter().map(Arc::new).collect();
-        }
-
-        trace!(
-            "Loaded {} messages from cache, start offset: {}, end offset: {}...",
-            messages.len(),
-            start_offset,
-            end_offset
-        );
-
-        messages
-        */
-        todo!()
     }
 
     pub async fn append_messages(

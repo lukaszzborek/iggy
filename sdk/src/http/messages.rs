@@ -5,7 +5,7 @@ use crate::http::client::HttpClient;
 use crate::http::HttpTransport;
 use crate::identifier::Identifier;
 use crate::messages::{Partitioning, PollingStrategy};
-use crate::models::IggyMessage;
+use crate::prelude::IggyMessage;
 use async_trait::async_trait;
 
 #[async_trait]

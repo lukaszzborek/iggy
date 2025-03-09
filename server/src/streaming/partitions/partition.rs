@@ -26,9 +26,6 @@ pub struct Partition {
     pub consumer_offsets_path: String,
     pub consumer_group_offsets_path: String,
     pub current_offset: u64,
-    //TODO: Fix me, get rid of this cache impl.
-    //pub cache: Option<SmartCache<Arc<()>>>,
-    //pub cached_memory_tracker: Option<Arc<CacheMemoryTracker>>,
     pub message_deduplicator: Option<MessageDeduplicator>,
     pub unsaved_messages_count: u32,
     pub should_increment_offset: bool,

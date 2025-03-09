@@ -6,7 +6,7 @@ use human_repr::HumanCount;
 use iggy::client::MessageClient;
 use iggy::clients::client::IggyClient;
 use iggy::error::IggyError;
-use iggy::models::IggyMessage;
+use iggy::prelude::IggyMessage;
 use iggy::prelude::Partitioning;
 use iggy::utils::byte_size::IggyByteSize;
 use iggy::utils::duration::IggyDuration;

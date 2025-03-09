@@ -1,11 +1,10 @@
 use super::indexes::*;
+use super::IggyMessagesMut;
 use crate::streaming::segments::segment::Segment;
+use bytes::BufMut;
 use error_set::ErrContext;
 use iggy::confirmation::Confirmation;
-use iggy::error::IggyError;
-use iggy::models::IggyMessagesMut;
-use iggy::utils::byte_size::IggyByteSize;
-use iggy::utils::sizeable::Sizeable;
+use iggy::prelude::*;
 use std::sync::atomic::Ordering;
 use tracing::{info, trace};
 
@@ -23,13 +22,14 @@ impl Segment {
         }
         let messages_size = messages.size();
         let messages_accumulator = self.unsaved_messages.get_or_insert_with(Default::default);
-        let messages_count = messages_accumulator.coalesce_batch(current_offset, messages);
+        let messages_count =
+            messages_accumulator.coalesce_batch(current_offset, self.last_index_position, messages);
 
         if self.current_offset == 0 {
             self.start_timestamp = messages_accumulator.batch_base_timestamp();
         }
         self.end_timestamp = messages_accumulator.batch_max_timestamp();
-        self.current_offset = messages_accumulator.batch_max_offset();
+        self.current_offset = messages_accumulator.max_offset();
         self.size_bytes += IggyByteSize::from(messages_size as u64);
 
         self.size_of_parent_stream
@@ -81,10 +81,10 @@ impl Segment {
         if messages_accumulator.is_empty() {
             return Ok(0);
         }
-        let batch_max_offset = messages_accumulator.batch_max_offset();
-        let batch_max_timestamp = messages_accumulator.batch_max_timestamp();
-        let index =
-            self.store_offset_and_timestamp_index_for_batch(batch_max_offset, batch_max_timestamp);
+        // let batch_max_offset = messages_accumulator.max_offset();
+        // let batch_max_timestamp = messages_accumulator.batch_max_timestamp();
+        // let index =
+        //     self.store_offset_and_timestamp_index_for_batch(batch_max_offset, batch_max_timestamp);
 
         let unsaved_messages_number = messages_accumulator.unsaved_messages_count();
         trace!(
@@ -94,14 +94,14 @@ impl Segment {
             self.partition_id
         );
 
-        let messages = messages_accumulator.materialize();
+        let (messages, indexes) = messages_accumulator.materialize();
         let confirmation = match confirmation {
             Some(val) => val,
             None => self.config.segment.server_confirmation,
         };
 
         let saved_bytes = self
-            .log_writer
+            .messages_writer
             .as_mut()
             .unwrap()
             .save_batches(messages, confirmation)
@@ -111,10 +111,11 @@ impl Segment {
             )?;
 
         self.last_index_position += saved_bytes.as_bytes_u64() as u32;
+
         self.index_writer
             .as_mut()
             .unwrap()
-            .save_index(index)
+            .save_indexes(&indexes)
             .await
             .with_error_context(|error| format!("Failed to save index for {self}. {error}"))?;
 

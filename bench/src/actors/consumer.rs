@@ -292,12 +292,13 @@ impl Consumer {
 
             self.batches_left_to_receive.fetch_sub(1, Ordering::AcqRel);
 
-            received_messages += batch.iter().count() as u64;
+            received_messages += batch.len() as u64;
 
             // We don't need to calculate the size whole batch every time by iterating over it - just always use the size of the first message
             if batch_user_size_bytes == 0 || batch_size_total_bytes == 0 {
-                batch_user_size_bytes = batch.len() as u64;
-                batch_size_total_bytes = batch.len() as u64;
+                batch_user_size_bytes = batch[0].payload.len() as u64 * batch.len() as u64;
+                batch_size_total_bytes =
+                    batch[0].get_size_bytes().as_bytes_u64() * batch.len() as u64;
             }
 
             total_user_data_bytes += IggyByteSize::from(batch_user_size_bytes);

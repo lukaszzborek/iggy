@@ -5,7 +5,7 @@ use crate::consumer::Consumer;
 use crate::identifier::Identifier;
 use crate::messages::{PollMessages, PollingStrategy};
 use crate::models::header::{HeaderKey, HeaderKind};
-use crate::models::IggyMessage;
+use crate::prelude::IggyMessage;
 use crate::utils::sizeable::Sizeable;
 use crate::utils::timestamp::IggyTimestamp;
 use crate::utils::{byte_size::IggyByteSize, duration::IggyDuration};

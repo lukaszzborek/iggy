@@ -3,8 +3,8 @@ use error_set::ErrContext;
 use iggy::{
     confirmation::Confirmation,
     error::IggyError,
-    models::{IggyMessages, IggyMessagesMut},
-    utils::{byte_size::IggyByteSize, duration::IggyDuration, sizeable::Sizeable},
+    prelude::IggyMessages,
+    utils::{byte_size::IggyByteSize, duration::IggyDuration},
 };
 use std::{
     io::IoSlice,
@@ -20,27 +20,27 @@ use tokio::{
 };
 use tracing::{error, trace};
 
-/// A dedicated struct for writing to the log file.
+/// A dedicated struct for writing to the messages file.
 #[derive(Debug)]
-pub struct MessagesLogWriter {
+pub struct MessagesWriter {
     file_path: String,
     /// Holds the file for synchronous writes; when asynchronous persistence is enabled, this will be None.
     file: Option<File>,
     /// When set, asynchronous writes are handled by this persister task.
     persister_task: Option<PersisterTask>,
-    log_size_bytes: Arc<AtomicU64>,
+    messages_size_bytes: Arc<AtomicU64>,
     fsync: bool,
 }
 
-impl MessagesLogWriter {
-    /// Opens the log file in write mode.
+impl MessagesWriter {
+    /// Opens the messages file in write mode.
     ///
     /// If the server confirmation is set to `NoWait`, the file handle is transferred to the
     /// persister task (and stored in `persister_task`) so that writes are done asynchronously.
     /// Otherwise, the file is retained in `self.file` for synchronous writes.
     pub async fn new(
         file_path: &str,
-        log_size_bytes: Arc<AtomicU64>,
+        messages_size_bytes: Arc<AtomicU64>,
         fsync: bool,
         server_confirmation: Confirmation,
         max_file_operation_retries: u32,
@@ -55,18 +55,18 @@ impl MessagesLogWriter {
             .map_err(|_| IggyError::CannotReadFile)?;
 
         let _ = file.sync_all().await.with_error_context(|error| {
-            format!("Failed to fsync log file after creation: {file_path}. {error}",)
+            format!("Failed to fsync messages file after creation: {file_path}. {error}",)
         });
 
-        let actual_log_size = file
+        let actual_messages_size = file
             .metadata()
             .await
             .map_err(|_| IggyError::CannotReadFileMetadata)?
             .len();
 
-        log_size_bytes.store(actual_log_size, Ordering::Release);
+        messages_size_bytes.store(actual_messages_size, Ordering::Release);
 
-        trace!("Opened log file for writing: {file_path}, size: {actual_log_size}");
+        trace!("Opened messages file for writing: {file_path}, size: {actual_messages_size}");
 
         let (file, persister_task) = match server_confirmation {
             Confirmation::NoWait => {
@@ -74,7 +74,7 @@ impl MessagesLogWriter {
                     file,
                     file_path.to_string(),
                     fsync,
-                    log_size_bytes.clone(),
+                    messages_size_bytes.clone(),
                     max_file_operation_retries,
                     retry_delay,
                 );
@@ -87,12 +87,12 @@ impl MessagesLogWriter {
             file_path: file_path.to_string(),
             file,
             persister_task,
-            log_size_bytes,
+            messages_size_bytes,
             fsync,
         })
     }
 
-    /// Append a messages to the log file.
+    /// Append a messages to the messages file.
     pub async fn save_batches(
         &mut self,
         messages: IggyMessages,
@@ -102,10 +102,10 @@ impl MessagesLogWriter {
         match confirmation {
             Confirmation::Wait => {
                 self.write_batch(messages).await?;
-                self.log_size_bytes
+                self.messages_size_bytes
                     .fetch_add(messages_size as u64, Ordering::AcqRel);
                 trace!(
-                    "Written batch of size {messages_size} bytes to log file: {}",
+                    "Written batch of size {messages_size} bytes to messages file: {}",
                     self.file_path
                 );
                 if self.fsync {
@@ -117,7 +117,7 @@ impl MessagesLogWriter {
                     task.persist(messages).await;
                 } else {
                     panic!(
-                        "Confirmation::NoWait is used, but LogPersisterTask is not set for log file: {}",
+                        "Confirmation::NoWait is used, but MessagesPersisterTask is not set for messages file: {}",
                         self.file_path
                     );
                 }
@@ -127,13 +127,13 @@ impl MessagesLogWriter {
         Ok(IggyByteSize::from(messages_size as u64))
     }
 
-    /// Write a batch of bytes to the log file and return the new file position.
+    /// Write a batch of bytes to the messages file and return the new file position.
     async fn write_batch(&mut self, messages: IggyMessages) -> Result<(), IggyError> {
         if let Some(ref mut file) = self.file {
             file.write_all(messages.buffer())
                 .await
                 .with_error_context(|error| {
-                    format!("Failed to log to file: {}. {error}", self.file_path)
+                    format!("Failed to messages to file: {}. {error}", self.file_path)
                 })
                 .map_err(|_| IggyError::CannotWriteToFile)?;
 
@@ -149,7 +149,7 @@ impl MessagesLogWriter {
             file.sync_all()
                 .await
                 .with_error_context(|error| {
-                    format!("Failed to fsync log file: {}. {error}", self.file_path)
+                    format!("Failed to fsync messages file: {}. {error}", self.file_path)
                 })
                 .map_err(|_| IggyError::CannotWriteToFile)?;
         }

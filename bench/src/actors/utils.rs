@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use iggy::models::IggyMessage;
+use iggy::prelude::IggyMessage;
 
 //TODO: Fix me
 pub fn put_timestamp_in_first_message(message: &mut IggyMessage) {

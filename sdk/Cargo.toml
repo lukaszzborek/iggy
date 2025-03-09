@@ -37,12 +37,13 @@ fast-async-mutex = { version = "0.6.7", optional = true }
 flume = "0.11.1"
 futures = "0.3.31"
 futures-util = "0.3.31"
+# gxhash = { version = "3.4.1", features = ["hybrid"] }
+gxhash = "3.4.1"
 humantime = "2.1.0"
 keyring = { version = "3.6.1", optional = true, features = [
     "sync-secret-service",
     "vendored",
 ] }
-lending-iterator = "0.1.7"
 passterm = { version = "=2.0.1", optional = true }
 quinn = { version = "0.11.6" }
 reqwest = { version = "0.12.12", default-features = false, features = [

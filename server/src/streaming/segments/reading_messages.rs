@@ -1,17 +1,10 @@
+use super::Index;
 use crate::streaming::segments::segment::Segment;
+use bytes::BytesMut;
 use error_set::ErrContext;
-use iggy::{
-    error::IggyError,
-    models::IggyMessages,
-    utils::{byte_size::IggyByteSize, checksum, sizeable::Sizeable},
-};
-use std::{
-    ops::{Range, RangeBounds},
-    sync::Arc,
-};
-use tracing::{trace, warn};
-
-use super::{indexes::IndexRange, Index};
+use iggy::prelude::*;
+use std::sync::Arc;
+use tracing::trace;
 
 const COMPONENT: &str = "STREAMING_SEGMENT";
 
@@ -29,36 +22,32 @@ impl Segment {
         start_timestamp: u64,
         count: usize,
     ) -> Result<Vec<Arc<()>>, IggyError> {
-        todo!()
+        todo!();
+        // if count == 0 {
+        //     return Ok(Vec::new());
+        // }
 
-        //TODO: Fix me
-        /*
-        if count == 0 {
-            return Ok(Vec::new());
-        }
+        // let mut messages = Vec::with_capacity(count);
+        // let mut remaining = count;
 
-        let mut messages = Vec::with_capacity(count);
-        let mut remaining = count;
+        // let disk_messages = self
+        //     .load_messages_from_disk_by_timestamp(start_timestamp, remaining)
+        //     .await?;
+        // let disk_count = disk_messages.len();
+        // messages.extend(disk_messages);
+        // remaining -= disk_count;
 
-        let disk_messages = self
-            .load_messages_from_disk_by_timestamp(start_timestamp, remaining)
-            .await?;
-        let disk_count = disk_messages.len();
-        messages.extend(disk_messages);
-        remaining -= disk_count;
+        // if remaining > 0 {
+        //     if let Some(messages_accumulator) = &self.unsaved_messages {
+        //         let buffer_messages =
+        //             messages_accumulator.get_messages_by_timestamp(start_timestamp, remaining);
+        //         messages.extend(buffer_messages);
+        //     }
+        // }
 
-        if remaining > 0 {
-            if let Some(messages_accumulator) = &self.unsaved_messages {
-                let buffer_messages =
-                    messages_accumulator.get_messages_by_timestamp(start_timestamp, remaining);
-                messages.extend(buffer_messages);
-            }
-        }
-
-        // Ensure we return exactly requested count (truncate if buffer had more)
-        messages.truncate(count);
-        Ok(messages)
-        */
+        // // Ensure we return exactly requested count (truncate if buffer had more)
+        // messages.truncate(count);
+        // Ok(messages)
     }
 
     pub async fn get_messages_by_offset(
@@ -66,118 +55,75 @@ impl Segment {
         mut offset: u64,
         count: u32,
     ) -> Result<IggyMessages, IggyError> {
-        todo!()
-
-        /*
         if count == 0 {
-            return Ok(EMPTY_MESSAGES.into_iter().map(Arc::new).collect());
+            return Ok(IggyMessages::default());
         }
-        */
 
-        // if offset < self.start_offset {
-        //     offset = self.start_offset;
-        // }
-        // let end_offset = offset + (count - 1) as u64;
+        if offset < self.start_offset {
+            offset = self.start_offset;
+        }
 
-        // // TODO: Move this as a method on `IggyBatch` and make this method internal only to the segment module
-        // let filter_and_create_slice = |batch: IggyBatch| {
-        //     let mut ranges = batch.iter().filter_map(|(range, msg)| {
-        //         //println!("looking for offsets: {} - {}, msg_offset: {}", offset, end_offset, msg.offset);
-        //         if msg.offset >= offset && msg.offset <= end_offset {
-        //             Some(range)
-        //         } else {
-        //             None
-        //         }
-        //     });
-        //     let first = ranges.next();
-        //     let last = ranges.last();
-        //     let range = match (first, last) {
-        //         (Some(f), Some(l)) => f.start..l.end,
-        //         (Some(single), None) => single,
-        //         _ => panic!("TODO: Fix me"),
-        //     };
-        //     IggyBatchSlice::new(range, batch.header, batch.batch)
-        // };
-        // // In case that the partition messages buffer is disabled, we need to check the unsaved messages buffer
-        // if self.unsaved_messages.is_none() {
-        //     return self
-        //         .load_messages_from_disk(offset, end_offset)
-        //         .await
-        //         .map(|batches| {
-        //             batches
-        //                 .into_iter()
-        //                 .map(filter_and_create_slice)
-        //                 .collect::<Vec<_>>()
-        //         });
-        // }
+        let mut end_offset = offset + (count - 1) as u64;
+        if end_offset > self.current_offset {
+            end_offset = self.current_offset;
+        }
 
-        // let messages_accumulator = self.unsaved_messages.as_ref().unwrap();
-        // if messages_accumulator.is_empty() {
-        //     return self
-        //         .load_messages_from_disk(offset, end_offset)
-        //         .await
-        //         .map(|batches| {
-        //             batches
-        //                 .into_iter()
-        //                 .map(filter_and_create_slice)
-        //                 .collect::<Vec<_>>()
-        //         });
-        // }
+        if offset < self.start_offset {
+            offset = self.start_offset;
+        }
 
-        // let first_buffer_offset = messages_accumulator.batch_base_offset();
-        // let last_buffer_offset = messages_accumulator.batch_max_offset();
+        // In case that the partition messages buffer is disabled, we need to check the unsaved messages buffer
+        if self.unsaved_messages.is_none() {
+            return self.load_messages_from_disk(offset, count).await;
+        }
 
-        // // Case 1: All messages are in messages_require_to_save buffer
-        // if offset >= first_buffer_offset && end_offset <= last_buffer_offset {
-        //     return Ok(self
-        //         .load_messages_from_unsaved_buffer(offset, end_offset)
-        //         .into_iter()
-        //         .map(filter_and_create_slice)
-        //         .collect::<Vec<_>>());
-        // }
+        let messages_accumulator = self.unsaved_messages.as_ref().unwrap();
+        if messages_accumulator.is_empty() {
+            return self.load_messages_from_disk(offset, count).await;
+        }
 
-        // // Case 2: All messages are on disk
-        // if end_offset < first_buffer_offset {
-        //     return self
-        //         .load_messages_from_disk(offset, end_offset)
-        //         .await
-        //         .map(|batches| {
-        //             batches
-        //                 .into_iter()
-        //                 .map(filter_and_create_slice)
-        //                 .collect::<Vec<_>>()
-        //         });
-        // } else {
-        //     // TODO: Fix me
-        //     todo!()
-        // }
+        let accumulator_first_msg_offset = messages_accumulator.base_offset();
+        let accumulator_last_msg_offset = messages_accumulator.max_offset();
 
-        // TODO: Fix me
-        /*
+        // Case 1: All messages are in messages_require_to_save buffer
+        if offset >= accumulator_first_msg_offset && end_offset <= accumulator_last_msg_offset {
+            return Ok(self.load_messages_from_unsaved_buffer(offset, end_offset));
+        }
+
+        // Case 2: All messages are on disk
+        if end_offset < accumulator_first_msg_offset {
+            return self.load_messages_from_disk(offset, count).await;
+        }
+
         // Case 3: Messages span disk and messages_require_to_save buffer boundary
-        let mut messages = Vec::new();
+        let mut buffer = BytesMut::new();
 
         // Load messages from disk up to the messages_require_to_save buffer boundary
-        if offset < first_buffer_offset {
+        if offset < accumulator_first_msg_offset {
             let disk_messages = self
-                .load_messages_from_disk(offset, first_buffer_offset - 1)
+                .load_messages_from_disk(offset, (accumulator_first_msg_offset - offset) as u32)
                 .await.with_error_context(|error| format!(
             "{COMPONENT} (error: {error}) - failed to load messages from disk, stream ID: {}, topic ID: {}, partition ID: {}, start offset: {offset}, end offset :{}",
-            self.stream_id, self.topic_id, self.partition_id, first_buffer_offset - 1
+            self.stream_id, self.topic_id, self.partition_id, accumulator_first_msg_offset - 1
         ))?;
-            messages.extend(disk_messages);
+            buffer.extend_from_slice(disk_messages.buffer());
         }
 
         // Load remaining messages from messages_require_to_save buffer
-        let buffer_start = std::cmp::max(offset, first_buffer_offset);
+        let buffer_start = std::cmp::max(offset, accumulator_first_msg_offset);
         let buffer_messages = self.load_messages_from_unsaved_buffer(buffer_start, end_offset);
-        messages.extend(buffer_messages);
+        buffer.extend_from_slice(buffer_messages.buffer());
 
-        Ok(messages)
-        */
+        let total_count = if buffer.is_empty() {
+            0
+        } else {
+            IggyMessageViewIterator::new(&buffer).count() as u32
+        };
+
+        Ok(IggyMessages::new(buffer.freeze(), total_count))
     }
 
-    pub async fn get_all_messages(&self) -> Result<Vec<Arc<()>>, IggyError> {
+    pub async fn get_all_messages(&self) -> Result<IggyMessages, IggyError> {
         //TODO: Fix me
         /*
         self.get_messages_by_offset(self.start_offset, self.get_messages_count() as u32)
@@ -186,79 +132,13 @@ impl Segment {
         todo!()
     }
 
-    pub async fn get_all_batches(&self) -> Result<Vec<()>, IggyError> {
-        //TODO: Fix me
-        /*
-        self.load_batches_by_range(&IndexRange::max_range()).await
-        */
-        todo!()
-    }
-
-    pub async fn get_newest_batches_by_size(&self, size_bytes: u64) -> Result<Vec<()>, IggyError> {
-        //TODO: Fix me
-        /*
-        let mut batches = Vec::new();
-        let mut total_size_bytes = IggyByteSize::default();
-        self.log_reader
-            .as_ref()
-            .unwrap()
-            .load_batches_by_size_with_callback(size_bytes, |batch| {
-                total_size_bytes += batch.get_size_bytes();
-                batches.push(batch);
-                Ok(())
-            })
-            .await
-            .with_error_context(|error| {
-                format!(
-                    "Failed to load messages by size ({size_bytes} bytes) with callback for {}. {error}",
-                    self
-                )
-            })?;
-        let messages_count = batches.len();
-        trace!(
-            "Loaded {} newest messages batches of total size {} from disk.",
-            messages_count,
-            total_size_bytes.as_human_string(),
-        );
-        Ok(batches)
-        */
-        todo!()
-    }
-
     fn load_messages_from_unsaved_buffer(
         &self,
         start_offset: u64,
         end_offset: u64,
-    ) -> Vec<IggyMessages> {
-        todo!()
-
-        // let messages_accumulator = self.unsaved_messages.as_ref().unwrap();
-        // messages_accumulator.get_messages_by_offset(start_offset, end_offset)
-    }
-
-    /// Load message batches given an index range.
-    pub async fn load_batches_by_range(
-        &self,
-        index_range: &IndexRange,
-        start_offset: u64,
-        end_offset: u64,
-    ) -> Result<Vec<IggyMessages>, IggyError> {
-        todo!()
-
-        // trace!("Loading message batches for index range: {:?}", index_range);
-        // let batches = self
-        //     .log_reader
-        //     .as_ref()
-        //     .unwrap()
-        //     .load_batches_by_range_impl(index_range, start_offset, end_offset)
-        //     .await
-        //     .with_error_context(|error| {
-        //         format!(
-        //             "Failed to load message batches by range {:?} from disk for {}. {error}",
-        //             index_range, self
-        //         )
-        //     })?;
-        // Ok(batches)
+    ) -> IggyMessages {
+        let messages_accumulator = self.unsaved_messages.as_ref().unwrap();
+        messages_accumulator.get_messages_by_offset(start_offset, end_offset)
     }
 
     pub async fn load_index_for_timestamp(
@@ -383,105 +263,44 @@ impl Segment {
     async fn load_messages_from_disk(
         &self,
         start_offset: u64,
-        end_offset: u64,
+        count: u32,
     ) -> Result<IggyMessages, IggyError> {
-        todo!()
-
-        // trace!(
-        //     "Loading messages from disk, start offset: {}, end offset: {}, current offset: {}...",
-        //     start_offset,
-        //     end_offset,
-        //     self.current_offset
-        // );
-
-        // //TODO: Fix me
-        // /*
-        // if start_offset > end_offset {
-        //     warn!(
-        //         "Cannot load messages from disk, invalid offset range: {} - {}.",
-        //         start_offset, end_offset
-        //     );
-        //     return Ok(EMPTY_MESSAGES.into_iter().map(Arc::new).collect());
-        // }
-        // */
-
-        // if let Some(indices) = &self.indexes {
-        //     let relative_start_offset = (start_offset - self.start_offset) as u32;
-        //     let relative_end_offset = (end_offset - self.start_offset) as u32;
-        //     let index_range = match self.load_highest_lower_bound_index(
-        //         indices,
-        //         relative_start_offset,
-        //         relative_end_offset,
-        //     ) {
-        //         Ok(range) => range,
-        //         Err(_) => {
-        //             trace!(
-        //                 "Cannot load messages from disk, index range not found: {} - {}.",
-        //                 start_offset,
-        //                 end_offset
-        //             );
-        //             panic!("todo");
-        //             // TODO: Fix me
-        //             /*
-        //             return Ok(EMPTY_MESSAGES.into_iter().map(Arc::new).collect());
-        //             */
-        //         }
-        //     };
-
-        //     return self
-        //         .load_messages_from_segment_file(&index_range, start_offset, end_offset)
-        //         .await;
-        // }
-
-        // match self
-        //     .index_reader
-        //     .as_ref()
-        //     .unwrap()
-        //     .load_index_range_impl(start_offset, end_offset, self.start_offset)
-        //     .await
-        //     .with_error_context(|error| {
-        //         format!("Failed to load index range start offset: {start_offset}, end offset: {end_offset} for {self}. {error}")
-        //     })? {
-        //     Some(index_range) => {
-        //         self.load_messages_from_segment_file(&index_range, start_offset, end_offset)
-        //             .await
-        //     }
-        //     None => panic!("todo"),
-        // }
-    }
-
-    async fn load_messages_from_segment_file(
-        &self,
-        index_range: &IndexRange,
-        start_offset: u64,
-        end_offset: u64,
-    ) -> Result<IggyMessages, IggyError> {
-        todo!()
-
-        // trace!(
-        //     "Loading messages from disk, index range: {:?}, start offset: {}, end offset: {}.",
-        //     index_range,
-        //     start_offset,
-        //     end_offset
-        // );
-        // let batches = self
-        //     .load_batches_by_range(index_range, start_offset, end_offset)
-        //     .await
-        //     .with_error_context(|error| format!(
-        //         "{COMPONENT} (error: {error}) - failed to load message batches, stream ID: {}, topic ID: {}, partition ID: {}, start offset: {start_offset}, end offset: {end_offset}",
-        //         self.stream_id, self.topic_id, self.partition_id
-        //     ))?;
-
-        //TODO: Fix me
-        /*
         trace!(
-            "Loaded {} messages from disk, segment start offset: {}, end offset: {}.",
-            messages.len(),
-            self.start_offset,
-            self.current_offset
-        );
-        */
+                "Loading {count} messages from disk, start_offset: {start_offset}, current_offset: {}...",
+                self.current_offset
+            );
 
-        // Ok(batches)
+        let relative_start_offset = (start_offset - self.start_offset) as u32;
+        let relative_end_offset = relative_start_offset + count - 1;
+
+        let first_index = self
+            .index_reader
+            .as_ref()
+            .unwrap()
+            .load_nth_index(relative_start_offset)
+            .await?
+            .unwrap();
+
+        let last_index = self
+            .index_reader
+            .as_ref()
+            .unwrap()
+            .load_nth_index(relative_end_offset)
+            .await?
+            .unwrap();
+
+        let start_pos = first_index.position;
+        let count_bytes = last_index.position - start_pos;
+
+        let messages = self
+            .messages_reader
+            .as_ref()
+            .unwrap()
+            .load_messages_impl(start_pos, count_bytes, count)
+            .await
+            .with_error_context(|error| {
+                format!("Failed to load messages from segment file: {self}. {error}")
+            })?;
+        Ok(messages)
     }
 }

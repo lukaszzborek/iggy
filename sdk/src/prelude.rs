@@ -18,13 +18,19 @@ pub use crate::identifier::Identifier;
 pub use crate::messages::{
     FlushUnsavedBuffer, Partitioning, PollMessages, PollingKind, PollingStrategy, SendMessages,
 };
+pub use crate::models::messaging::{
+    IggyMessage, IggyMessageHeader, IggyMessageHeaderView, IggyMessageView,
+    IggyMessageViewIterator, IggyMessages,
+};
+pub use crate::models::messaging::{
+    IGGY_MESSAGE_CHECKSUM_OFFSET_RANGE, IGGY_MESSAGE_HEADERS_LENGTH_OFFSET_RANGE,
+    IGGY_MESSAGE_HEADER_SIZE, IGGY_MESSAGE_ID_OFFSET_RANGE, IGGY_MESSAGE_OFFSET_OFFSET_RANGE,
+    IGGY_MESSAGE_ORIGIN_TIMESTAMP_OFFSET_RANGE, IGGY_MESSAGE_PAYLOAD_LENGTH_OFFSET_RANGE,
+    IGGY_MESSAGE_TIMESTAMP_OFFSET_RANGE,
+};
 pub use crate::models::partition::Partition;
 pub use crate::models::stream::Stream;
 pub use crate::models::topic::Topic;
-pub use crate::models::{
-    IggyMessage, IggyMessageHeader, IggyMessageView, IggyMessageViewIterator, IggyMessageViewMut,
-    IggyMessageViewMutIterator, IggyMessages, IggyMessagesMut,
-};
 pub use crate::utils::byte_size::IggyByteSize;
 pub use crate::utils::sizeable::Sizeable;
 pub use crate::utils::timestamp::IggyTimestamp;

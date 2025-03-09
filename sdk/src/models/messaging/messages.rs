@@ -1,4 +1,4 @@
-use super::{message_view::IggyMessageViewIterator, IggyMessage, IggyMessagesMut};
+use super::{message_view::IggyMessageViewIterator, IggyMessage};
 use crate::bytes_serializable::BytesSerializable;
 use crate::error::IggyError;
 use crate::utils::byte_size::IggyByteSize;
@@ -18,16 +18,22 @@ pub struct IggyMessages {
 
 impl IggyMessages {
     /// Create a new messages container from a buffer
-    pub fn new(buffer: Bytes) -> Self {
-        Self { buffer, count: 0 }
+    pub fn new(buffer: Bytes, count: u32) -> Self {
+        Self { buffer, count }
     }
 
+    /// Creates a empty messages container with capacity
+    pub fn with_capacity(capacity: u32) -> Self {
+        Self::new(BytesMut::with_capacity(capacity as usize).freeze(), 0)
+    }
+
+    /// Create a new messages container from a slice of messages
     pub fn from_messages(messages: &[IggyMessage]) -> Self {
         let mut buffer = BytesMut::new();
         for message in messages {
             buffer.extend_from_slice(&message.to_bytes());
         }
-        Self::new(buffer.freeze())
+        Self::new(buffer.freeze(), messages.len() as u32)
     }
 
     /// Create iterator over messages
@@ -48,6 +54,29 @@ impl IggyMessages {
     /// Get access to the underlying buffer
     pub fn buffer(&self) -> &[u8] {
         &self.buffer
+    }
+
+    pub fn into_inner(self) -> Bytes {
+        self.buffer
+    }
+
+    /// Convert to messages
+    pub fn to_messages(self) -> Vec<IggyMessage> {
+        let mut messages = Vec::with_capacity(self.count as usize);
+        let mut position = 0;
+
+        while position < self.buffer.len() {
+            let remaining = self.buffer.slice(position..);
+            if let Ok(message) = IggyMessage::from_bytes(remaining) {
+                let message_size = message.get_size_bytes().as_bytes_usize();
+                position += message_size;
+                messages.push(message);
+            } else {
+                break;
+            }
+        }
+
+        messages
     }
 }
 
@@ -81,11 +110,8 @@ impl Sizeable for IggyMessages {
     }
 }
 
-impl From<IggyMessagesMut> for IggyMessages {
-    fn from(messages: IggyMessagesMut) -> Self {
-        let count = messages.count();
-        let buffer = messages.into_inner().freeze();
-
-        Self { buffer, count }
+impl Default for IggyMessages {
+    fn default() -> Self {
+        Self::new(BytesMut::new().freeze(), 0)
     }
 }

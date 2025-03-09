@@ -38,6 +38,7 @@ impl IggyMessage {
         IggyMessageBuilder::new()
     }
 
+    /// Write message to bytes mut
     pub fn write_to_bytes_mut(&self, buf: &mut BytesMut) {
         buf.put_slice(&self.header.to_bytes());
         buf.put_slice(&self.payload);
@@ -46,6 +47,7 @@ impl IggyMessage {
         }
     }
 }
+
 impl FromStr for IggyMessage {
     type Err = IggyError;
 
@@ -82,9 +84,9 @@ impl Sizeable for IggyMessage {
     fn get_size_bytes(&self) -> IggyByteSize {
         let payload_len = IggyByteSize::from(self.payload.len() as u64);
         let headers_len = header::get_headers_size_bytes(&self.headers);
-        let metadata_len = IggyByteSize::from(IGGY_MESSAGE_HEADER_SIZE as u64);
+        let message_header_len = IggyByteSize::from(IGGY_MESSAGE_HEADER_SIZE as u64);
 
-        payload_len + headers_len + metadata_len
+        payload_len + headers_len + message_header_len
     }
 }
 
@@ -131,6 +133,7 @@ impl BytesSerializable for IggyMessage {
     }
 }
 
+#[derive(Debug, Default)]
 pub struct IggyMessageBuilder {
     id: Option<u128>,
     payload: Option<Bytes>,
@@ -168,18 +171,17 @@ impl IggyMessageBuilder {
     }
 
     pub fn build(self) -> IggyMessage {
-        let payload = self.payload.unwrap_or_else(Bytes::new);
+        let payload = self.payload.unwrap_or_default();
         let id = self.id.unwrap_or_else(|| uuid::Uuid::new_v4().as_u128());
 
         let header = IggyMessageHeader {
-            record_size: 0,
+            checksum: 0, // Checksum is calculated on server side
             id,
             offset: 0,
             timestamp: 0,
             origin_timestamp: IggyTimestamp::now().as_micros(),
             headers_length: 0,
             payload_length: payload.len() as u32,
-            checksum: 0,
         };
 
         IggyMessage {
