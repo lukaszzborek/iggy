@@ -189,4 +189,14 @@ impl BytesSerializable for Partitioning {
             value,
         })
     }
+
+    fn write_to_buffer(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(self.kind.as_code());
+        bytes.put_u8(self.length);
+        bytes.put_slice(&self.value);
+    }
+
+    fn get_buffer_size(&self) -> u32 {
+        2 + self.length as u32
+    }
 }

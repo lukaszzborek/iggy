@@ -1,4 +1,8 @@
-use super::{message_view::IggyMessageViewIterator, IggyMessage};
+use std::collections::HashMap;
+
+use super::{
+    message_view::IggyMessageViewIterator, IggyMessage, IggyMessageHeader, IGGY_MESSAGE_HEADER_SIZE,
+};
 use crate::bytes_serializable::BytesSerializable;
 use crate::error::IggyError;
 use crate::utils::byte_size::IggyByteSize;
@@ -27,15 +31,6 @@ impl IggyMessages {
         Self::new(BytesMut::with_capacity(capacity as usize).freeze(), 0)
     }
 
-    /// Create a new messages container from a slice of messages
-    pub fn from_messages(messages: &[IggyMessage]) -> Self {
-        let mut buffer = BytesMut::new();
-        for message in messages {
-            buffer.extend_from_slice(&message.to_bytes());
-        }
-        Self::new(buffer.freeze(), messages.len() as u32)
-    }
-
     /// Create iterator over messages
     pub fn iter(&self) -> IggyMessageViewIterator {
         IggyMessageViewIterator::new(&self.buffer)
@@ -56,24 +51,61 @@ impl IggyMessages {
         &self.buffer
     }
 
+    /// Get access to the underlying buffer shallow  copy
+    pub fn shallow_copy(&self) -> Bytes {
+        self.buffer.clone()
+    }
+
     pub fn into_inner(self) -> Bytes {
         self.buffer
     }
 
-    /// Convert to messages
     pub fn to_messages(self) -> Vec<IggyMessage> {
         let mut messages = Vec::with_capacity(self.count as usize);
         let mut position = 0;
+        let buf_len = self.buffer.len();
 
-        while position < self.buffer.len() {
-            let remaining = self.buffer.slice(position..);
-            if let Ok(message) = IggyMessage::from_bytes(remaining) {
-                let message_size = message.get_size_bytes().as_bytes_usize();
-                position += message_size;
-                messages.push(message);
-            } else {
+        while position < buf_len {
+            if position + IGGY_MESSAGE_HEADER_SIZE as usize > buf_len {
                 break;
             }
+            let header_bytes = self
+                .buffer
+                .slice(position..position + IGGY_MESSAGE_HEADER_SIZE as usize);
+            let header = match IggyMessageHeader::from_bytes(header_bytes) {
+                Ok(h) => h,
+                Err(_) => break,
+            };
+            position += IGGY_MESSAGE_HEADER_SIZE as usize;
+
+            let payload_end = position + header.payload_length as usize;
+            if payload_end > buf_len {
+                break;
+            }
+            let payload = self.buffer.slice(position..payload_end);
+            position = payload_end;
+
+            let headers: Option<HashMap<super::HeaderKey, super::HeaderValue>> = if header.headers_length > 0 {
+                let headers_end = position + header.headers_length as usize;
+                if headers_end > buf_len {
+                    break;
+                }
+                let headers_bytes = self.buffer.slice(position..headers_end);
+                position = headers_end;
+
+                match HashMap::from_bytes(headers_bytes) {
+                    Ok(map) => Some(map),
+                    Err(_) => break,
+                }
+            } else {
+                None
+            };
+
+            messages.push(IggyMessage {
+                header,
+                payload,
+                headers,
+            });
         }
 
         messages
@@ -90,10 +122,9 @@ impl BytesSerializable for IggyMessages {
         Self: Sized,
     {
         let mut messages_count = 0;
-        let iterator = IggyMessageViewIterator::new(&bytes);
+        let iterator: IggyMessageViewIterator<'_> = IggyMessageViewIterator::new(&bytes);
 
-        for result in iterator {
-            result?;
+        for _ in iterator {
             messages_count += 1;
         }
 

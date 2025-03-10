@@ -12,7 +12,6 @@ use std::{
         atomic::{AtomicU64, Ordering},
         Arc,
     },
-    time::Duration,
 };
 use tokio::{
     fs::{File, OpenOptions},
@@ -95,13 +94,17 @@ impl MessagesWriter {
     /// Append a messages to the messages file.
     pub async fn save_batches(
         &mut self,
-        messages: IggyMessages,
+        messages: Vec<IggyMessages>,
         confirmation: Confirmation,
     ) -> Result<IggyByteSize, IggyError> {
-        let messages_size = messages.size();
+        let messages_size: usize = messages.iter().map(|m| m.size() as usize).sum();
+        trace!(
+            "Saving batch of size {messages_size} bytes to messages file: {}",
+            self.file_path
+        );
         match confirmation {
             Confirmation::Wait => {
-                self.write_batch(messages).await?;
+                self.write_batch_vectored(messages).await?;
                 self.messages_size_bytes
                     .fetch_add(messages_size as u64, Ordering::AcqRel);
                 trace!(
@@ -127,16 +130,10 @@ impl MessagesWriter {
         Ok(IggyByteSize::from(messages_size as u64))
     }
 
-    /// Write a batch of bytes to the messages file and return the new file position.
-    async fn write_batch(&mut self, messages: IggyMessages) -> Result<(), IggyError> {
+    /// Write a batch of bytes to the log file.
+    async fn write_batch_vectored(&mut self, batches: Vec<IggyMessages>) -> Result<(), IggyError> {
         if let Some(ref mut file) = self.file {
-            file.write_all(messages.buffer())
-                .await
-                .with_error_context(|error| {
-                    format!("Failed to messages to file: {}. {error}", self.file_path)
-                })
-                .map_err(|_| IggyError::CannotWriteToFile)?;
-
+            super::write_batch_vectored(file, &self.file_path, batches).await?;
             Ok(())
         } else {
             error!("File handle is not available for synchronous write.");

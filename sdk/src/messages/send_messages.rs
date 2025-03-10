@@ -4,8 +4,9 @@ use crate::command::{Command, SEND_MESSAGES_CODE};
 use crate::error::IggyError;
 use crate::identifier::Identifier;
 use crate::messages::{MAX_HEADERS_SIZE, MAX_PAYLOAD_SIZE};
-use crate::models::header::{HeaderKey, HeaderValue};
+use crate::models::messaging::{HeaderKey, HeaderValue};
 use crate::models::messaging::{IggyMessage, IggyMessageHeader, IggyMessageViewIterator};
+use crate::prelude::IGGY_MESSAGE_HEADER_SIZE;
 use crate::utils::byte_size::IggyByteSize;
 use crate::utils::sizeable::Sizeable;
 use crate::utils::varint::IggyVarInt;
@@ -49,32 +50,42 @@ impl SendMessages {
         partitioning: &Partitioning,
         messages: &[IggyMessage],
     ) -> Bytes {
-        let stream_id_bytes = stream_id.to_bytes();
-        let topic_id_bytes = topic_id.to_bytes();
-        let partitioning_bytes = partitioning.to_bytes();
+        let stream_id_size = stream_id.get_buffer_size();
+        let topic_id_size = topic_id.get_buffer_size();
+        let partitioning_size = partitioning.get_buffer_size();
         let messages_count = messages.len() as u32;
 
-        let total_size = stream_id_bytes.len()
-        + topic_id_bytes.len()
-        + partitioning_bytes.len()
+        let total_size = stream_id_size
+        + topic_id_size
+        + partitioning_size
         + 4  // For messages_count (u32)
         + messages
             .iter()
-            .map(|m| m.get_size_bytes().as_bytes_usize())
-            .sum::<usize>();
+            .map(|m| m.get_size_bytes().as_bytes_u64() as u32)
+            .sum::<u32>();
 
-        let mut bytes = BytesMut::with_capacity(total_size);
+        let mut bytes = BytesMut::with_capacity(total_size as usize);
 
-        bytes.put_slice(&stream_id_bytes);
-        bytes.put_slice(&topic_id_bytes);
-        bytes.put_slice(&partitioning_bytes);
+        stream_id.write_to_buffer(&mut bytes);
+        topic_id.write_to_buffer(&mut bytes);
+        partitioning.write_to_buffer(&mut bytes);
         bytes.put_u32_le(messages_count);
 
         for message in messages {
-            message.write_to_bytes_mut(&mut bytes);
+            message.write_to_buffer(&mut bytes);
         }
 
-        bytes.freeze()
+        let result = bytes.freeze();
+
+        debug_assert_eq!(
+            total_size as usize,
+            result.len(),
+            "Calculated size ({}) doesn't match actual bytes length ({})",
+            total_size,
+            result.len()
+        );
+
+        result
     }
 }
 
@@ -109,37 +120,30 @@ impl Validatable<IggyError> for SendMessages {
             return Err(IggyError::InvalidKeyValueLength);
         }
 
-        let mut headers_size = 0;
         let mut payload_size = 0;
         let mut message_count = 0;
 
-        for message_result in IggyMessageViewIterator::new(&self.messages) {
-            match message_result {
-                Ok(message_view) => {
-                    message_count += 1;
+        for message in IggyMessageViewIterator::new(&self.messages) {
+            message_count += 1;
 
-                    // // TODO: fix this
-                    // if let Ok(Some(headers)) = message_view.headers() {
-                    //     for value in headers.values() {
-                    //         headers_size += value.value.len() as u32;
-                    //         if headers_size > MAX_HEADERS_SIZE {
-                    //             return Err(IggyError::TooBigHeadersPayload);
-                    //         }
-                    //     }
-                    // }
+            // TODO(hubcio): IMHO validation of headers should be purely on SDK side
+            // if let Some(headers) = message.headers() {
+            //     for value in headers.values() {
+            //         headers_size += value.value.len() as u32;
+            //         if headers_size > MAX_HEADERS_SIZE {
+            //             return Err(IggyError::TooBigHeadersPayload);
+            //         }
+            //     }
+            // }
 
-                    let message_payload = message_view.payload();
-                    payload_size += message_payload.len() as u32;
-                    if payload_size > MAX_PAYLOAD_SIZE {
-                        return Err(IggyError::TooBigMessagePayload);
-                    }
+            let message_payload = message.payload();
+            payload_size += message_payload.len() as u32;
+            if payload_size > MAX_PAYLOAD_SIZE {
+                return Err(IggyError::TooBigMessagePayload);
+            }
 
-                    // todo(hubcio): make it use IGGY_MESSAGE_HEADER_SIZE
-                    if message_payload.len() < 56 {
-                        return Err(IggyError::InvalidMessagePayloadLength);
-                    }
-                }
-                Err(e) => return Err(e),
+            if message_payload.len() < IGGY_MESSAGE_HEADER_SIZE as usize {
+                return Err(IggyError::InvalidMessagePayloadLength);
             }
         }
 
@@ -157,73 +161,76 @@ impl Validatable<IggyError> for SendMessages {
 
 impl BytesSerializable for SendMessages {
     fn to_bytes(&self) -> Bytes {
-        let stream_id_bytes = self.stream_id.to_bytes();
-        let topic_id_bytes = self.topic_id.to_bytes();
-        let partitioning_bytes = self.partitioning.to_bytes();
+        panic!("should not be used")
 
-        let metadata_len = stream_id_bytes.len()
-            + topic_id_bytes.len()
-            + partitioning_bytes.len()
-            + std::mem::size_of::<u32>();
+        // let stream_id_bytes = self.stream_id.to_bytes();
+        // let topic_id_bytes = self.topic_id.to_bytes();
+        // let partitioning_bytes = self.partitioning.to_bytes();
 
-        let total_len = metadata_len + self.messages.len();
+        // let metadata_len = stream_id_bytes.len()
+        //     + topic_id_bytes.len()
+        //     + partitioning_bytes.len()
+        //     + std::mem::size_of::<u32>();
 
-        let mut bytes = BytesMut::with_capacity(total_len);
+        // let total_len = metadata_len + self.messages.len();
 
-        bytes.put_slice(&stream_id_bytes);
-        bytes.put_slice(&topic_id_bytes);
-        bytes.put_slice(&partitioning_bytes);
-        bytes.put_u32_le(self.messages_count);
-        bytes.put_slice(&self.messages);
+        // let mut bytes = BytesMut::with_capacity(total_len);
 
-        bytes.freeze()
+        // bytes.put_slice(&stream_id_bytes);
+        // bytes.put_slice(&topic_id_bytes);
+        // bytes.put_slice(&partitioning_bytes);
+        // bytes.put_u32_le(self.messages_count);
+        // bytes.put_slice(&self.messages);
+
+        // bytes.freeze()
     }
 
     fn from_bytes(bytes: Bytes) -> Result<SendMessages, IggyError> {
-        if bytes.is_empty() {
-            return Err(IggyError::InvalidCommand);
-        }
+        panic!("should not be used")
+        // if bytes.is_empty() {
+        //     return Err(IggyError::InvalidCommand);
+        // }
 
-        let mut position = 0;
-        let stream_id = Identifier::from_bytes(bytes.clone())?;
-        position += stream_id.get_size_bytes().as_bytes_usize();
+        // let mut position = 0;
+        // let stream_id = Identifier::from_bytes(bytes.clone())?;
+        // position += stream_id.get_size_bytes().as_bytes_usize();
 
-        if bytes.len() <= position {
-            return Err(IggyError::InvalidCommand);
-        }
+        // if bytes.len() <= position {
+        //     return Err(IggyError::InvalidCommand);
+        // }
 
-        let topic_id = Identifier::from_bytes(bytes.slice(position..))?;
-        position += topic_id.get_size_bytes().as_bytes_usize();
+        // let topic_id = Identifier::from_bytes(bytes.slice(position..))?;
+        // position += topic_id.get_size_bytes().as_bytes_usize();
 
-        if bytes.len() <= position {
-            return Err(IggyError::InvalidCommand);
-        }
+        // if bytes.len() <= position {
+        //     return Err(IggyError::InvalidCommand);
+        // }
 
-        let partitioning = Partitioning::from_bytes(bytes.slice(position..))?;
-        position += partitioning.get_size_bytes().as_bytes_usize();
+        // let partitioning = Partitioning::from_bytes(bytes.slice(position..))?;
+        // position += partitioning.get_size_bytes().as_bytes_usize();
 
-        if bytes.len() < position + 4 {
-            return Err(IggyError::InvalidCommand);
-        }
+        // if bytes.len() < position + 4 {
+        //     return Err(IggyError::InvalidCommand);
+        // }
 
-        let messages_count = u32::from_le_bytes(
-            bytes
-                .slice(position..position + 4)
-                .as_ref()
-                .try_into()
-                .unwrap(),
-        );
-        position += 4;
+        // let messages_count = u32::from_le_bytes(
+        //     bytes
+        //         .slice(position..position + 4)
+        //         .as_ref()
+        //         .try_into()
+        //         .unwrap(),
+        // );
+        // position += 4;
 
-        let messages = bytes.slice(position..);
+        // let messages = bytes.slice(position..);
 
-        Ok(SendMessages {
-            stream_id,
-            topic_id,
-            partitioning,
-            messages_count,
-            messages,
-        })
+        // Ok(SendMessages {
+        //     stream_id,
+        //     topic_id,
+        //     partitioning,
+        //     messages_count,
+        //     messages,
+        // })
     }
 }
 
