@@ -1,5 +1,5 @@
 use super::message_header::*;
-use super::IggyMessageHeaderView;
+use super::message_header_view::IggyMessageHeaderView;
 use crate::error::IggyError;
 use crate::models::messaging::header::HeaderKey;
 use crate::models::messaging::header::HeaderValue;

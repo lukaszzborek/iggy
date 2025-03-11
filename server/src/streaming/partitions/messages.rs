@@ -66,7 +66,7 @@ impl Partition {
         &self,
         start_offset: u64,
         count: u32,
-    ) -> Result<IggyMessagesSlice, IggyError> {
+    ) -> Result<IggyMessagesBatch, IggyError> {
         trace!(
             "Getting messages for start offset: {start_offset} for partition: {}, current offset: {}...",
             self.partition_id,
@@ -80,6 +80,7 @@ impl Partition {
         */
 
         let end_offset = self.get_end_offset(start_offset, count);
+
         // TODO: Most likely don't need to find the specific range of segments, just find the first segment containing the first offset
         // and during reads roll to the next one, when the first is exhausted.
         let segments = self.filter_segments_by_offsets(start_offset, end_offset);
@@ -93,12 +94,12 @@ impl Partition {
     }
 
     // Retrieves the first messages (up to a specified count).
-    pub async fn get_first_messages(&self, count: u32) -> Result<IggyMessagesSlice, IggyError> {
+    pub async fn get_first_messages(&self, count: u32) -> Result<IggyMessagesBatch, IggyError> {
         self.get_messages_by_offset(0, count).await
     }
 
     // Retrieves the last messages (up to a specified count).
-    pub async fn get_last_messages(&self, count: u32) -> Result<IggyMessagesSlice, IggyError> {
+    pub async fn get_last_messages(&self, count: u32) -> Result<IggyMessagesBatch, IggyError> {
         let mut requested_count = count as u64;
         if requested_count > self.current_offset + 1 {
             requested_count = self.current_offset + 1
@@ -113,7 +114,7 @@ impl Partition {
         &self,
         consumer: PollingConsumer,
         count: u32,
-    ) -> Result<IggyMessagesSlice, IggyError> {
+    ) -> Result<IggyMessagesBatch, IggyError> {
         let (consumer_offsets, consumer_id) = match consumer {
             PollingConsumer::Consumer(consumer_id, _) => (&self.consumer_offsets, consumer_id),
             PollingConsumer::ConsumerGroup(group_id, _) => (&self.consumer_group_offsets, group_id),
@@ -181,11 +182,10 @@ impl Partition {
         segments: Vec<&Segment>,
         offset: u64,
         count: u32,
-    ) -> Result<IggyMessagesSlice, IggyError> {
-        let mut slices = Vec::new();
+    ) -> Result<IggyMessagesBatch, IggyError> {
         let mut remaining_count = count;
         let mut current_offset = offset;
-
+        let mut batches = IggyMessagesBatch::new();
         for segment in segments {
             if remaining_count == 0 {
                 break;
@@ -203,7 +203,7 @@ impl Partition {
                 })?;
 
             // Update remaining count and offset for next segment
-            let messages_count = messages.count();
+            let messages_count = messages.messages_count();
             remaining_count = remaining_count.saturating_sub(messages_count);
 
             // Update the offset for the next segment if needed
@@ -213,12 +213,10 @@ impl Partition {
                 current_offset += messages_count as u64;
             }
 
-            slices.push(messages);
+            batches.add_batch(messages);
         }
 
-        // Combine all segment slices into a single composite slice
-        // This avoids copying the data
-        Ok(IggyMessagesSlice::combine(slices))
+        Ok(batches)
         // let mut results = Vec::new();
         // let mut remaining_count = count;
         // for segment in segments {
@@ -252,9 +250,9 @@ impl Partition {
     ) -> Result<(), IggyError> {
         trace!(
             "Appending {} messages of size {} to partition with ID: {}...",
-            self.partition_id,
             messages.count(),
-            messages.size()
+            messages.size(),
+            self.partition_id
         );
         {
             let last_segment = self.segments.last_mut().ok_or(IggyError::SegmentNotFound)?;
@@ -373,9 +371,7 @@ impl Partition {
             self.partition_id
         );
 
-        // Make sure all of the messages from the accumulator are persisted
-        // no leftover from one round trip.
-        while last_segment.unsaved_messages.is_some() {
+        if !last_segment.accumulator.is_empty() {
             last_segment.persist_messages(None).await.unwrap();
         }
         self.unsaved_messages_count = 0;

@@ -26,7 +26,7 @@ impl ServerCommandHandler for PollMessages {
         debug!("session: {session}, command: {self}");
 
         let system = system.read().await;
-        let messages = system
+        let batches = system
             .poll_messages(
                 session,
                 &self.consumer,
@@ -40,16 +40,23 @@ impl ServerCommandHandler for PollMessages {
                 "{COMPONENT} (error: {error}) - failed to poll messages for consumer: {}, stream_id: {}, topic_id: {}, partition_id: {:?}, session: {session}.",
                 self.consumer, self.stream_id, self.topic_id, self.partition_id
             ))?;
+        drop(system);
 
         // Collect all chunks first into a Vec to extend their lifetimes.
         // This ensures the Arc<[u8]> references from each ByteSliceView stay alive
         // throughout the async vectored I/O operation, preventing "borrowed value does not live
         // long enough" errors while optimizing transmission by using larger chunks.
 
-        let length = messages.size().to_le_bytes();
-        let slices: Vec<IoSlice> = messages.chunks().map(IoSlice::new).collect();
+        let response_length = (batches.size() + 4).to_le_bytes();
+        let messages_count = batches.messages_count().to_le_bytes();
 
-        sender.send_ok_response_vectored(&length, slices).await?;
+        let mut io_slices = Vec::with_capacity(batches.containers_count() + 1);
+        io_slices.push(IoSlice::new(&messages_count));
+        io_slices.extend(batches.iter().map(|m| IoSlice::new(m)));
+
+        sender
+            .send_ok_response_vectored(&response_length, io_slices)
+            .await?;
         Ok(())
     }
 }

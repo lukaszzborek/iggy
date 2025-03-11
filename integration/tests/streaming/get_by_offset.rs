@@ -168,11 +168,11 @@ async fn test_get_messages_by_offset(
         .await
         .unwrap();
     assert_eq!(
-        all_loaded_messages.count(),
+        all_loaded_messages.messages_count(),
         total_messages,
         "Expected {} messages from start, but got {}",
         total_messages,
-        all_loaded_messages.count()
+        all_loaded_messages.messages_count()
     );
 
     // Test 2: Get messages from middle (after 3rd batch)
@@ -183,11 +183,11 @@ async fn test_get_messages_by_offset(
         .await
         .unwrap();
     assert_eq!(
-        middle_messages.count(),
+        middle_messages.messages_count(),
         remaining_messages,
         "Expected {} messages from middle offset, but got {}",
         remaining_messages,
-        middle_messages.count()
+        middle_messages.messages_count()
     );
 
     // Test 3: No messages beyond final offset
@@ -197,10 +197,10 @@ async fn test_get_messages_by_offset(
         .await
         .unwrap();
     assert_eq!(
-        no_messages.count(),
+        no_messages.messages_count(),
         0,
         "Expected no messages beyond final offset, but got {}",
-        no_messages.count()
+        no_messages.messages_count()
     );
 
     // Test 4: Small subset from start
@@ -210,11 +210,11 @@ async fn test_get_messages_by_offset(
         .await
         .unwrap();
     assert_eq!(
-        subset_messages.count(),
+        subset_messages.messages_count(),
         subset_size,
         "Expected {} messages in subset from start, but got {}",
         subset_size,
-        subset_messages.count()
+        subset_messages.messages_count()
     );
 
     // Test 5: Messages spanning multiple batches
@@ -225,11 +225,11 @@ async fn test_get_messages_by_offset(
         .await
         .unwrap();
     assert_eq!(
-        messages.count(),
+        messages.messages_count(),
         span_size,
         "Expected {} messages spanning multiple batches, but got {}",
         span_size,
-        messages.count()
+        messages.messages_count()
     );
 
     // Test 6: Validate message content and ordering

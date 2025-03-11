@@ -9,28 +9,22 @@ use std::ops::Range;
 pub struct IggyMessageViewMut<'a> {
     /// The buffer containing the message
     buffer: &'a mut [u8],
-
     /// Payload offset
     payload_offset: usize,
 }
 
 impl<'a> IggyMessageViewMut<'a> {
     /// Create a new mutable message view from a buffer
-    pub fn new(buffer: &'a mut [u8]) -> Result<Self, IggyError> {
+    pub fn new(buffer: &'a mut [u8]) -> Self {
         let (payload_len, headers_len) = {
             let hdr_slice = &buffer[0..IGGY_MESSAGE_HEADER_SIZE as usize];
             let hdr_view = IggyMessageHeaderView::new(hdr_slice);
             (hdr_view.payload_length(), hdr_view.headers_length())
         };
-        let total_size = IGGY_MESSAGE_HEADER_SIZE + payload_len + headers_len;
-        if buffer.len() < total_size as usize {
-            return Err(IggyError::InvalidMessagePayloadLength);
-        }
-
-        Ok(Self {
+        Self {
             buffer,
             payload_offset: IGGY_MESSAGE_HEADER_SIZE as usize,
-        })
+        }
     }
 
     /// Get an immutable header view
@@ -60,14 +54,14 @@ impl<'a> IggyMessageViewMut<'a> {
 
     /// Convenience to update the checksum field in the header
     pub fn update_checksum(&mut self) {
-        // let start = 8; // Skip checksum field for checksum calculation
-        // let size = self.size() - 8;
-        // let data = &self.buffer[start..start + size];
+        let start = 8; // Skip checksum field for checksum calculation
+        let size = self.size() - 8;
+        let data = &self.buffer[start..start + size];
 
-        // let checksum = gxhash64(data, 0);
+        let checksum = gxhash64(data, 0);
 
-        // let mut hdr_view = self.msg_header_mut();
-        // hdr_view.set_checksum(checksum);
+        let mut hdr_view = self.msg_header_mut();
+        hdr_view.set_checksum(checksum);
     }
 }
 
@@ -88,30 +82,40 @@ impl<'a> IggyMessageViewMutIterator<'a> {
 
 #[gat]
 impl LendingIterator for IggyMessageViewMutIterator<'_> {
-    type Item<'next> = Result<IggyMessageViewMut<'next>, IggyError>;
+    type Item<'next> = IggyMessageViewMut<'next>;
 
     fn next(&mut self) -> Option<Self::Item<'_>> {
-        if self.position >= self.buffer.len() {
+        let buffer_len = self.buffer.len();
+        if self.position >= buffer_len {
+            return None;
+        }
+
+        // Make sure we have enough bytes for at least a header
+        if self.position + IGGY_MESSAGE_HEADER_SIZE as usize > self.buffer.len() {
+            tracing::error!(
+                "Buffer too small for message header at position {}, buffer len: {}",
+                self.position,
+                self.buffer.len()
+            );
+            self.position = self.buffer.len(); // Move to end to prevent infinite loops
             return None;
         }
 
         let buffer_slice = &mut self.buffer[self.position..];
-        let result = IggyMessageViewMut::new(buffer_slice);
+        let view = IggyMessageViewMut::new(buffer_slice);
 
-        match result {
-            Ok(view) => {
-                self.position += view.size();
-                Some(Ok(view))
-            }
-            Err(e) => {
-                tracing::error!(
-                    "Failed to create message view at position {}, error: {}",
-                    self.position,
-                    e
-                );
-                self.position += 1;
-                Some(Err(e))
-            }
+        // Safety check: Make sure we're advancing
+        let message_size = view.size();
+        if message_size == 0 {
+            tracing::error!(
+                "Message size is 0 at position {}, preventing infinite loop",
+                self.position
+            );
+            self.position = buffer_len; // Move to end to prevent infinite loops
+            return None;
         }
+
+        self.position += message_size;
+        Some(view)
     }
 }

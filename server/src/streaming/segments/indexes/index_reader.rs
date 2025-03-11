@@ -15,13 +15,13 @@ use tracing::{error, trace};
 
 /// A dedicated struct for reading from the index file.
 #[derive(Debug)]
-pub struct SegmentIndexReader {
+pub struct IndexReader {
     file_path: String,
     file: Arc<File>,
     index_size_bytes: Arc<AtomicU64>,
 }
 
-impl SegmentIndexReader {
+impl IndexReader {
     /// Opens the index file in read-only mode.
     pub async fn new(file_path: &str, index_size_bytes: Arc<AtomicU64>) -> Result<Self, IggyError> {
         let file = OpenOptions::new()

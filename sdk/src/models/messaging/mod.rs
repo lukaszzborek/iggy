@@ -3,7 +3,6 @@ mod message;
 mod message_header;
 mod message_header_view;
 mod message_view;
-mod messages;
 
 pub use header::{HeaderKey, HeaderKind, HeaderValue};
 pub use message::IggyMessage;
@@ -15,5 +14,5 @@ pub use message_header::{
     IGGY_MESSAGE_TIMESTAMP_OFFSET_RANGE,
 };
 pub use message_header_view::IggyMessageHeaderView;
-pub use message_view::{IggyMessageView, IggyMessageViewIterator};
-pub use messages::IggyMessages;
+pub use message_view::IggyMessageView;
+pub use message_view::IggyMessageViewIterator;

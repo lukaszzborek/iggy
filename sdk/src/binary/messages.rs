@@ -7,7 +7,7 @@ use crate::error::IggyError;
 use crate::identifier::Identifier;
 use crate::messages::{FlushUnsavedBuffer, PollingStrategy};
 use crate::models::messaging::IggyMessage;
-use crate::prelude::{BytesSerializable, IggyMessages, Partitioning, PollMessages, SendMessages};
+use crate::prelude::{Partitioning, PollMessages, SendMessages};
 
 #[async_trait::async_trait]
 impl<B: BinaryClient> MessageClient for B {
@@ -36,7 +36,12 @@ impl<B: BinaryClient> MessageClient for B {
                 ),
             )
             .await?;
-        Ok(IggyMessages::from_bytes(response).unwrap().to_messages())
+
+        // First 4 bytes contain count of received messages
+        let count = u32::from_le_bytes(response.slice(0..4).as_ref().try_into().unwrap());
+        let messages = response.slice(4..);
+
+        Ok(IggyMessage::from_raw_bytes(messages, count))
     }
 
     async fn send_messages(

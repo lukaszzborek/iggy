@@ -1,11 +1,8 @@
+use crate::streaming::segments::IggyMessages;
 use bytes::{Bytes, BytesMut};
 use error_set::ErrContext;
-use iggy::{
-    error::IggyError,
-    prelude::{BytesSerializable, IggyMessages},
-};
+use iggy::error::IggyError;
 use std::{
-    fmt,
     fs::{File, OpenOptions},
     os::unix::prelude::FileExt,
 };
@@ -17,7 +14,7 @@ use std::{
     },
 };
 use tokio::task::spawn_blocking;
-use tracing::{error, trace, warn};
+use tracing::{error, trace};
 
 /// A dedicated struct for reading from the log file.
 #[derive(Debug)]
@@ -115,12 +112,16 @@ impl MessagesReader {
         let file_size = self.file_size();
         if file_size == 0 {
             trace!("Messages file {} is empty.", self.file_path);
-            return Ok(IggyMessages::default());
+            return Ok(IggyMessages::empty());
         }
-        let messages_bytes = match self.read_at(start_pos as u64, count_bytes as u64).await {
+
+        let messages_bytes = match self
+            .read_bytes_at(start_pos as u64, count_bytes as u64)
+            .await
+        {
             Ok(buf) => buf,
             Err(error) if error.kind() == ErrorKind::UnexpectedEof => {
-                return Ok(IggyMessages::default())
+                return Ok(IggyMessages::empty())
             }
             Err(error) => {
                 error!(
@@ -138,7 +139,7 @@ impl MessagesReader {
         self.log_size_bytes.load(Ordering::Acquire)
     }
 
-    async fn read_at(&self, offset: u64, len: u64) -> Result<Bytes, std::io::Error> {
+    async fn read_bytes_at(&self, offset: u64, len: u64) -> Result<Bytes, std::io::Error> {
         let file = self.file.clone();
         spawn_blocking(move || {
             let mut buf = BytesMut::with_capacity(len as usize);

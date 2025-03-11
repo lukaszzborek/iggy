@@ -1,22 +1,16 @@
 use super::PersisterTask;
+use crate::streaming::segments::{messages::write_batch, IggyMessagesBatch};
 use error_set::ErrContext;
 use iggy::{
     confirmation::Confirmation,
     error::IggyError,
-    prelude::IggyMessages,
     utils::{byte_size::IggyByteSize, duration::IggyDuration},
 };
-use std::{
-    io::IoSlice,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc,
-    },
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
 };
-use tokio::{
-    fs::{File, OpenOptions},
-    io::AsyncWriteExt,
-};
+use tokio::fs::{File, OpenOptions};
 use tracing::{error, trace};
 
 /// A dedicated struct for writing to the messages file.
@@ -94,17 +88,31 @@ impl MessagesWriter {
     /// Append a messages to the messages file.
     pub async fn save_batches(
         &mut self,
-        messages: Vec<IggyMessages>,
+        batches: IggyMessagesBatch,
         confirmation: Confirmation,
     ) -> Result<IggyByteSize, IggyError> {
-        let messages_size: usize = messages.iter().map(|m| m.size() as usize).sum();
+        let messages_size = batches.size();
         trace!(
             "Saving batch of size {messages_size} bytes to messages file: {}",
             self.file_path
         );
         match confirmation {
             Confirmation::Wait => {
-                self.write_batch_vectored(messages).await?;
+                if let Some(ref mut file) = self.file {
+                    write_batch(file, &self.file_path, batches)
+                        .await
+                        .with_error_context(|error| {
+                            format!(
+                                "Failed to write batch to messages file: {}. {error}",
+                                self.file_path
+                            )
+                        })
+                        .map_err(|_| IggyError::CannotWriteToFile)?;
+                } else {
+                    error!("File handle is not available for synchronous write.");
+                    return Err(IggyError::CannotWriteToFile);
+                }
+
                 self.messages_size_bytes
                     .fetch_add(messages_size as u64, Ordering::AcqRel);
                 trace!(
@@ -117,7 +125,7 @@ impl MessagesWriter {
             }
             Confirmation::NoWait => {
                 if let Some(task) = &self.persister_task {
-                    task.persist(messages).await;
+                    task.persist(batches).await;
                 } else {
                     panic!(
                         "Confirmation::NoWait is used, but MessagesPersisterTask is not set for messages file: {}",
@@ -128,17 +136,6 @@ impl MessagesWriter {
         }
 
         Ok(IggyByteSize::from(messages_size as u64))
-    }
-
-    /// Write a batch of bytes to the log file.
-    async fn write_batch_vectored(&mut self, batches: Vec<IggyMessages>) -> Result<(), IggyError> {
-        if let Some(ref mut file) = self.file {
-            super::write_batch_vectored(file, &self.file_path, batches).await?;
-            Ok(())
-        } else {
-            error!("File handle is not available for synchronous write.");
-            Err(IggyError::CannotWriteToFile)
-        }
     }
 
     pub async fn fsync(&self) -> Result<(), IggyError> {

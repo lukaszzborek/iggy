@@ -20,7 +20,7 @@ pub use crate::messages::{
 };
 pub use crate::models::messaging::{
     HeaderKey, HeaderValue, IggyMessage, IggyMessageHeader, IggyMessageHeaderView, IggyMessageView,
-    IggyMessageViewIterator, IggyMessages,
+    IggyMessageViewIterator,
 };
 pub use crate::models::messaging::{
     IGGY_MESSAGE_CHECKSUM_OFFSET_RANGE, IGGY_MESSAGE_HEADERS_LENGTH_OFFSET_RANGE,

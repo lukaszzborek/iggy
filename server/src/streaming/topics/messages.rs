@@ -1,5 +1,5 @@
 use crate::streaming::polling_consumer::PollingConsumer;
-use crate::streaming::segments::{IggyMessagesMut, IggyMessagesSlice};
+use crate::streaming::segments::{IggyMessages, IggyMessagesBatch, IggyMessagesMut};
 use crate::streaming::topics::topic::Topic;
 use crate::streaming::topics::COMPONENT;
 use crate::streaming::utils::file::folder_size;
@@ -9,7 +9,6 @@ use error_set::ErrContext;
 use iggy::error::IggyError;
 use iggy::locking::IggySharedMutFn;
 use iggy::messages::{PartitioningKind, PollingKind};
-use iggy::prelude::IggyMessages;
 use iggy::prelude::Partitioning;
 use iggy::utils::byte_size::IggyByteSize;
 use iggy::utils::expiry::IggyExpiry;
@@ -31,7 +30,7 @@ impl Topic {
         partition_id: u32,
         strategy: PollingStrategy,
         count: u32,
-    ) -> Result<IggyMessagesSlice, IggyError> {
+    ) -> Result<IggyMessagesBatch, IggyError> {
         if !self.has_partitions() {
             return Err(IggyError::NoPartitions(self.topic_id, self.stream_id));
         }
@@ -174,123 +173,6 @@ impl Topic {
             messages_key_hash
         );
         partition_id
-    }
-
-    pub(crate) async fn load_messages_from_disk_to_cache(&mut self) -> Result<(), IggyError> {
-        //TODO: Fix me
-        /*
-        if !self.config.cache.enabled {
-            return Ok(());
-        }
-        let path = self.config.get_system_path();
-
-        // TODO: load data from database instead of calculating the size on disk
-        let total_size_on_disk_bytes = folder_size(&path)
-            .await
-            .with_error_context(|error| {
-                format!("{COMPONENT} (error: {error}) - failed to get folder size, path: {path}")
-            })
-            .map_err(|_| IggyError::InvalidSizeBytes)?;
-
-        for partition_lock in self.partitions.values_mut() {
-            let mut partition = partition_lock.write().await;
-
-            let end_offset = match partition.segments.last() {
-                Some(segment) => segment.current_offset,
-                None => {
-                    warn!(
-                        "No segments found for partition ID: {}, topic ID: {}, stream ID: {}",
-                        partition.partition_id, partition.topic_id, partition.stream_id
-                    );
-                    continue;
-                }
-            };
-
-            trace!(
-               "Loading messages to cache for partition ID: {}, topic ID: {}, stream ID: {}, offset: 0 to {}...",
-               partition.partition_id,
-               partition.topic_id,
-               partition.stream_id,
-               end_offset
-           );
-
-            let partition_size_bytes = partition.get_size_bytes();
-            let cache_limit_bytes = self.config.cache.size.clone().into();
-
-            // Fetch data from disk proportional to the partition size
-            // eg. 12 partitions, each has 300 MB, cache limit is 500 MB, so there is total 3600 MB of data on SSD.
-            // 500 MB * (300 / 3600 MB) ~= 41.6 MB to load from cache (assuming all partitions have the same size on disk)
-            let size_to_fetch_from_disk = (cache_limit_bytes.as_bytes_u64() as f64
-                * (partition_size_bytes.as_bytes_u64() as f64
-                    / total_size_on_disk_bytes.as_bytes_u64() as f64))
-                as u64;
-            let messages = partition
-                .get_newest_messages_by_size(size_to_fetch_from_disk as u64)
-                .await
-                .with_error_context(|error| format!("{COMPONENT} (error: {error}) - failed to get newest messages by size: {size_to_fetch_from_disk}"))?;
-
-            let sum = messages
-                .iter()
-                .map(|m| m.get_size_bytes())
-                .sum::<IggyByteSize>();
-            if !Self::cache_integrity_check(&messages) {
-                warn!(
-                   "Cache integrity check failed for partition ID: {}, topic ID: {}, stream ID: {}, offset: 0 to {}. Emptying cache...",
-                   partition.partition_id, partition.topic_id, partition.stream_id, end_offset
-               );
-            } else if let Some(cache) = &mut partition.cache {
-                for message in &messages {
-                    cache.push_safe(message.clone());
-                }
-
-                info!(
-                   "Loaded {} messages ({} bytes) to cache for partition ID: {}, topic ID: {}, stream ID: {}, offset: 0 to {}.",
-                   messages.len(), sum, partition.partition_id, partition.topic_id, partition.stream_id, end_offset
-               );
-            } else {
-                warn!(
-                    "Cache is invalid for ID: {}, topic ID: {}, stream ID: {}, offset: 0 to {}",
-                    partition.partition_id, partition.topic_id, partition.stream_id, end_offset
-                );
-            }
-        }
-
-        Ok(())
-        */
-        todo!()
-    }
-
-    fn cache_integrity_check(cache: ()) -> bool {
-        //TODO: Fix me
-        /*
-        if cache.is_empty() {
-            warn!("Cache is empty!");
-            return false;
-        }
-
-        let first_offset = cache[0].offset;
-        let last_offset = cache[cache.len() - 1].offset;
-
-        for i in 1..cache.len() {
-            if cache[i].offset != cache[i - 1].offset + 1 {
-                warn!("Offsets are not subsequent at index {} offset {}, for previous index {} offset is {}", i, cache[i].offset, i-1, cache[i-1].offset);
-                return false;
-            }
-        }
-
-        let expected_messages_count: u64 = last_offset - first_offset + 1;
-        if cache.len() != expected_messages_count as usize {
-            warn!(
-                "Messages count is in cache ({}) not equal to expected messages count ({})",
-                cache.len(),
-                expected_messages_count
-            );
-            return false;
-        }
-
-        true
-        */
-        todo!()
     }
 
     pub async fn get_expired_segments_start_offsets_per_partition(

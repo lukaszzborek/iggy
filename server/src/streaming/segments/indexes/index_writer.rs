@@ -13,14 +13,14 @@ use tracing::trace;
 
 /// A dedicated struct for writing to the index file.
 #[derive(Debug)]
-pub struct SegmentIndexWriter {
+pub struct IndexWriter {
     file_path: String,
     file: File,
     index_size_bytes: Arc<AtomicU64>,
     fsync: bool,
 }
 
-impl SegmentIndexWriter {
+impl IndexWriter {
     /// Opens the index file in write mode.
     pub async fn new(
         file_path: &str,

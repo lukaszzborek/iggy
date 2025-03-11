@@ -37,6 +37,57 @@ impl IggyMessage {
     pub fn builder() -> IggyMessageBuilder {
         IggyMessageBuilder::new()
     }
+
+    /// Convert bytes to messages
+    pub(crate) fn from_raw_bytes(buffer: Bytes, count: u32) -> Vec<IggyMessage> {
+        let mut messages = Vec::with_capacity(count as usize);
+        let mut position = 0;
+        let buf_len = buffer.len();
+
+        while position < buf_len {
+            if position + IGGY_MESSAGE_HEADER_SIZE as usize > buf_len {
+                break;
+            }
+            let header_bytes = buffer.slice(position..position + IGGY_MESSAGE_HEADER_SIZE as usize);
+            let header = match IggyMessageHeader::from_bytes(header_bytes) {
+                Ok(h) => h,
+                Err(_) => break,
+            };
+            position += IGGY_MESSAGE_HEADER_SIZE as usize;
+
+            let payload_end = position + header.payload_length as usize;
+            if payload_end > buf_len {
+                break;
+            }
+            let payload = buffer.slice(position..payload_end);
+            position = payload_end;
+
+            let headers: Option<HashMap<super::HeaderKey, super::HeaderValue>> =
+                if header.headers_length > 0 {
+                    let headers_end = position + header.headers_length as usize;
+                    if headers_end > buf_len {
+                        break;
+                    }
+                    let headers_bytes = buffer.slice(position..headers_end);
+                    position = headers_end;
+
+                    match HashMap::from_bytes(headers_bytes) {
+                        Ok(map) => Some(map),
+                        Err(_) => break,
+                    }
+                } else {
+                    None
+                };
+
+            messages.push(IggyMessage {
+                header,
+                payload,
+                headers,
+            });
+        }
+
+        messages
+    }
 }
 
 impl FromStr for IggyMessage {

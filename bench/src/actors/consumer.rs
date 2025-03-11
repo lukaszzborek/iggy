@@ -27,7 +27,7 @@ pub struct Consumer {
     client_factory: Arc<dyn ClientFactory>,
     benchmark_kind: BenchmarkKind,
     consumer_id: u32,
-    consumer_group_id: Option<u32>,
+    consumer_group_id: Option<u32>, 
     stream_id: u32,
     messages_per_batch: u32,
     message_batches: u32,

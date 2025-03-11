@@ -1,5 +1,7 @@
+use crate::streaming::segments::IggyMessagesBatch;
+use error_set::ErrContext;
 use flume::{unbounded, Receiver};
-use iggy::{error::IggyError, prelude::IggyMessages, utils::duration::IggyDuration};
+use iggy::{error::IggyError, utils::duration::IggyDuration};
 use std::{
     io::IoSlice,
     sync::{
@@ -11,10 +13,12 @@ use std::{
 use tokio::{fs::File, io::AsyncWriteExt, select, time::sleep};
 use tracing::{error, trace, warn};
 
+use super::write_batch;
+
 #[derive(Debug)]
 /// A command to the persister task.
 enum PersisterTaskCommand {
-    WriteRequest(Vec<IggyMessages>),
+    WriteRequest(IggyMessagesBatch),
     Shutdown,
 }
 
@@ -59,7 +63,7 @@ impl PersisterTask {
     }
 
     /// Sends the batch bytes to the persister task (fire-and-forget).
-    pub async fn persist(&self, messages: Vec<IggyMessages>) {
+    pub async fn persist(&self, messages: IggyMessagesBatch) {
         if let Err(e) = self
             .sender
             .send_async(PersisterTaskCommand::WriteRequest(messages))
@@ -173,16 +177,7 @@ impl PersisterTask {
         while let Ok(request) = receiver.recv_async().await {
             match request {
                 PersisterTaskCommand::WriteRequest(messages) => {
-                    match Self::write_with_retries(
-                        &mut file,
-                        &file_path,
-                        messages,
-                        fsync,
-                        max_retries,
-                        retry_delay,
-                    )
-                    .await
-                    {
+                    match write_batch(&mut file, &file_path, messages).await {
                         Ok(bytes_written) => {
                             log_file_size.fetch_add(bytes_written as u64, Ordering::AcqRel);
                         }
@@ -209,59 +204,61 @@ impl PersisterTask {
         trace!("PersisterTask for file {file_path} has finished processing requests");
     }
 
-    /// Writes the provided data to the file using simple retry logic.
-    async fn write_with_retries(
-        file: &mut File,
-        file_path: &str,
-        messages: Vec<IggyMessages>,
-        fsync: bool,
-        max_retries: u32,
-        retry_delay: IggyDuration,
-    ) -> Result<u32, IggyError> {
-        let mut attempts = 0;
-        // TODO: This "retry" logic should be rewritten.
-        // There are certain kind of errors whom retrying is considered harmful, for example fsync failure
-        // (https://www.usenix.org/system/files/atc20-rebello.pdf)
-        // There are few errors which are worth retrying such as LSE (Latent sector error), as the file system
-        // might be able to reallocate a new sector for the data and recover, but not every file system supports that.
-        // In general this topic should be furthered researched rather than just naively retry when the write fails.
-        super::write_batch_vectored(file, file_path, messages).await
+    // /// Writes the provided data to the file using simple retry logic.
+    // async fn write_with_retries(
+    //     file: &mut File,
+    //     file_path: &str,
+    //     batches: IggyMessagesBatch,
+    //     fsync: bool,
+    //     max_retries: u32,
+    //     retry_delay: IggyDuration,
+    // ) -> Result<u32, IggyError> {
+    //     let mut attempts = 0;
+    //     // TODO: This "retry" logic should be rewritten.
+    //     // There are certain kind of errors whom retrying is considered harmful, for example fsync failure
+    //     // (https://www.usenix.org/system/files/atc20-rebello.pdf)
+    //     // There are few errors which are worth retrying such as LSE (Latent sector error), as the file system
+    //     // might be able to reallocate a new sector for the data and recover, but not every file system supports that.
+    //     // In general this topic should be furthered researched rather than just naively retry when the write fails.
+    //     let mut slices = Vec::new();
+    //     batches.iter().map(|b| {
+    //         slices.push(IoSlice::new(&b));
+    //     });
 
-        // let messages_size = messages.iter().map(|m| m.size()).sum();
-        // loop {
-        //     // TODO: use vectored API
-        //     match super::write_batch_vectored(file, file_path, messages).await {
-        //         Ok(_) => {
-        //             if fsync {
-        //                 match file.sync_all().await {
-        //                     Ok(_) => return Ok(messages_size),
-        //                     Err(e) => {
-        //                         attempts += 1;
-        //                         error!(
-        //                             "Error syncing file {file_path}: {:?} (attempt {attempts}/{max_retries})",
-        //                              e,
-        //                         );
-        //                     }
-        //                 }
-        //             } else {
-        //                 return Ok(messages_size);
-        //             }
-        //         }
-        //         Err(e) => {
-        //             attempts += 1;
-        //             error!(
-        //                 "Error writing to file {file_path}: {:?} (attempt {attempts}/{max_retries})",
-        //                 e,
-        //             );
-        //         }
-        //     }
-        //     if attempts >= max_retries {
-        //         error!(
-        //             "Failed to write to file {file_path} after {max_retries} attempts, something's terribly wrong",
-        //         );
-        //         return Err(IggyError::CannotWriteToFile);
-        //     }
-        //     sleep(retry_delay.get_duration()).await;
-        // }
-    }
+    //     let messages_size = batches.size();
+    //     loop {
+    //         match file.write_vectored(&slices).await {
+    //             Ok(written) => {
+    //                 if fsync {
+    //                     match file.sync_all().await {
+    //                         Ok(_) => return Ok(messages_size),
+    //                         Err(e) => {
+    //                             attempts += 1;
+    //                             error!(
+    //                                 "Error syncing file {file_path}: {:?} (attempt {attempts}/{max_retries})",
+    //                                  e,
+    //                             );
+    //                         }
+    //                     }
+    //                 } else {
+    //                     return Ok(messages_size);
+    //                 }
+    //             }
+    //             Err(e) => {
+    //                 attempts += 1;
+    //                 error!(
+    //                     "Error writing to file {file_path}: {:?} (attempt {attempts}/{max_retries})",
+    //                     e,
+    //                 );
+    //             }
+    //         }
+    //         if attempts >= max_retries {
+    //             error!(
+    //                 "Failed to write to file {file_path} after {max_retries} attempts, something's terribly wrong",
+    //             );
+    //             return Err(IggyError::CannotWriteToFile);
+    //         }
+    //         sleep(retry_delay.get_duration()).await;
+    //     }
+    // }
 }

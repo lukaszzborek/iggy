@@ -53,8 +53,8 @@ impl ServerCommandHandler for SendMessages {
 
         let messages_count = buffer.get_u32_le();
         let messages = buffer.split();
-        let mut messages = IggyMessagesMut::new(messages);
-        messages.set_count(messages_count);
+
+        let messages = IggyMessagesMut::from_bytes(messages, messages_count);
 
         let system = system.read().await;
         system

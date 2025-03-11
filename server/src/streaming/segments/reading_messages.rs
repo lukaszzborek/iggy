@@ -1,10 +1,7 @@
-use super::Index;
+use super::{IggyMessages, IggyMessagesBatch, Index};
 use crate::streaming::segments::segment::Segment;
-use crate::streaming::segments::types::IggyMessagesSlice;
-use bytes::{Bytes, BytesMut};
 use error_set::ErrContext;
 use iggy::prelude::*;
-use std::sync::Arc;
 use tracing::trace;
 
 const COMPONENT: &str = "STREAMING_SEGMENT";
@@ -22,31 +19,33 @@ impl Segment {
         &self,
         start_timestamp: u64,
         count: u32,
-    ) -> Result<IggyMessagesSlice, IggyError> {
-        if count == 0 {
-            return Ok(IggyMessagesSlice::empty());
-        }
+    ) -> Result<IggyMessagesBatch, IggyError> {
+        todo!()
 
-        let index_opt = self.load_index_for_timestamp(start_timestamp).await?;
+        // if count == 0 {
+        //     return Ok(IggyMessagesMut::empty());
+        // }
 
-        let Some(index) = index_opt else {
-            trace!("No messages found for timestamp: {}", start_timestamp);
-            return Ok(IggyMessagesSlice::empty());
-        };
+        // let index_opt = self.load_index_for_timestamp(start_timestamp).await?;
 
-        let offset = self.start_offset + index.offset as u64;
-        trace!("Found offset {} for timestamp {}", offset, start_timestamp);
+        // let Some(index) = index_opt else {
+        //     trace!("No messages found for timestamp: {}", start_timestamp);
+        //     return Ok(IggyMessagesMut::empty());
+        // };
 
-        self.get_messages_by_offset(offset, count).await
+        // let offset = self.start_offset + index.offset as u64;
+        // trace!("Found offset {} for timestamp {}", offset, start_timestamp);
+
+        // self.get_messages_by_offset(offset, count).await
     }
 
     pub async fn get_messages_by_offset(
         &self,
         mut offset: u64,
         count: u32,
-    ) -> Result<IggyMessagesSlice, IggyError> {
+    ) -> Result<IggyMessagesBatch, IggyError> {
         if count == 0 {
-            return Ok(IggyMessagesSlice::empty());
+            return Ok(IggyMessagesBatch::default());
         }
 
         if offset < self.start_offset {
@@ -62,59 +61,49 @@ impl Segment {
             offset = self.start_offset;
         }
 
-        // In case that the partition messages buffer is disabled, we need to check the unsaved messages buffer
-        if self.unsaved_messages.is_none() {
-            return Ok(self.load_messages_from_disk(offset, count).await?);
+        if self.accumulator.is_empty() {
+            return Ok(IggyMessagesBatch::from(
+                self.load_messages_from_disk(offset, count).await?,
+            ));
         }
 
-        let messages_accumulator = self.unsaved_messages.as_ref().unwrap();
-        if messages_accumulator.is_empty() {
-            return Ok(self.load_messages_from_disk(offset, count).await?);
-        }
-
-        let accumulator_first_msg_offset = messages_accumulator.base_offset();
-        let accumulator_last_msg_offset = messages_accumulator.max_offset();
+        let accumulator_first_msg_offset = self.accumulator.base_offset();
+        let accumulator_last_msg_offset = self.accumulator.max_offset();
 
         // Case 1: All messages are in messages_require_to_save buffer
         if offset >= accumulator_first_msg_offset && end_offset <= accumulator_last_msg_offset {
-            return Ok(self.load_messages_from_unsaved_buffer(offset, end_offset));
+            return Ok(IggyMessagesBatch::from(
+                self.accumulator.get_messages_by_offset(offset, end_offset),
+            ));
         }
 
         // Case 2: All messages are on disk
         if end_offset < accumulator_first_msg_offset {
-            return Ok(self.load_messages_from_disk(offset, count).await?);
+            return Ok(IggyMessagesBatch::from(
+                self.load_messages_from_disk(offset, count).await?,
+            ));
         }
 
         // Case 3: Messages span disk and messages_require_to_save buffer boundary
 
-        let mut slices = Vec::new();
-
         // Load messages from disk up to the messages_require_to_save buffer boundary
-        if offset < accumulator_first_msg_offset {
-            let disk_messages = self
+        let disk_messages = self
                 .load_messages_from_disk(offset, (accumulator_first_msg_offset - offset) as u32)
                 .await.with_error_context(|error| format!(
             "{COMPONENT} (error: {error}) - failed to load messages from disk, stream ID: {}, topic ID: {}, partition ID: {}, start offset: {offset}, end offset :{}",
             self.stream_id, self.topic_id, self.partition_id, accumulator_first_msg_offset - 1
         ))?;
-            slices.push(disk_messages);
-        }
 
         // Load remaining messages from messages_require_to_save buffer
         let buffer_start = std::cmp::max(offset, accumulator_first_msg_offset);
-        let buffer_messages = self.load_messages_from_unsaved_buffer(buffer_start, end_offset);
-        slices.push(buffer_messages);
+        let buffer_messages = self
+            .accumulator
+            .get_messages_by_offset(buffer_start, end_offset);
 
-        Ok(IggyMessagesSlice::combine(slices))
-    }
-
-    fn load_messages_from_unsaved_buffer(
-        &self,
-        start_offset: u64,
-        end_offset: u64,
-    ) -> IggyMessagesSlice {
-        let messages_accumulator = self.unsaved_messages.as_ref().unwrap();
-        messages_accumulator.get_messages_by_offset(start_offset, end_offset)
+        Ok(IggyMessagesBatch::from(vec![
+            disk_messages,
+            buffer_messages,
+        ]))
     }
 
     pub async fn load_index_for_timestamp(
@@ -210,7 +199,7 @@ impl Segment {
         &self,
         start_offset: u64,
         count: u32,
-    ) -> Result<IggyMessagesSlice, IggyError> {
+    ) -> Result<IggyMessages, IggyError> {
         tracing::trace!(
                 "Loading {count} messages from disk, start_offset: {start_offset}, current_offset: {}...",
                 self.current_offset
@@ -227,7 +216,7 @@ impl Segment {
             .await?;
 
         if first_index.is_none() {
-            return Ok(IggyMessagesSlice::empty());
+            return Ok(IggyMessages::empty());
         }
 
         let first_index = first_index.unwrap();
@@ -243,23 +232,13 @@ impl Segment {
         let start_pos = first_index.position;
         let count_bytes = last_index.position - start_pos;
 
-        let messages = self
-            .messages_reader
+        self.messages_reader
             .as_ref()
             .unwrap()
             .load_messages_impl(start_pos, count_bytes, count)
             .await
             .with_error_context(|error| {
                 format!("Failed to load messages from segment file: {self}. {error}")
-            })?;
-        let end = messages.size();
-        let count = messages.count();
-
-        Ok(IggyMessagesSlice::new(
-            messages.into_inner(),
-            0,
-            end as usize,
-            count,
-        ))
+            })
     }
 }

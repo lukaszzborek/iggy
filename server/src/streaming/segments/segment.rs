@@ -37,12 +37,12 @@ pub struct Segment {
     pub is_closed: bool,
     pub(super) messages_writer: Option<MessagesWriter>,
     pub(super) messages_reader: Option<MessagesReader>,
-    pub(super) index_writer: Option<SegmentIndexWriter>,
-    pub(super) index_reader: Option<SegmentIndexReader>,
+    pub(super) index_writer: Option<IndexWriter>,
+    pub(super) index_reader: Option<IndexReader>,
     pub message_expiry: IggyExpiry,
-    pub unsaved_messages: Option<MessagesAccumulator>,
+    pub accumulator: MessagesAccumulator,
     pub config: Arc<SystemConfig>,
-    pub indexes: Option<Vec<Index>>,
+    pub indexes: Vec<Index>,
     pub(super) log_size_bytes: Arc<AtomicU64>,
     pub(super) index_size_bytes: Arc<AtomicU64>,
 }
@@ -70,10 +70,10 @@ impl Segment {
             IggyExpiry::ServerDefault => config.segment.message_expiry,
             _ => message_expiry,
         };
-        let indexes = match config.segment.cache_indexes {
-            true => Some(Vec::new()),
-            false => None,
-        };
+        // let indexes = match config.segment.cache_indexes {
+        //     true => Some(Vec::new()),
+        //     false => None,
+        // };
 
         Segment {
             stream_id,
@@ -90,8 +90,8 @@ impl Segment {
             last_index_position: 0,
             max_size_bytes: config.segment.size,
             message_expiry,
-            indexes,
-            unsaved_messages: None,
+            indexes: Vec::new(), // TODO add capacity
+            accumulator: MessagesAccumulator::default(),
             is_closed: false,
             messages_writer: None,
             messages_reader: None,
@@ -128,34 +128,29 @@ impl Segment {
         self.size_bytes = IggyByteSize::from(log_size_bytes);
         self.last_index_position = log_size_bytes as _;
 
-        self.indexes = Some(
-            self.index_reader
-                .as_ref()
-                .unwrap()
-                .load_all_indexes_impl()
-                .await
-                .with_error_context(|error| format!("Failed to load indexes for {self}. {error}"))
-                .map_err(|_| IggyError::CannotReadFile)?,
-        );
+        self.indexes = self
+            .index_reader
+            .as_ref()
+            .unwrap()
+            .load_all_indexes_impl()
+            .await
+            .with_error_context(|error| format!("Failed to load indexes for {self}. {error}"))
+            .map_err(|_| IggyError::CannotReadFile)?;
 
-        let last_index_offset = if self.indexes.as_ref().unwrap().is_empty() {
+        let last_index_offset = if self.indexes.is_empty() {
             0_u64
         } else {
-            self.indexes.as_ref().unwrap().last().unwrap().offset as u64
+            self.indexes.last().unwrap().offset as u64
         };
 
         self.current_offset = self.start_offset + last_index_offset;
 
         info!("Loaded {} indexes for segment with start offset: {} and partition with ID: {} for topic with ID: {} and stream with ID: {}.",
-              self.indexes.as_ref().unwrap().len(),
+              self.indexes.len(),
               self.start_offset,
               self.partition_id,
               self.topic_id,
               self.stream_id);
-
-        if !self.config.segment.cache_indexes {
-            self.indexes = None;
-        }
 
         if self.is_full().await {
             self.is_closed = true;
@@ -221,8 +216,7 @@ impl Segment {
         .await?;
 
         let index_writer =
-            SegmentIndexWriter::new(&self.index_path, self.index_size_bytes.clone(), index_fsync)
-                .await?;
+            IndexWriter::new(&self.index_path, self.index_size_bytes.clone(), index_fsync).await?;
 
         self.messages_writer = Some(log_writer);
         self.index_writer = Some(index_writer);
@@ -233,7 +227,7 @@ impl Segment {
         let log_reader = MessagesReader::new(&self.log_path, self.log_size_bytes.clone()).await?;
         // TODO(hubcio): there is no need to store open fd for reader if we have index cache enabled
         let index_reader =
-            SegmentIndexReader::new(&self.index_path, self.index_size_bytes.clone()).await?;
+            IndexReader::new(&self.index_path, self.index_size_bytes.clone()).await?;
 
         self.messages_reader = Some(log_reader);
         self.index_reader = Some(index_reader);
@@ -434,8 +428,7 @@ mod tests {
         assert_eq!(segment.log_path, log_path);
         assert_eq!(segment.index_path, index_path);
         assert_eq!(segment.message_expiry, message_expiry);
-        assert!(segment.unsaved_messages.is_none());
-        assert!(segment.indexes.is_some());
+        assert!(segment.indexes.is_empty());
         assert!(!segment.is_closed);
         assert!(!segment.is_full().await);
     }
@@ -476,6 +469,6 @@ mod tests {
             messages_count_of_parent_partition,
         );
 
-        assert!(segment.indexes.is_none());
+        assert!(segment.indexes.is_empty());
     }
 }

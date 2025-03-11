@@ -133,9 +133,10 @@ impl PartitionStorage for FilePartitionStorage {
                 format!("{COMPONENT} (error: {error}) - failed to load segment: {segment}",)
             })?;
             let capacity = partition.config.partition.messages_required_to_save;
-            if !segment.is_closed {
-                segment.unsaved_messages = Some(Default::default());
-            }
+            // TODO(hubcio)
+            // if !segment.is_closed {
+            //     segment.unsaved_messages = Some(Default::default());
+            // }
 
             // If the first segment has at least a single message, we should increment the offset.
             if !partition.should_increment_offset {
