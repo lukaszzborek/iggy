@@ -68,6 +68,7 @@ impl Segment {
         );
 
         let accumulator = std::mem::take(&mut self.accumulator);
+        
         let batches = accumulator.materialize();
         let confirmation = match confirmation {
             Some(val) => val,

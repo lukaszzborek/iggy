@@ -4,7 +4,7 @@ use iggy::prelude::*;
 use server::configs::resource_quota::MemoryResourceQuota;
 use server::configs::system::{CacheConfig, PartitionConfig, SegmentConfig, SystemConfig};
 use server::streaming::partitions::partition::Partition;
-use server::streaming::segments::IggyMessagesMut;
+use server::streaming::segments::{IggyMessagesBatch, IggyMessagesMut};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU32, AtomicU64};
@@ -234,7 +234,7 @@ async fn test_get_messages_by_offset(
 
     // Test 6: Validate message content and ordering
     // Convert to a Vec of IggyMessage to avoid lifetime issues
-    let message_vec = messages.to_messages();
+    let message_vec = std::convert::Into::<Vec<IggyMessage>>::into(messages);
 
     for (i, msg) in message_vec.iter().enumerate() {
         let expected_offset = span_offset + i as u64;

@@ -97,7 +97,7 @@ impl LendingIterator for IggyMessageViewMutIterator<'_> {
                 self.position,
                 self.buffer.len()
             );
-            self.position = self.buffer.len(); // Move to end to prevent infinite loops
+            self.position = self.buffer.len();
             return None;
         }
 
@@ -111,7 +111,7 @@ impl LendingIterator for IggyMessageViewMutIterator<'_> {
                 "Message size is 0 at position {}, preventing infinite loop",
                 self.position
             );
-            self.position = buffer_len; // Move to end to prevent infinite loops
+            self.position = buffer_len;
             return None;
         }
 

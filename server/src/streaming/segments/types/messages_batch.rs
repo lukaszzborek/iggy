@@ -88,6 +88,18 @@ impl IggyMessagesBatch {
     pub fn iter(&self) -> impl Iterator<Item = &IggyMessages> {
         self.messages.iter()
     }
+
+    // /// Convert to Vec<IggyMessage>
+    // pub fn into_messages_vec(self) -> Vec<IggyMessage> {
+    //     let mut messages = Vec::with_capacity(self.messages_count() as usize);
+
+    //     for batch in self.iter() {
+    //         for message in batch.iter() {
+    //             messages.push(message);
+    //         }
+    //     }
+    //     messages
+    // }
 }
 
 impl Sizeable for IggyMessagesBatch {
