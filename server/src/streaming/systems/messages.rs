@@ -1,4 +1,4 @@
-use crate::streaming::segments::{IggyMessages, IggyMessagesBatch, IggyMessagesMut};
+use crate::streaming::segments::{IggyBatch, IggyMessages, IggyMessagesMut};
 use crate::streaming::session::Session;
 use crate::streaming::systems::system::System;
 use crate::streaming::systems::COMPONENT;
@@ -19,7 +19,7 @@ impl System {
         topic_id: &Identifier,
         partition_id: Option<u32>,
         args: PollingArgs,
-    ) -> Result<IggyMessagesBatch, IggyError> {
+    ) -> Result<IggyBatch, IggyError> {
         self.ensure_authenticated(session)?;
         if args.count == 0 {
             return Err(IggyError::InvalidMessagesCount);

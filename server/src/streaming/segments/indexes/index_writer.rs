@@ -1,4 +1,4 @@
-use super::{Index, INDEX_SIZE};
+use crate::streaming::segments::indexes::INDEX_SIZE;
 use error_set::ErrContext;
 use iggy::error::IggyError;
 use std::sync::{
@@ -61,29 +61,23 @@ impl IndexWriter {
         })
     }
 
-    /// Append multiple index records to the index file in a single operation.
-    pub async fn save_indexes(&mut self, indexes: &[Index]) -> Result<(), IggyError> {
+    /// Appends multiple index buffer to the index file in a single operation.
+    pub async fn save_indexes(&mut self, indexes: &[u8]) -> Result<(), IggyError> {
         if indexes.is_empty() {
             return Ok(());
         }
 
-        let mut buf = vec![0u8; INDEX_SIZE as usize * indexes.len()];
+        debug_assert!(indexes.len() % INDEX_SIZE as usize == 0);
 
-        for (i, index) in indexes.iter().enumerate() {
-            let start = i * INDEX_SIZE as usize;
-            buf[start..start + 4].copy_from_slice(&index.offset.to_le_bytes());
-            buf[start + 4..start + 8].copy_from_slice(&index.position.to_le_bytes());
-            buf[start + 8..start + 16].copy_from_slice(&index.timestamp.to_le_bytes());
-        }
+        let count = indexes.len() / INDEX_SIZE as usize;
 
         self.file
-            .write_all(&buf)
+            .write_all(indexes)
             .await
             .with_error_context(|error| {
                 format!(
                     "Failed to write {} indexes to file: {}. {error}",
-                    indexes.len(),
-                    self.file_path
+                    count, self.file_path
                 )
             })
             .map_err(|_| IggyError::CannotSaveIndexToSegment)?;
@@ -93,7 +87,9 @@ impl IndexWriter {
         }
 
         self.index_size_bytes
-            .fetch_add(INDEX_SIZE as u64 * indexes.len() as u64, Ordering::Release);
+            .fetch_add(indexes.len() as u64, Ordering::Release);
+
+        trace!("Saved {count} indexes to file: {}", self.file_path);
 
         Ok(())
     }

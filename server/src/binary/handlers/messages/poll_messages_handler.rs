@@ -48,7 +48,7 @@ impl ServerCommandHandler for PollMessages {
         // long enough" errors while optimizing transmission by using larger chunks.
 
         let response_length = (batches.size() + 4).to_le_bytes();
-        let messages_count = batches.messages_count().to_le_bytes();
+        let messages_count = batches.count().to_le_bytes();
 
         let mut io_slices = Vec::with_capacity(batches.containers_count() + 1);
         io_slices.push(IoSlice::new(&messages_count));

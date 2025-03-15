@@ -1,16 +1,16 @@
 use super::{message_view_mut::IggyMessageViewMutIterator, IggyMessages};
-use crate::streaming::segments::Index;
+use crate::streaming::segments::indexes::IggyIndexesMut;
 use bytes::{BufMut, BytesMut};
 use iggy::prelude::*;
 use lending_iterator::prelude::*;
 use std::ops::Deref;
 
 /// A container for mutable messages
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, Default)]
 pub struct IggyMessagesMut {
-    /// The number of messages in the buffer
+    /// Number of messages in the buffer
     count: u32,
-    /// The buffer containing the messages
+    /// The buffer containing all messages
     buffer: BytesMut,
 }
 
@@ -24,28 +24,28 @@ impl IggyMessagesMut {
     /// Create a new messages container with a specified capacity
     pub fn with_capacity(capacity: u32) -> Self {
         Self {
-            buffer: BytesMut::with_capacity(capacity as usize),
             count: 0,
+            buffer: BytesMut::with_capacity(capacity as usize),
         }
     }
 
     /// Create a new messages container from a existing buffer of bytes
     pub fn from_bytes(bytes: BytesMut, messages_count: u32) -> Self {
         Self {
-            buffer: bytes,
             count: messages_count,
+            buffer: bytes,
         }
     }
 
     /// Create a new messages container from a slice of messages
     pub fn from_messages(messages: &[IggyMessage], messages_size: u32) -> Self {
-        let mut messages_mut = Self::with_capacity(messages_size);
-
+        let mut buffer = BytesMut::with_capacity(messages_size as usize);
         for message in messages {
-            messages_mut.buffer.extend_from_slice(&message.to_bytes());
+            let bytes = message.to_bytes();
+            buffer.put_slice(&bytes);
         }
-        messages_mut.count = messages.len() as u32;
-        messages_mut
+
+        Self::from_bytes(buffer, messages.len() as u32)
     }
 
     /// Create a lending iterator over mutable messages
@@ -71,35 +71,34 @@ impl IggyMessagesMut {
         base_offset: u64,
         timestamp: u64,
         current_position: u32,
-        indexes: &mut Vec<Index>,
+        indexes: &mut IggyIndexesMut,
     ) -> IggyMessages {
-        let max_messages = self.count;
         let mut current_offset = base_offset;
         let mut current_position = current_position;
         let mut iter = self.iter_mut();
-        let mut processed_count = 0;
 
         while let Some(mut message) = iter.next() {
-            debug_assert!(processed_count <= max_messages);
-            processed_count += 1;
-
             message.msg_header_mut().set_offset(current_offset);
             message.msg_header_mut().set_timestamp(timestamp);
-
             message.update_checksum();
+
+            indexes.add_unsaved_index(
+                (current_offset - base_offset) as u32,
+                current_position,
+                timestamp,
+            );
 
             current_offset += 1;
             current_position += message.size() as u32;
-
-            indexes.push(Index {
-                offset: (current_offset - base_offset) as u32,
-                position: current_position,
-                timestamp,
-            });
         }
 
         let buffer = self.buffer.freeze();
         IggyMessages::new(buffer, self.count)
+    }
+
+    /// Returns true if the container is empty
+    pub fn is_empty(&self) -> bool {
+        self.count == 0
     }
 }
 

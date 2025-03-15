@@ -1,12 +1,9 @@
 use crate::configs::system::SystemConfig;
-use crate::streaming::cache::buffer::SmartCache;
-use crate::streaming::cache::memory_tracker::CacheMemoryTracker;
 use crate::streaming::deduplication::message_deduplicator::MessageDeduplicator;
 use crate::streaming::segments::*;
 use crate::streaming::storage::SystemStorage;
 use dashmap::DashMap;
 use iggy::consumer::ConsumerKind;
-use iggy::models::stats::CacheMetrics;
 use iggy::utils::byte_size::IggyByteSize;
 use iggy::utils::duration::IggyDuration;
 use iggy::utils::expiry::IggyExpiry;

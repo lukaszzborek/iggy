@@ -1,4 +1,4 @@
-use crate::streaming::segments::IggyMessages;
+use crate::streaming::segments::{indexes::ReadBoundary, IggyBatch, IggyMessages};
 use bytes::{Bytes, BytesMut};
 use error_set::ErrContext;
 use iggy::error::IggyError;
@@ -105,24 +105,24 @@ impl MessagesReader {
 
     pub async fn load_messages_impl(
         &self,
-        start_pos: u32,
-        count_bytes: u32,
-        messages_count: u32,
-    ) -> Result<IggyMessages, IggyError> {
+        read_boundary: ReadBoundary,
+    ) -> Result<IggyBatch, IggyError> {
         let file_size = self.file_size();
         if file_size == 0 {
             trace!("Messages file {} is empty.", self.file_path);
-            return Ok(IggyMessages::empty());
+            return Ok(IggyBatch::empty());
         }
+
+        let start_pos = read_boundary.start_position;
+        let count_bytes = read_boundary.bytes;
+        let messages_count = read_boundary.messages_count;
 
         let messages_bytes = match self
             .read_bytes_at(start_pos as u64, count_bytes as u64)
             .await
         {
             Ok(buf) => buf,
-            Err(error) if error.kind() == ErrorKind::UnexpectedEof => {
-                return Ok(IggyMessages::empty())
-            }
+            Err(error) if error.kind() == ErrorKind::UnexpectedEof => return Ok(IggyBatch::empty()),
             Err(error) => {
                 error!(
                     "Error reading {messages_count} messages at position {start_pos} in file {} of size {}: {error}",
@@ -132,7 +132,10 @@ impl MessagesReader {
             }
         };
 
-        Ok(IggyMessages::new(messages_bytes, messages_count))
+        Ok(IggyBatch::from(IggyMessages::new(
+            messages_bytes,
+            messages_count,
+        )))
     }
 
     fn file_size(&self) -> u64 {

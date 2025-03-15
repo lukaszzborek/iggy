@@ -5,8 +5,8 @@ use crate::streaming::segments::*;
 use error_set::ErrContext;
 use iggy::confirmation::Confirmation;
 use iggy::prelude::*;
-use std::sync::{atomic::Ordering, Arc};
-use tracing::{trace, warn};
+use std::sync::atomic::Ordering;
+use tracing::trace;
 
 impl Partition {
     /// Retrieves messages by timestamp (up to a specified count).
@@ -14,51 +14,28 @@ impl Partition {
         &self,
         timestamp: IggyTimestamp,
         count: u32,
-    ) -> Result<Vec<Arc<()>>, IggyError> {
-        //TODO: Fix me
-        /*
+    ) -> Result<IggyBatch, IggyError> {
         trace!(
-            "Getting messages by timestamp: {} for partition: {}...",
-            timestamp,
+            "Getting {count} messages by timestamp: {} for partition: {}...",
+            timestamp.as_micros(),
             self.partition_id
         );
 
         if self.segments.is_empty() || count == 0 {
-            return Ok(Vec::new());
+            return Ok(IggyBatch::empty());
         }
 
         let query_ts = timestamp.as_micros();
-        let mut messages = Vec::new();
-        let mut remaining = count as usize;
 
-        for segment in &self.segments {
-            if segment.end_timestamp < query_ts {
-                continue;
-            }
+        // Filter segments that may contain messages with timestamp >= query_ts
+        let filtered_segments: Vec<&Segment> = self
+            .segments
+            .iter()
+            .filter(|segment| segment.end_timestamp >= query_ts)
+            .collect();
 
-            let segment_messages = segment
-                .get_messages_by_timestamp(query_ts, remaining)
-                .await
-                .with_error_context(|error| {
-                    format!(
-                        "{COMPONENT} (error: {error}) - failed to get messages from segment, \
-                        partition: {}, segment start: {}, end: {}",
-                        self, segment.start_offset, segment.end_offset
-                    )
-                })?;
-
-            let num_messages = segment_messages.len();
-            messages.extend(segment_messages);
-            remaining -= num_messages;
-
-            if remaining == 0 {
-                break;
-            }
-        }
-
-        Ok(messages)
-        */
-        todo!()
+        // Use a dedicated method to retrieve messages across segments by timestamp
+        Self::get_messages_from_segments_by_timestamp(filtered_segments, query_ts, count).await
     }
 
     // Retrieves messages by offset (up to a specified count).
@@ -66,18 +43,16 @@ impl Partition {
         &self,
         start_offset: u64,
         count: u32,
-    ) -> Result<IggyMessagesBatch, IggyError> {
+    ) -> Result<IggyBatch, IggyError> {
         trace!(
-            "Getting messages for start offset: {start_offset} for partition: {}, current offset: {}...",
+            "Getting {count} messages for start offset: {start_offset} for partition: {}, current offset: {}...",
             self.partition_id,
             self.current_offset
         );
-        //TODO: Fix me
-        /*
+
         if self.segments.is_empty() || start_offset > self.current_offset {
-            return Ok(Vec::new());
+            return Ok(IggyBatch::empty());
         }
-        */
 
         let end_offset = self.get_end_offset(start_offset, count);
 
@@ -94,12 +69,12 @@ impl Partition {
     }
 
     // Retrieves the first messages (up to a specified count).
-    pub async fn get_first_messages(&self, count: u32) -> Result<IggyMessagesBatch, IggyError> {
+    pub async fn get_first_messages(&self, count: u32) -> Result<IggyBatch, IggyError> {
         self.get_messages_by_offset(0, count).await
     }
 
     // Retrieves the last messages (up to a specified count).
-    pub async fn get_last_messages(&self, count: u32) -> Result<IggyMessagesBatch, IggyError> {
+    pub async fn get_last_messages(&self, count: u32) -> Result<IggyBatch, IggyError> {
         let mut requested_count = count as u64;
         if requested_count > self.current_offset + 1 {
             requested_count = self.current_offset + 1
@@ -114,7 +89,7 @@ impl Partition {
         &self,
         consumer: PollingConsumer,
         count: u32,
-    ) -> Result<IggyMessagesBatch, IggyError> {
+    ) -> Result<IggyBatch, IggyError> {
         let (consumer_offsets, consumer_id) = match consumer {
             PollingConsumer::Consumer(consumer_id, _) => (&self.consumer_offsets, consumer_id),
             PollingConsumer::ConsumerGroup(group_id, _) => (&self.consumer_group_offsets, group_id),
@@ -156,7 +131,7 @@ impl Partition {
     fn get_end_offset(&self, offset: u64, count: u32) -> u64 {
         let mut end_offset = offset + (count - 1) as u64;
         let segment = self.segments.last().unwrap();
-        let max_offset = segment.current_offset;
+        let max_offset = segment.end_offset;
         if end_offset > max_offset {
             end_offset = max_offset;
         }
@@ -182,10 +157,10 @@ impl Partition {
         segments: Vec<&Segment>,
         offset: u64,
         count: u32,
-    ) -> Result<IggyMessagesBatch, IggyError> {
+    ) -> Result<IggyBatch, IggyError> {
         let mut remaining_count = count;
         let mut current_offset = offset;
-        let mut batches = IggyMessagesBatch::new();
+        let mut batches = IggyBatch::empty();
         for segment in segments {
             if remaining_count == 0 {
                 break;
@@ -203,7 +178,7 @@ impl Partition {
                 })?;
 
             // Update remaining count and offset for next segment
-            let messages_count = messages.messages_count();
+            let messages_count = messages.count();
             remaining_count = remaining_count.saturating_sub(messages_count);
 
             // Update the offset for the next segment if needed
@@ -241,6 +216,41 @@ impl Partition {
         //     results.extend(slices);
         // }
         // Ok(results)
+    }
+
+    /// Retrieves messages from multiple segments by timestamp.
+    async fn get_messages_from_segments_by_timestamp(
+        segments: Vec<&Segment>,
+        timestamp: u64,
+        count: u32,
+    ) -> Result<IggyBatch, IggyError> {
+        let mut remaining_count = count;
+        let mut batches = IggyBatch::empty();
+
+        for segment in segments {
+            if remaining_count == 0 {
+                break;
+            }
+
+            let messages = segment
+                .get_messages_by_timestamp(timestamp, remaining_count)
+                .await
+                .with_error_context(|error| {
+                    format!(
+                        "{COMPONENT} (error: {error}) - failed to get messages from segment by timestamp, \
+                         segment: {}, timestamp: {}, count: {}",
+                        segment, timestamp, remaining_count
+                    )
+                })?;
+
+            // Update remaining count for the next segment
+            let messages_count = messages.count();
+            remaining_count = remaining_count.saturating_sub(messages_count);
+
+            batches.add_batch(messages);
+        }
+
+        Ok(batches)
     }
 
     pub async fn append_messages(

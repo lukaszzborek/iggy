@@ -27,11 +27,11 @@ impl Segment {
             messages,
         );
 
-        if self.current_offset == 0 {
-            self.start_timestamp = messages_accumulator.batch_base_timestamp();
+        if self.end_offset == 0 {
+            self.start_timestamp = messages_accumulator.base_timestamp();
         }
-        self.end_timestamp = messages_accumulator.batch_max_timestamp();
-        self.current_offset = messages_accumulator.max_offset();
+        self.end_timestamp = messages_accumulator.max_timestamp();
+        self.end_offset = messages_accumulator.max_offset();
 
         self.size_bytes += IggyByteSize::from(messages_size as u64);
 
@@ -68,7 +68,7 @@ impl Segment {
         );
 
         let accumulator = std::mem::take(&mut self.accumulator);
-        
+
         let batches = accumulator.materialize();
         let confirmation = match confirmation {
             Some(val) => val,
@@ -85,16 +85,21 @@ impl Segment {
 
         self.last_index_position += saved_bytes.as_bytes_u64() as u32;
 
-        debug_assert!(self.last_index_position == self.indexes.last().unwrap().position);
+        let unsaved_indexes_slice = self.indexes.get_unsaved_indexes();
 
         self.index_writer
             .as_mut()
             .unwrap()
-            .save_indexes(&self.indexes)
+            .save_indexes(unsaved_indexes_slice)
             .await
             .with_error_context(|error| format!("Failed to save index for {self}. {error}"))?;
 
-        self.indexes.clear();
+        self.indexes.mark_saved();
+
+        if !self.config.segment.cache_indexes {
+            self.indexes.clear();
+        }
+
         trace!(
             "Saved {} messages on disk in segment with start offset: {} for partition with ID: {}, total bytes written: {}.",
             unsaved_messages_number,
@@ -104,7 +109,6 @@ impl Segment {
         );
 
         if self.is_full().await {
-            self.end_offset = self.current_offset;
             self.is_closed = true;
             self.shutdown_writing().await;
             info!(

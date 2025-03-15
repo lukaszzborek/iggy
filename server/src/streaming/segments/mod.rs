@@ -6,12 +6,13 @@ mod segment;
 mod types;
 mod writing_messages;
 
-pub use indexes::Index;
+pub use indexes::{IggyIndexView, IggyIndexesMut};
+pub use messages_accumulator::MessagesAccumulator;
 pub use segment::Segment;
+pub use types::IggyBatch;
 pub use types::IggyMessageHeaderViewMut;
 pub use types::IggyMessageViewMut;
 pub use types::IggyMessages;
-pub use types::IggyMessagesBatch;
 pub use types::IggyMessagesMut;
 
 pub const LOG_EXTENSION: &str = "log";

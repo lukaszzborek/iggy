@@ -194,11 +194,7 @@ impl PartitionStorage for FilePartitionStorage {
 
         if !partition.segments.is_empty() {
             let last_segment = partition.segments.last_mut().unwrap();
-            if last_segment.is_closed {
-                last_segment.end_offset = last_segment.current_offset;
-            }
-
-            partition.current_offset = last_segment.current_offset;
+            partition.current_offset = last_segment.end_offset;
         }
 
         partition

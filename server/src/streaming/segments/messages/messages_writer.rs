@@ -1,11 +1,7 @@
 use super::PersisterTask;
-use crate::streaming::segments::{messages::write_batch, IggyMessagesBatch};
+use crate::streaming::segments::{messages::write_batch, IggyBatch};
 use error_set::ErrContext;
-use iggy::{
-    confirmation::Confirmation,
-    error::IggyError,
-    utils::{byte_size::IggyByteSize, duration::IggyDuration},
-};
+use iggy::{confirmation::Confirmation, error::IggyError, utils::byte_size::IggyByteSize};
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc,
@@ -36,8 +32,6 @@ impl MessagesWriter {
         messages_size_bytes: Arc<AtomicU64>,
         fsync: bool,
         server_confirmation: Confirmation,
-        max_file_operation_retries: u32,
-        retry_delay: IggyDuration,
     ) -> Result<Self, IggyError> {
         let file = OpenOptions::new()
             .write(true)
@@ -68,8 +62,6 @@ impl MessagesWriter {
                     file_path.to_string(),
                     fsync,
                     messages_size_bytes.clone(),
-                    max_file_operation_retries,
-                    retry_delay,
                 );
                 (None, Some(persister))
             }
@@ -88,7 +80,7 @@ impl MessagesWriter {
     /// Append a messages to the messages file.
     pub async fn save_batches(
         &mut self,
-        batches: IggyMessagesBatch,
+        batches: IggyBatch,
         confirmation: Confirmation,
     ) -> Result<IggyByteSize, IggyError> {
         let messages_size = batches.size();

@@ -13,6 +13,8 @@ use std::sync::Arc;
 use tokio::fs::remove_file;
 use tracing::{info, warn};
 
+const INDEXES_CAPACITY: usize = 16 * 1000 * 1000 * 1000; // 16 MB, 1 million indexes for 1 million messages of 1kB
+
 #[derive(Debug)]
 pub struct Segment {
     pub stream_id: u32,
@@ -20,9 +22,8 @@ pub struct Segment {
     pub partition_id: u32,
     pub start_offset: u64,
     pub start_timestamp: u64, // first message timestamp
+    pub end_timestamp: u64,   // last message timestamp
     pub end_offset: u64,
-    pub end_timestamp: u64, // last message timestamp
-    pub current_offset: u64,
     pub index_path: String,
     pub log_path: String,
     pub size_bytes: IggyByteSize,
@@ -42,7 +43,7 @@ pub struct Segment {
     pub message_expiry: IggyExpiry,
     pub accumulator: MessagesAccumulator,
     pub config: Arc<SystemConfig>,
-    pub indexes: Vec<Index>,
+    pub indexes: IggyIndexesMut,
     pub(super) log_size_bytes: Arc<AtomicU64>,
     pub(super) index_size_bytes: Arc<AtomicU64>,
 }
@@ -70,10 +71,6 @@ impl Segment {
             IggyExpiry::ServerDefault => config.segment.message_expiry,
             _ => message_expiry,
         };
-        // let indexes = match config.segment.cache_indexes {
-        //     true => Some(Vec::new()),
-        //     false => None,
-        // };
 
         Segment {
             stream_id,
@@ -81,16 +78,15 @@ impl Segment {
             partition_id,
             start_offset,
             start_timestamp: IggyTimestamp::now().as_micros(),
-            end_offset: 0,
             end_timestamp: IggyTimestamp::now().as_micros(),
-            current_offset: start_offset,
+            end_offset: start_offset,
             log_path,
             index_path,
             size_bytes: IggyByteSize::from(0),
             last_index_position: 0,
             max_size_bytes: config.segment.size,
             message_expiry,
-            indexes: Vec::new(), // TODO add capacity
+            indexes: IggyIndexesMut::with_capacity(INDEXES_CAPACITY),
             accumulator: MessagesAccumulator::default(),
             is_closed: false,
             messages_writer: None,
@@ -140,13 +136,13 @@ impl Segment {
         let last_index_offset = if self.indexes.is_empty() {
             0_u64
         } else {
-            self.indexes.last().unwrap().offset as u64
+            self.indexes.last().unwrap().offset() as u64
         };
 
-        self.current_offset = self.start_offset + last_index_offset;
+        self.end_offset = self.start_offset + last_index_offset;
 
         info!("Loaded {} indexes for segment with start offset: {} and partition with ID: {} for topic with ID: {} and stream with ID: {}.",
-              self.indexes.len(),
+              self.indexes.count(),
               self.start_offset,
               self.partition_id,
               self.topic_id,
@@ -163,7 +159,7 @@ impl Segment {
             IggyByteSize::from(log_size_bytes),
             messages_count,
             self.start_offset,
-            self.current_offset,
+            self.end_offset,
             self.partition_id,
             self.topic_id,
             self.stream_id
@@ -202,16 +198,12 @@ impl Segment {
         let index_fsync = self.config.partition.enforce_fsync;
 
         let server_confirmation = self.config.segment.server_confirmation;
-        let max_file_operation_retries = self.config.state.max_file_operation_retries;
-        let retry_delay = self.config.state.retry_delay;
 
         let log_writer = MessagesWriter::new(
             &self.log_path,
             self.log_size_bytes.clone(),
             log_fsync,
             server_confirmation,
-            max_file_operation_retries,
-            retry_delay,
         )
         .await?;
 
@@ -364,13 +356,12 @@ impl std::fmt::Display for Segment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Segment {{ stream_id: {}, topic_id: {}, partition_id: {}, start_offset: {}, end_offset: {}, current_offset: {}, size_bytes: {}, last_index_position: {}, max_size_bytes: {}, closed: {} }}",
+            "Segment {{ stream_id: {}, topic_id: {}, partition_id: {}, start_offset: {}, current_offset: {}, size_bytes: {}, last_index_position: {}, max_size_bytes: {}, closed: {} }}",
             self.stream_id,
             self.topic_id,
             self.partition_id,
             self.start_offset,
             self.end_offset,
-            self.current_offset,
             self.size_bytes,
             self.last_index_position,
             self.max_size_bytes,
@@ -422,7 +413,6 @@ mod tests {
         assert_eq!(segment.topic_id, topic_id);
         assert_eq!(segment.partition_id, partition_id);
         assert_eq!(segment.start_offset, start_offset);
-        assert_eq!(segment.current_offset, 0);
         assert_eq!(segment.end_offset, 0);
         assert_eq!(segment.size_bytes, 0);
         assert_eq!(segment.log_path, log_path);

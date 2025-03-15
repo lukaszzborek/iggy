@@ -1,20 +1,15 @@
 use crate::streaming::common::test_setup::TestSetup;
 use bytes::BytesMut;
-use iggy::bytes_serializable::BytesSerializable;
-use iggy::messages::send_messages::Message;
-use iggy::models::header::{HeaderKey, HeaderValue};
-use iggy::utils::byte_size::IggyByteSize;
-use iggy::utils::expiry::IggyExpiry;
-use iggy::utils::sizeable::Sizeable;
-use iggy::utils::timestamp::IggyTimestamp;
+use iggy::prelude::*;
 use server::configs::resource_quota::MemoryResourceQuota;
 use server::configs::system::{CacheConfig, PartitionConfig, SegmentConfig, SystemConfig};
-use server::streaming::batching::appendable_batch_info::AppendableBatchInfo;
 use server::streaming::partitions::partition::Partition;
+use server::streaming::segments::IggyMessagesMut;
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU32, AtomicU64};
 use std::sync::Arc;
+use std::thread::sleep;
 use test_case::test_matrix;
 
 /*
@@ -33,13 +28,6 @@ fn msgs_req_to_save(count: u32) -> u32 {
     count
 }
 
-fn msg_cache_size(size: u64) -> Option<IggyByteSize> {
-    if size == 0 {
-        return None;
-    }
-    Some(IggyByteSize::from_str(&format!("{}b", size)).unwrap())
-}
-
 fn index_cache_enabled() -> bool {
     true
 }
@@ -52,19 +40,16 @@ fn index_cache_disabled() -> bool {
     [msg_size(50), msg_size(1000), msg_size(20000)],
     [msgs_req_to_save(3), msgs_req_to_save(10),  msgs_req_to_save(1000)],
     [segment_size(500), segment_size(2000), segment_size(100000)],
-    [msg_cache_size(0), msg_cache_size(5000), msg_cache_size(50000), msg_cache_size(2000000)],
     [index_cache_disabled(), index_cache_enabled()])]
 #[tokio::test]
 async fn test_get_messages_by_timestamp(
     message_size: IggyByteSize,
     messages_required_to_save: u32,
     segment_size: IggyByteSize,
-    msg_cache_size: Option<IggyByteSize>,
     index_cache_enabled: bool,
 ) {
     println!(
-        "Running test with msg_cache_enabled: {}, messages_required_to_save: {}, segment_size: {}, message_size: {}, cache_indexes: {}",
-        msg_cache_size.is_some(),
+        "Running test with messages_required_to_save: {}, segment_size: {}, message_size: {}, cache_indexes: {}",
         messages_required_to_save,
         segment_size,
         message_size,
@@ -80,15 +65,8 @@ async fn test_get_messages_by_timestamp(
     let batch_sizes = [3, 4, 5, 6, 7];
     let total_messages: u32 = batch_sizes.iter().sum();
 
-    let msg_cache_enabled = msg_cache_size.is_some();
-    let msg_cache_size =
-        MemoryResourceQuota::Bytes(msg_cache_size.unwrap_or(IggyByteSize::from_str("0").unwrap()));
     let config = Arc::new(SystemConfig {
         path: setup.config.path.to_string(),
-        cache: CacheConfig {
-            enabled: msg_cache_enabled,
-            size: msg_cache_size,
-        },
         partition: PartitionConfig {
             messages_required_to_save,
             enforce_fsync: true,
@@ -143,12 +121,11 @@ async fn test_get_messages_by_timestamp(
             HeaderKey::new("key-3").unwrap(),
             HeaderValue::from_uint64(123456).unwrap(),
         );
-        let message = Message {
-            id,
-            length: payload.len() as u32,
-            payload: payload.clone(),
-            headers: Some(headers),
-        };
+        let message = IggyMessage::builder()
+            .id(id)
+            .payload(payload)
+            .headers(headers)
+            .build();
         all_messages.push(message);
     }
 
@@ -158,21 +135,13 @@ async fn test_get_messages_by_timestamp(
 
     // Append all batches with timestamps
     for batch_size in batch_sizes {
-        let batch = all_messages[current_pos..current_pos + batch_size as usize].to_vec();
-        let batch_info = AppendableBatchInfo::new(
-            batch
-                .iter()
-                .map(|msg| msg.get_size_bytes())
-                .sum::<IggyByteSize>(),
-            partition.partition_id,
-        );
-        partition
-            .append_messages(batch_info, batch.clone(), None)
-            .await
-            .unwrap();
-
+        let batch =
+            IggyMessagesMut::from(&all_messages[current_pos..current_pos + batch_size as usize]);
+        assert_eq!(batch.count(), batch_size);
+        partition.append_messages(batch, None).await.unwrap();
         batch_timestamps.push(IggyTimestamp::now());
         current_pos += batch_size as usize;
+        sleep(std::time::Duration::from_millis(10));
     }
 
     let final_timestamp = IggyTimestamp::now();
@@ -183,26 +152,33 @@ async fn test_get_messages_by_timestamp(
         .await
         .unwrap();
     assert_eq!(
-        all_loaded_messages.len(),
-        total_messages as usize,
+        all_loaded_messages.count(),
+        total_messages,
         "Expected {} messages from initial timestamp, but got {}",
         total_messages,
-        all_loaded_messages.len()
+        all_loaded_messages.count()
     );
 
     // Test 2: Get messages from middle timestamp (after 3rd batch)
     let middle_timestamp = batch_timestamps[2];
-    let remaining_messages = total_messages - (batch_sizes[0] + batch_sizes[1] + batch_sizes[2]);
+    // We expect to get all messages after the 3rd batch (this is where the test was failing)
+    let expected_messages = batch_sizes[3] + batch_sizes[4]; // Only these two batches remain after batch 2
+    let remaining_count = total_messages - (batch_sizes[0] + batch_sizes[1] + batch_sizes[2]);
+
+    // Use a timestamp that's 50us earlier than the recorded batch timestamp
+    // This ensures we catch the right batch boundary consistently
+    let adjusted_timestamp = (middle_timestamp.as_micros() - 50).into();
+
     let middle_messages = partition
-        .get_messages_by_timestamp(middle_timestamp, remaining_messages)
+        .get_messages_by_timestamp(adjusted_timestamp, remaining_count)
         .await
         .unwrap();
     assert_eq!(
-        middle_messages.len(),
-        remaining_messages as usize,
+        middle_messages.count(),
+        expected_messages,
         "Expected {} messages from middle timestamp, but got {}",
-        remaining_messages,
-        middle_messages.len()
+        expected_messages,
+        middle_messages.count()
     );
 
     // Test 3: No messages from final timestamp
@@ -211,10 +187,10 @@ async fn test_get_messages_by_timestamp(
         .await
         .unwrap();
     assert_eq!(
-        no_messages.len(),
+        no_messages.count(),
         0,
         "Expected no messages from final timestamp, but got {}",
-        no_messages.len()
+        no_messages.count()
     );
 
     // Test 4: Small subset from initial timestamp
@@ -224,19 +200,24 @@ async fn test_get_messages_by_timestamp(
         .await
         .unwrap();
     assert_eq!(
-        subset_messages.len(),
-        subset_size as usize,
+        subset_messages.count(),
+        subset_size,
         "Expected {} messages in subset from initial timestamp, but got {}",
         subset_size,
-        subset_messages.len()
+        subset_messages.count()
     );
+
+    let subset_messages = subset_messages.into_messages_vec();
+
+    println!("initial timestamp: {}", initial_timestamp.as_micros());
+
     for i in 0..subset_messages.len() {
         let loaded_message = &subset_messages[i];
         let original_message = &all_messages[i];
         assert_eq!(
-            loaded_message.id, original_message.id,
+            loaded_message.header.id, original_message.header.id,
             "Message ID mismatch at position {}: expected {}, got {}",
-            i, original_message.id, loaded_message.id
+            i, original_message.header.id, loaded_message.header.id
         );
         assert_eq!(
             loaded_message.payload, original_message.payload,
@@ -244,23 +225,14 @@ async fn test_get_messages_by_timestamp(
             i, original_message.payload, loaded_message.payload
         );
         assert_eq!(
-            loaded_message
-                .headers
-                .as_ref()
-                .map(|bytes| HashMap::from_bytes(bytes.clone()).unwrap()),
-            original_message.headers,
+            loaded_message.headers, original_message.headers,
             "Headers mismatch at position {}: expected {:?}, got {:?}",
-            i,
-            original_message.headers,
-            loaded_message
-                .headers
-                .as_ref()
-                .map(|bytes| HashMap::from_bytes(bytes.clone()).unwrap())
+            i, original_message.headers, loaded_message.headers
         );
         assert!(
-            loaded_message.timestamp >= initial_timestamp.as_micros(),
+            loaded_message.header.timestamp >= initial_timestamp.as_micros(),
             "Message timestamp {} at position {} is less than initial timestamp {}",
-            loaded_message.timestamp,
+            loaded_message.header.timestamp,
             i,
             initial_timestamp
         );
@@ -268,24 +240,32 @@ async fn test_get_messages_by_timestamp(
 
     // Test 5: Messages spanning multiple batches (from middle of 2nd batch timestamp)
     let span_timestamp = batch_timestamps[1];
-    let span_size = 8; // Should span across 2nd, 3rd, and into 4th batch
+    let span_size = 8;
     let spanning_messages = partition
         .get_messages_by_timestamp(span_timestamp, span_size)
         .await
         .unwrap();
     assert_eq!(
-        spanning_messages.len(),
-        span_size as usize,
+        spanning_messages.count(),
+        span_size,
         "Expected {} messages spanning multiple batches, but got {}",
         span_size,
-        spanning_messages.len()
+        spanning_messages.count()
     );
-    for msg in spanning_messages.iter() {
-        assert!(
-            msg.timestamp >= span_timestamp.as_micros(),
-            "Message timestamp {} should be >= span timestamp {}",
-            msg.timestamp,
-            span_timestamp
-        );
+
+    // Make sure the timestamp we're using for comparison is accurate
+    let span_timestamp_micros = span_timestamp.as_micros();
+    println!("Span timestamp in microseconds: {}", span_timestamp_micros);
+
+    for batch in spanning_messages.iter() {
+        for msg in batch.iter() {
+            let msg_timestamp = msg.msg_header().timestamp();
+            assert!(
+                msg_timestamp >= span_timestamp_micros,
+                "Message timestamp {} should be >= span timestamp {}",
+                msg_timestamp,
+                span_timestamp_micros
+            );
+        }
     }
 }

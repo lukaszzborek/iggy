@@ -1,5 +1,5 @@
 use crate::streaming::polling_consumer::PollingConsumer;
-use crate::streaming::segments::{IggyMessages, IggyMessagesBatch, IggyMessagesMut};
+use crate::streaming::segments::{IggyBatch, IggyMessages, IggyMessagesMut};
 use crate::streaming::topics::topic::Topic;
 use crate::streaming::topics::COMPONENT;
 use crate::streaming::utils::file::folder_size;
@@ -30,7 +30,7 @@ impl Topic {
         partition_id: u32,
         strategy: PollingStrategy,
         count: u32,
-    ) -> Result<IggyMessagesBatch, IggyError> {
+    ) -> Result<IggyBatch, IggyError> {
         if !self.has_partitions() {
             return Err(IggyError::NoPartitions(self.topic_id, self.stream_id));
         }

@@ -63,4 +63,17 @@ impl<'a> IggyMessageHeaderView<'a> {
         let bytes = &self.data[IGGY_MESSAGE_PAYLOAD_LENGTH_OFFSET_RANGE];
         u32::from_le_bytes(bytes.try_into().unwrap())
     }
+
+    /// Convert this view to a full IggyMessageHeader struct
+    pub fn to_header(&self) -> IggyMessageHeader {
+        IggyMessageHeader {
+            checksum: self.checksum(),
+            id: self.id(),
+            offset: self.offset(),
+            timestamp: self.timestamp(),
+            origin_timestamp: self.origin_timestamp(),
+            headers_length: self.headers_length(),
+            payload_length: self.payload_length(),
+        }
+    }
 }
