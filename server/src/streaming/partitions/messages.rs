@@ -113,8 +113,7 @@ impl Partition {
                 consumer_offset.offset,
                 self.partition_id
             );
-            //TODO: Fix me
-            //return Ok(Vec::new());
+            return Ok(IggyBatch::empty());
         }
 
         let offset = consumer_offset.offset + 1;

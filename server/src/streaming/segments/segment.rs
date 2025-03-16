@@ -235,33 +235,30 @@ impl Segment {
     }
 
     pub async fn is_expired(&self, now: IggyTimestamp) -> bool {
-        //TODO: Fix me
-        return false;
-        /*
-        if !self.is_closed {
-            return false;
-        }
+        false
+        // if !self.is_closed {
+        //     return false;
+        // }
 
-        match self.message_expiry {
-            IggyExpiry::NeverExpire => false,
-            IggyExpiry::ServerDefault => false,
-            IggyExpiry::ExpireDuration(expiry) => {
-                let last_messages = self.get_messages_by_offset(self.current_offset, 1).await;
-                if last_messages.is_err() {
-                    return false;
-                }
+        // match self.message_expiry {
+        //     IggyExpiry::NeverExpire => false,
+        //     IggyExpiry::ServerDefault => false,
+        //     IggyExpiry::ExpireDuration(expiry) => {
+        //         let last_messages = self.get_messages_by_offset(self.end_offset, 1).await;
+        //         if last_messages.is_err() {
+        //             return false;
+        //         }
 
-                let last_messages = last_messages.unwrap();
-                if last_messages.is_empty() {
-                    return false;
-                }
+        //         let last_messages = last_messages.unwrap();
+        //         if last_messages.is_empty() {
+        //             return false;
+        //         }
 
-                let last_message = &last_messages[0];
-                let last_message_timestamp = last_message.timestamp;
-                last_message_timestamp + expiry.as_micros() <= now.as_micros()
-            }
-        }
-        */
+        //         let last_message = last_messages.iter().last().unwrap();
+        //         let last_message_timestamp = last_message.timestamp;
+        //         last_message_timestamp + expiry.as_micros() <= now.as_micros()
+        //     }
+        // }
     }
 
     pub async fn shutdown_reading(&mut self) {

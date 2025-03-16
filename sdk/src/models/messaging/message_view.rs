@@ -1,10 +1,6 @@
 use super::message_header::*;
 use super::message_header_view::IggyMessageHeaderView;
 use crate::error::IggyError;
-use crate::models::messaging::header::HeaderKey;
-use crate::models::messaging::header::HeaderValue;
-use crate::prelude::BytesSerializable;
-use std::collections::HashMap;
 use std::iter::Iterator;
 
 /// A immutable view of a message.
