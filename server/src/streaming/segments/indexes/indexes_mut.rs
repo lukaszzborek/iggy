@@ -258,7 +258,7 @@ impl IggyIndexesMut {
             );
             0
         };
-        
+
         // Ensure we don't have underflow when calculating messages count
         let actual_messages_count = if end_position_in_array >= start_position_in_array {
             end_position_in_array - start_position_in_array + 1

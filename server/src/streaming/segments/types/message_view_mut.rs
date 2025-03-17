@@ -41,7 +41,6 @@ impl<'a> IggyMessageViewMut<'a> {
 
     /// Returns the size of the entire message (header + payload + user headers).
     pub fn size(&self) -> usize {
-        // TODO(hubcio): remove unwraps()
         let hdr_view = self.msg_header();
         (IGGY_MESSAGE_HEADER_SIZE + hdr_view.payload_length() + hdr_view.headers_length()) as usize
     }

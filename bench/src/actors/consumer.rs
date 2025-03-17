@@ -16,7 +16,6 @@ use iggy_bench_report::actor_kind::ActorKind;
 use iggy_bench_report::benchmark_kind::BenchmarkKind;
 use iggy_bench_report::individual_metrics::BenchmarkIndividualMetrics;
 use integration::test_server::{login_root, ClientFactory};
-use std::hint::black_box;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -27,7 +26,7 @@ pub struct Consumer {
     client_factory: Arc<dyn ClientFactory>,
     benchmark_kind: BenchmarkKind,
     consumer_id: u32,
-    consumer_group_id: Option<u32>, 
+    consumer_group_id: Option<u32>,
     stream_id: u32,
     messages_per_batch: u32,
     message_batches: u32,

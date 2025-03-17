@@ -1,15 +1,8 @@
 use crate::server_error::CompatError;
 use crate::streaming::utils::file;
+use iggy::prelude::{IggyMessageHeader, IGGY_MESSAGE_HEADER_SIZE};
 use std::io::SeekFrom;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, BufWriter};
-
-// Same struct as RetainedMessageBatch, but without payload
-pub struct BatchHeader {
-    base_offset: u64,
-    last_offset_delta: u32,
-    max_timestamp: u64,
-    length: u32,
-}
 
 pub struct IndexRebuilder {
     pub log_path: String,
@@ -26,61 +19,60 @@ impl IndexRebuilder {
         }
     }
 
-    async fn read_batch_header(
+    async fn read_message_header(
         reader: &mut BufReader<tokio::fs::File>,
-    ) -> Result<BatchHeader, std::io::Error> {
-        let base_offset = reader.read_u64_le().await?;
-        let length = reader.read_u32_le().await?;
-        let last_offset_delta = reader.read_u32_le().await?;
-        let max_timestamp = reader.read_u64_le().await?;
-
-        Ok(BatchHeader {
-            base_offset,
-            length,
-            last_offset_delta,
-            max_timestamp,
-        })
+    ) -> Result<IggyMessageHeader, std::io::Error> {
+        let mut buf = [0u8; IGGY_MESSAGE_HEADER_SIZE as usize];
+        reader.read_exact(&mut buf).await?;
+        Ok(IggyMessageHeader::from_raw_bytes(&buf)
+            .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData))?)
     }
 
     async fn write_index_entry(
         writer: &mut BufWriter<tokio::fs::File>,
-        header: &BatchHeader,
+        header: &IggyMessageHeader,
         position: u32,
         start_offset: u64,
     ) -> Result<(), CompatError> {
         // Write offset (4 bytes) - base_offset + last_offset_delta - start_offset
-        let offset = (header.base_offset + header.last_offset_delta as u64 - start_offset) as u32;
-        writer.write_u32_le(offset).await?;
+        let offset = start_offset - header.offset;
+        debug_assert!(offset <= u32::MAX as u64);
+        writer.write_u32_le(offset as u32).await?;
 
         // Write position (4 bytes)
         writer.write_u32_le(position).await?;
 
         // Write timestamp (8 bytes)
-        writer.write_u64_le(header.max_timestamp).await?;
+        writer.write_u64_le(header.timestamp).await?;
 
         Ok(())
     }
 
     pub async fn rebuild(&self) -> Result<(), CompatError> {
-        //TODO: Fix me
-        /*
         let mut reader = BufReader::new(file::open(&self.log_path).await?);
         let mut writer = BufWriter::new(file::overwrite(&self.index_path).await?);
         let mut position = 0;
         let mut next_position;
 
         loop {
-            match Self::read_batch_header(&mut reader).await {
+            match Self::read_message_header(&mut reader).await {
                 Ok(header) => {
                     // Calculate next position before writing current entry
-                    next_position = position + RETAINED_BATCH_HEADER_LEN as u32 + header.length;
+                    next_position = position
+                        + IGGY_MESSAGE_HEADER_SIZE as u32
+                        + header.payload_length
+                        + header.headers_length;
 
                     // Write index entry using current position
                     Self::write_index_entry(&mut writer, &header, position, self.start_offset)
                         .await?;
 
-                    // Skip batch messages
-                    reader.seek(SeekFrom::Current(header.length as i64)).await?;
+                    // Skip message payload and headers
+                    reader
+                        .seek(SeekFrom::Current(
+                            header.payload_length as i64 + header.headers_length as i64,
+                        ))
+                        .await?;
 
                     // Update position for next iteration
                     position = next_position;
@@ -92,7 +84,5 @@ impl IndexRebuilder {
 
         writer.flush().await?;
         Ok(())
-        */
-        todo!()
     }
 }

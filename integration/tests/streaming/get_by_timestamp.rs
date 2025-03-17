@@ -225,9 +225,9 @@ async fn test_get_messages_by_timestamp(
             i, original_message.payload, loaded_message.payload
         );
         assert_eq!(
-            loaded_message.headers, original_message.headers,
+            loaded_message.user_headers, original_message.user_headers,
             "Headers mismatch at position {}: expected {:?}, got {:?}",
-            i, original_message.headers, loaded_message.headers
+            i, original_message.user_headers, loaded_message.user_headers
         );
         assert!(
             loaded_message.header.timestamp >= initial_timestamp.as_micros(),

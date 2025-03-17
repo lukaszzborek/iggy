@@ -35,32 +35,30 @@ async fn poll_messages(
     Extension(identity): Extension<Identity>,
     Path((stream_id, topic_id)): Path<(String, String)>,
     mut query: Query<PollMessages>,
-) -> Result<Json<()>, CustomError> {
-    /*
-    query.stream_id = Identifier::from_str_value(&stream_id)?;
-    query.topic_id = Identifier::from_str_value(&topic_id)?;
-    query.validate()?;
+) -> Result<Json<Vec<IggyMessage>>, CustomError> {
+    // query.stream_id = Identifier::from_str_value(&stream_id)?;
+    // query.topic_id = Identifier::from_str_value(&topic_id)?;
+    // query.validate()?;
 
-    let consumer = Consumer::new(query.0.consumer.id);
-    let system = state.system.read().await;
-    let polled_messages = system
-        .poll_messages(
-            &Session::stateless(identity.user_id, identity.ip_address),
-            &consumer,
-            &query.0.stream_id,
-            &query.0.topic_id,
-            query.0.partition_id,
-            PollingArgs::new(query.0.strategy, query.0.count, query.0.auto_commit),
-        )
-        .await
-        .with_error_context(|error| {
-            format!(
-                "{COMPONENT} (error: {error}) - failed to poll messages, stream ID: {}, topic ID: {}, partition ID: {:?}",
-                stream_id, topic_id, query.0.partition_id
-            )
-        })?;
-    Ok(Json(polled_messages))
-    */
+    // let consumer = Consumer::new(query.0.consumer.id);
+    // let system = state.system.read().await;
+    // let polled_messages = system
+    //     .poll_messages(
+    //         &Session::stateless(identity.user_id, identity.ip_address),
+    //         &consumer,
+    //         &query.0.stream_id,
+    //         &query.0.topic_id,
+    //         query.0.partition_id,
+    //         PollingArgs::new(query.0.strategy, query.0.count, query.0.auto_commit),
+    //     )
+    //     .await
+    //     .with_error_context(|error| {
+    //         format!(
+    //             "{COMPONENT} (error: {error}) - failed to poll messages, stream ID: {}, topic ID: {}, partition ID: {:?}",
+    //             stream_id, topic_id, query.0.partition_id
+    //         )
+    //     })?;
+    // Ok(Json(polled_messages))
     todo!()
 }
 

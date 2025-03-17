@@ -242,7 +242,8 @@ async fn test_get_messages_by_offset(
         let original_message = &all_messages[original_idx];
         let original_msg_header = &original_message.header;
         let original_headers = Some(
-            HashMap::from_bytes(original_message.headers.as_ref().unwrap().to_bytes()).unwrap(),
+            HashMap::from_bytes(original_message.user_headers.as_ref().unwrap().to_bytes())
+                .unwrap(),
         );
         let original_payload = &original_message.payload;
 
@@ -257,7 +258,7 @@ async fn test_get_messages_by_offset(
             msg.header.offset,
         );
         assert_eq!(
-            &msg.headers, &original_headers,
+            &msg.user_headers, &original_headers,
             "Headers mismatch at offset {}",
             msg.header.offset,
         );

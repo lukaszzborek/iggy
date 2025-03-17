@@ -7,6 +7,7 @@ use crate::utils::byte_size::IggyByteSize;
 use crate::utils::sizeable::Sizeable;
 use crate::utils::timestamp::IggyTimestamp;
 use bytes::{BufMut, Bytes, BytesMut};
+use serde::{Deserialize, Serialize};
 use serde_with::base64::Base64;
 use serde_with::serde_as;
 use std::collections::HashMap;
@@ -14,12 +15,12 @@ use std::str::FromStr;
 
 /// The single message. It is exact format in which message is saved to / retrieved from the disk.
 #[serde_as]
-#[derive(Default, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq)]
 pub struct IggyMessage {
     pub header: IggyMessageHeader,
     #[serde_as(as = "Base64")]
     pub payload: Bytes,
-    pub headers: Option<HashMap<HeaderKey, HeaderValue>>,
+    pub user_headers: Option<HashMap<HeaderKey, HeaderValue>>,
 }
 
 impl IggyMessage {
@@ -82,7 +83,7 @@ impl IggyMessage {
             messages.push(IggyMessage {
                 header,
                 payload,
-                headers,
+                user_headers: headers,
             });
         }
 
@@ -125,7 +126,7 @@ impl std::fmt::Display for IggyMessage {
 impl Sizeable for IggyMessage {
     fn get_size_bytes(&self) -> IggyByteSize {
         let payload_len = IggyByteSize::from(self.payload.len() as u64);
-        let headers_len = get_headers_size_bytes(&self.headers);
+        let headers_len = get_headers_size_bytes(&self.user_headers);
         let message_header_len = IggyByteSize::from(IGGY_MESSAGE_HEADER_SIZE as u64);
 
         payload_len + headers_len + message_header_len
@@ -138,7 +139,7 @@ impl BytesSerializable for IggyMessage {
         let message_header = self.header.to_bytes();
         bytes.put_slice(&message_header);
         bytes.put_slice(&self.payload);
-        if let Some(headers) = &self.headers {
+        if let Some(headers) = &self.user_headers {
             bytes.put_slice(&headers.to_bytes());
         }
         bytes.freeze()
@@ -170,7 +171,7 @@ impl BytesSerializable for IggyMessage {
         Ok(IggyMessage {
             header,
             payload,
-            headers,
+            user_headers: headers,
         })
     }
 
@@ -178,7 +179,7 @@ impl BytesSerializable for IggyMessage {
     fn write_to_buffer(&self, buf: &mut BytesMut) {
         buf.put_slice(&self.header.to_bytes());
         buf.put_slice(&self.payload);
-        if let Some(headers) = &self.headers {
+        if let Some(headers) = &self.user_headers {
             buf.put_slice(&headers.to_bytes());
         }
     }
@@ -239,7 +240,7 @@ impl IggyMessageBuilder {
         IggyMessage {
             header: msg_header,
             payload,
-            headers: self.headers,
+            user_headers: self.headers,
         }
     }
 }

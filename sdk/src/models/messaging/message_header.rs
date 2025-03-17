@@ -34,6 +34,52 @@ impl Sizeable for IggyMessageHeader {
     }
 }
 
+impl IggyMessageHeader {
+    pub fn from_raw_bytes(bytes: &[u8]) -> Result<Self, IggyError> {
+        if bytes.len() != IGGY_MESSAGE_HEADER_SIZE as usize {
+            return Err(IggyError::InvalidCommand);
+        }
+
+        Ok(IggyMessageHeader {
+            checksum: u64::from_le_bytes(
+                bytes[IGGY_MESSAGE_CHECKSUM_OFFSET_RANGE]
+                    .try_into()
+                    .map_err(|_| IggyError::InvalidNumberEncoding)?,
+            ),
+            id: u128::from_le_bytes(
+                bytes[IGGY_MESSAGE_ID_OFFSET_RANGE]
+                    .try_into()
+                    .map_err(|_| IggyError::InvalidNumberEncoding)?,
+            ),
+            offset: u64::from_le_bytes(
+                bytes[IGGY_MESSAGE_OFFSET_OFFSET_RANGE]
+                    .try_into()
+                    .map_err(|_| IggyError::InvalidNumberEncoding)?,
+            ),
+            timestamp: u64::from_le_bytes(
+                bytes[IGGY_MESSAGE_TIMESTAMP_OFFSET_RANGE]
+                    .try_into()
+                    .map_err(|_| IggyError::InvalidNumberEncoding)?,
+            ),
+            origin_timestamp: u64::from_le_bytes(
+                bytes[IGGY_MESSAGE_ORIGIN_TIMESTAMP_OFFSET_RANGE]
+                    .try_into()
+                    .map_err(|_| IggyError::InvalidNumberEncoding)?,
+            ),
+            headers_length: u32::from_le_bytes(
+                bytes[IGGY_MESSAGE_HEADERS_LENGTH_OFFSET_RANGE]
+                    .try_into()
+                    .map_err(|_| IggyError::InvalidNumberEncoding)?,
+            ),
+            payload_length: u32::from_le_bytes(
+                bytes[IGGY_MESSAGE_PAYLOAD_LENGTH_OFFSET_RANGE]
+                    .try_into()
+                    .map_err(|_| IggyError::InvalidNumberEncoding)?,
+            ),
+        })
+    }
+}
+
 impl BytesSerializable for IggyMessageHeader {
     fn to_bytes(&self) -> Bytes {
         let mut bytes = BytesMut::with_capacity(self.get_size_bytes().as_bytes_usize());

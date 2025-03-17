@@ -198,7 +198,7 @@ impl IggyBatch {
                 messages.push(IggyMessage {
                     header,
                     payload,
-                    headers,
+                    user_headers: headers,
                 });
             }
         }
