@@ -1,4 +1,4 @@
-use crate::streaming::segments::IggyBatch;
+use crate::streaming::segments::IggyMessagesBatchSet;
 use error_set::ErrContext;
 use flume::{unbounded, Receiver};
 use std::{
@@ -16,7 +16,7 @@ use super::write_batch;
 #[derive(Debug)]
 /// A command to the persister task.
 enum PersisterTaskCommand {
-    WriteRequest(IggyBatch),
+    WriteRequest(IggyMessagesBatchSet),
     Shutdown,
 }
 
@@ -45,7 +45,7 @@ impl PersisterTask {
     }
 
     /// Sends the batch bytes to the persister task (fire-and-forget).
-    pub async fn persist(&self, messages: IggyBatch) {
+    pub async fn persist(&self, messages: IggyMessagesBatchSet) {
         if let Err(e) = self
             .sender
             .send_async(PersisterTaskCommand::WriteRequest(messages))

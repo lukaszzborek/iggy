@@ -5,7 +5,7 @@ use crate::error::IggyError;
 use crate::identifier::{IdKind, Identifier};
 use crate::locking::{IggySharedMut, IggySharedMutFn};
 use crate::messages::PollingStrategy;
-use crate::prelude::IggyMessage;
+use crate::prelude::{IggyMessage, PolledMessages};
 use crate::utils::byte_size::IggyByteSize;
 use crate::utils::crypto::EncryptorKind;
 use crate::utils::duration::IggyDuration;
@@ -568,7 +568,7 @@ impl IggyConsumer {
 
     fn create_poll_messages_future(
         &self,
-    ) -> impl Future<Output = Result<Vec<IggyMessage>, IggyError>> {
+    ) -> impl Future<Output = Result<PolledMessages, IggyError>> {
         let stream_id = self.stream_id.clone();
         let topic_id = self.topic_id.clone();
         let partition_id = self.partition_id;

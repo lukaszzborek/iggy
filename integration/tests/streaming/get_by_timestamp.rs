@@ -1,10 +1,9 @@
 use crate::streaming::common::test_setup::TestSetup;
 use bytes::BytesMut;
 use iggy::prelude::*;
-use server::configs::resource_quota::MemoryResourceQuota;
-use server::configs::system::{CacheConfig, PartitionConfig, SegmentConfig, SystemConfig};
+use server::configs::system::{PartitionConfig, SegmentConfig, SystemConfig};
 use server::streaming::partitions::partition::Partition;
-use server::streaming::segments::IggyMessagesMut;
+use server::streaming::segments::IggyMessagesBatchMut;
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU32, AtomicU64};
@@ -135,8 +134,9 @@ async fn test_get_messages_by_timestamp(
 
     // Append all batches with timestamps
     for batch_size in batch_sizes {
-        let batch =
-            IggyMessagesMut::from(&all_messages[current_pos..current_pos + batch_size as usize]);
+        let batch = IggyMessagesBatchMut::from(
+            &all_messages[current_pos..current_pos + batch_size as usize],
+        );
         assert_eq!(batch.count(), batch_size);
         partition.append_messages(batch, None).await.unwrap();
         batch_timestamps.push(IggyTimestamp::now());
@@ -259,7 +259,7 @@ async fn test_get_messages_by_timestamp(
 
     for batch in spanning_messages.iter() {
         for msg in batch.iter() {
-            let msg_timestamp = msg.msg_header().timestamp();
+            let msg_timestamp = msg.header().timestamp();
             assert!(
                 msg_timestamp >= span_timestamp_micros,
                 "Message timestamp {} should be >= span timestamp {}",

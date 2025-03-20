@@ -27,7 +27,7 @@ use crate::models::topic::{Topic, TopicDetails};
 use crate::models::user_info::{UserInfo, UserInfoDetails};
 use crate::models::user_status::UserStatus;
 use crate::partitioner::Partitioner;
-use crate::prelude::Partitioning;
+use crate::prelude::{Partitioning, PolledMessages};
 use crate::snapshot::{SnapshotCompression, SystemSnapshotType};
 use crate::tcp::client::TcpClient;
 use crate::utils::crypto::EncryptorKind;
@@ -542,12 +542,12 @@ impl MessageClient for IggyClient {
         strategy: &PollingStrategy,
         count: u32,
         auto_commit: bool,
-    ) -> Result<Vec<IggyMessage>, IggyError> {
+    ) -> Result<PolledMessages, IggyError> {
         if count == 0 {
             return Err(IggyError::InvalidMessagesCount);
         }
 
-        let batch = self
+        let polled_messages = self
             .client
             .read()
             .await
@@ -572,7 +572,7 @@ impl MessageClient for IggyClient {
             }
         }
         */
-        Ok(batch)
+        Ok(polled_messages)
     }
 
     async fn send_messages(

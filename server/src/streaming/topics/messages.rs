@@ -1,5 +1,6 @@
+use crate::binary::handlers::messages::poll_messages_handler::IggyPollMetadata;
 use crate::streaming::polling_consumer::PollingConsumer;
-use crate::streaming::segments::{IggyBatch, IggyMessages, IggyMessagesMut};
+use crate::streaming::segments::{IggyMessagesBatchMut, IggyMessagesBatchSet};
 use crate::streaming::topics::topic::Topic;
 use crate::streaming::topics::COMPONENT;
 use crate::streaming::utils::file::folder_size;
@@ -9,7 +10,7 @@ use error_set::ErrContext;
 use iggy::error::IggyError;
 use iggy::locking::IggySharedMutFn;
 use iggy::messages::{PartitioningKind, PollingKind};
-use iggy::prelude::Partitioning;
+use iggy::prelude::{Partitioning, PolledMessages};
 use iggy::utils::byte_size::IggyByteSize;
 use iggy::utils::expiry::IggyExpiry;
 use iggy::utils::sizeable::Sizeable;
@@ -30,7 +31,7 @@ impl Topic {
         partition_id: u32,
         strategy: PollingStrategy,
         count: u32,
-    ) -> Result<IggyBatch, IggyError> {
+    ) -> Result<(IggyPollMetadata, IggyMessagesBatchSet), IggyError> {
         if !self.has_partitions() {
             return Err(IggyError::NoPartitions(self.topic_id, self.stream_id));
         }
@@ -47,11 +48,9 @@ impl Topic {
         let partition = partition.unwrap();
         let partition = partition.read().await;
         let value = strategy.value;
-        let result = match strategy.kind {
+        let messages = match strategy.kind {
             PollingKind::Offset => partition.get_messages_by_offset(value, count).await,
             PollingKind::Timestamp => {
-
-
                 partition
                     .get_messages_by_timestamp(value.into(), count)
                     .await
@@ -62,13 +61,15 @@ impl Topic {
             PollingKind::Next => partition.get_next_messages(consumer, count).await,
         }?;
 
-        Ok(result)
+        let metadata = IggyPollMetadata::new(partition_id, partition.current_offset);
+
+        Ok((metadata, messages))
     }
 
     pub async fn append_messages(
         &self,
         partitioning: &Partitioning,
-        messages: IggyMessagesMut,
+        messages: IggyMessagesBatchMut,
         confirmation: Option<Confirmation>,
     ) -> Result<(), IggyError> {
         if !self.has_partitions() {
@@ -121,7 +122,7 @@ impl Topic {
 
     async fn append_messages_to_partition(
         &self,
-        messages: IggyMessagesMut,
+        messages: IggyMessagesBatchMut,
         partition_id: u32,
         confirmation: Option<Confirmation>,
     ) -> Result<(), IggyError> {

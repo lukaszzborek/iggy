@@ -24,8 +24,8 @@ impl IndexRebuilder {
     ) -> Result<IggyMessageHeader, std::io::Error> {
         let mut buf = [0u8; IGGY_MESSAGE_HEADER_SIZE as usize];
         reader.read_exact(&mut buf).await?;
-        Ok(IggyMessageHeader::from_raw_bytes(&buf)
-            .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData))?)
+        IggyMessageHeader::from_raw_bytes(&buf)
+            .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData))
     }
 
     async fn write_index_entry(
@@ -59,7 +59,7 @@ impl IndexRebuilder {
                 Ok(header) => {
                     // Calculate next position before writing current entry
                     next_position = position
-                        + IGGY_MESSAGE_HEADER_SIZE as u32
+                        + IGGY_MESSAGE_HEADER_SIZE
                         + header.payload_length
                         + header.headers_length;
 

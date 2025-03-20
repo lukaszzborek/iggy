@@ -16,11 +16,11 @@ pub struct IggyMessageViewMut<'a> {
 impl<'a> IggyMessageViewMut<'a> {
     /// Create a new mutable message view from a buffer
     pub fn new(buffer: &'a mut [u8]) -> Self {
-        let (payload_len, headers_len) = {
-            let hdr_slice = &buffer[0..IGGY_MESSAGE_HEADER_SIZE as usize];
-            let hdr_view = IggyMessageHeaderView::new(hdr_slice);
-            (hdr_view.payload_length(), hdr_view.headers_length())
-        };
+        // let (payload_len, headers_len) = {
+        //     let hdr_slice = &buffer[0..IGGY_MESSAGE_HEADER_SIZE as usize];
+        //     let hdr_view = IggyMessageHeaderView::new(hdr_slice);
+        //     (hdr_view.payload_length(), hdr_view.headers_length())
+        // };
         Self {
             buffer,
             payload_offset: IGGY_MESSAGE_HEADER_SIZE as usize,
@@ -28,20 +28,20 @@ impl<'a> IggyMessageViewMut<'a> {
     }
 
     /// Get an immutable header view
-    pub fn msg_header(&self) -> IggyMessageHeaderView<'_> {
+    pub fn header(&self) -> IggyMessageHeaderView<'_> {
         let hdr_slice = &self.buffer[0..IGGY_MESSAGE_HEADER_SIZE as usize];
         IggyMessageHeaderView::new(hdr_slice)
     }
 
     /// Get an ephemeral mutable header view for reading/writing
-    pub fn msg_header_mut(&mut self) -> IggyMessageHeaderViewMut<'_> {
+    pub fn header_mut(&mut self) -> IggyMessageHeaderViewMut<'_> {
         let hdr_slice = &mut self.buffer[0..IGGY_MESSAGE_HEADER_SIZE as usize];
         IggyMessageHeaderViewMut::new(hdr_slice)
     }
 
     /// Returns the size of the entire message (header + payload + user headers).
     pub fn size(&self) -> usize {
-        let hdr_view = self.msg_header();
+        let hdr_view = self.header();
         (IGGY_MESSAGE_HEADER_SIZE + hdr_view.payload_length() + hdr_view.headers_length()) as usize
     }
 
@@ -59,8 +59,7 @@ impl<'a> IggyMessageViewMut<'a> {
 
         let checksum = gxhash64(data, 0);
 
-        let mut hdr_view = self.msg_header_mut();
-        hdr_view.set_checksum(checksum);
+        self.header_mut().set_checksum(checksum);
     }
 }
 

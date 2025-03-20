@@ -1,15 +1,12 @@
-use super::index_view::IggyIndexView;
-use super::read_boundary::ReadBoundary;
 use bytes::{BufMut, BytesMut};
+use iggy::models::messaging::{IggyIndexView, IggyIndexes, INDEX_SIZE};
 use std::ops::{Deref, Index as StdIndex};
-use tracing::trace;
 
 /// A container for binary-encoded index data.
 /// Optimized for efficient storage and I/O operations.
 #[derive(Debug, Default, Clone)]
 pub struct IggyIndexesMut {
     buffer: BytesMut,
-    count: u32,
     unsaved_count: u32,
 }
 
@@ -18,7 +15,14 @@ impl IggyIndexesMut {
     pub fn new() -> Self {
         Self {
             buffer: BytesMut::new(),
-            count: 0,
+            unsaved_count: 0,
+        }
+    }
+
+    /// Creates indexes from bytes
+    pub fn from_bytes(indexes: BytesMut) -> Self {
+        Self {
+            buffer: indexes,
             unsaved_count: 0,
         }
     }
@@ -26,29 +30,30 @@ impl IggyIndexesMut {
     /// Creates a new container with the specified capacity in bytes
     pub fn with_capacity(index_count: usize) -> Self {
         Self {
-            buffer: BytesMut::with_capacity(index_count * 16),
-            count: 0,
+            buffer: BytesMut::with_capacity(index_count * INDEX_SIZE),
             unsaved_count: 0,
         }
     }
 
-    /// Adds a new unsaved index to the container
-    pub fn add_unsaved_index(&mut self, offset: u32, position: u32, timestamp: u64) {
-        self.buffer.put_u32_le(offset);
-        self.buffer.put_u32_le(position);
-        self.buffer.put_u64_le(timestamp);
-        self.count += 1;
-        self.unsaved_count += 1;
+    /// Sets the number of unsaved messages
+    pub fn set_unsaved_messages_count(&mut self, count: u32) {
+        self.unsaved_count = count;
+    }
+
+    /// Appends another IggyIndexesMut instance to this one
+    pub fn append(&mut self, other: IggyIndexesMut) {
+        self.buffer.put_slice(&other.buffer);
+        self.unsaved_count += other.unsaved_count;
     }
 
     /// Gets the number of indexes in the container
     pub fn count(&self) -> u32 {
-        self.count
+        self.buffer.len() as u32 / INDEX_SIZE as u32
     }
 
     /// Checks if the container is empty
     pub fn is_empty(&self) -> bool {
-        self.count == 0
+        self.count() == 0
     }
 
     /// Gets the size of the buffer in bytes
@@ -58,12 +63,12 @@ impl IggyIndexesMut {
 
     /// Gets a view of the index at the specified position
     pub fn get(&self, position: u32) -> Option<IggyIndexView> {
-        if position >= self.count {
+        if position >= self.count() {
             return None;
         }
 
-        let start = (position * 16) as usize;
-        let end = start + 16;
+        let start = (position * INDEX_SIZE as u32) as usize;
+        let end = start + INDEX_SIZE;
 
         if end <= self.buffer.len() {
             Some(IggyIndexView::new(&self.buffer[start..end]))
@@ -72,14 +77,32 @@ impl IggyIndexesMut {
         }
     }
 
+    // Set the offset at the given index position
+    pub fn set_offset_at(&mut self, index: u32, offset: u32) {
+        let pos = index as usize * INDEX_SIZE;
+        self.buffer[pos..pos + 4].copy_from_slice(&offset.to_le_bytes());
+    }
+
+    // Set the position at the given index
+    pub fn set_position_at(&mut self, index: u32, position: u32) {
+        let pos = (index as usize * INDEX_SIZE) + 4;
+        self.buffer[pos..pos + 4].copy_from_slice(&position.to_le_bytes());
+    }
+
+    // Set the timestamp at the given index
+    pub fn set_timestamp_at(&mut self, index: u32, timestamp: u64) {
+        let pos = (index as usize * INDEX_SIZE) + 8;
+        self.buffer[pos..pos + 8].copy_from_slice(&timestamp.to_le_bytes());
+    }
+
     /// Gets a last index
     pub fn last(&self) -> Option<IggyIndexView> {
-        if self.count == 0 {
+        if self.count() == 0 {
             return None;
         }
 
         Some(IggyIndexView::new(
-            &self.buffer[(self.count - 1) as usize * 16..],
+            &self.buffer[(self.count() - 1) as usize * INDEX_SIZE..],
         ))
     }
 
@@ -87,11 +110,10 @@ impl IggyIndexesMut {
     /// If an exact match isn't found, returns the index with the nearest timestamp
     /// that is greater than or equal to the requested timestamp
     pub fn find_by_timestamp(&self, timestamp: u64) -> Option<IggyIndexView> {
-        if self.count == 0 {
+        if self.count() == 0 {
             return None;
         }
 
-        // Check if we should return the first index (requested timestamp is less than any available)
         let first_idx = self.get(0)?;
         if timestamp <= first_idx.timestamp() {
             tracing::trace!(
@@ -101,15 +123,13 @@ impl IggyIndexesMut {
             return Some(first_idx);
         }
 
-        // Check if we should return None (requested timestamp is greater than any available)
-        let last_saved_idx = self.get(self.count - 1)?;
+        let last_saved_idx = self.get(self.count() - 1)?;
         if timestamp > last_saved_idx.timestamp() {
             return None;
         }
 
-        // Binary search to find the earliest index with timestamp >= requested timestamp
         let mut left = 0;
-        let mut right = self.count as isize - 1;
+        let mut right = self.count() as isize - 1;
         let mut result: Option<IggyIndexView> = None;
 
         while left <= right {
@@ -119,9 +139,7 @@ impl IggyIndexesMut {
 
             match current_timestamp.cmp(&timestamp) {
                 std::cmp::Ordering::Equal => {
-                    // Found an exact match, but we need to find the FIRST index with this timestamp
                     result = Some(view);
-                    // Continue searching to the left to find the earliest message with this timestamp
                     right = mid - 1;
                 }
                 std::cmp::Ordering::Less => {
@@ -134,23 +152,17 @@ impl IggyIndexesMut {
             }
         }
 
-        // Return the closest index with timestamp >= requested timestamp
         result
     }
 
     /// Gets a slice of the buffer containing the last N unsaved indexes.
-    /// This enables zero-copy access to only the most recent unsaved indexes.
-    ///
-    /// # Returns
-    /// A byte slice containing only the last N unsaved indexes
-    /// If the buffer is empty, returns an empty slice
     pub fn get_unsaved_indexes(&self) -> &[u8] {
-        if self.count == 0 || self.unsaved_count == 0 {
+        if self.count() == 0 || self.unsaved_count == 0 {
             tracing::error!("No unsaved indexes");
             return &[];
         }
 
-        let start_idx = (self.count - self.unsaved_count) as usize * 16;
+        let start_idx = (self.count() - self.unsaved_count) as usize * 16;
 
         &self.buffer[start_idx..]
     }
@@ -163,135 +175,104 @@ impl IggyIndexesMut {
     /// Clears the container, removing all indexes
     pub fn clear(&mut self) {
         self.buffer.clear();
-        self.count = 0;
         self.unsaved_count = 0;
     }
 
-    /// Calculate boundary information for reading messages from disk based on cached indexes.
-    ///
-    /// This computes the exact file position, bytes to read, and expected message count
-    /// based on the provided relative offsets using in-memory index data.
-    ///
-    /// Returns None if the requested offset is out of bounds.
-    pub fn calculate_cached_read_boundary_by_offset(
-        &self,
-        relative_start_offset: u32,
-        relative_end_offset: u32,
-    ) -> Option<ReadBoundary> {
-        // Check if we have any indexes
-        if self.count == 0 {
-            trace!("No indexes available in memory");
+    /// Slices the container to return a view of a specific range of indexes
+    pub fn slice_by_offset(&self, relative_start_offset: u32, count: u32) -> Option<IggyIndexes> {
+        let available_count = self.count().saturating_sub(relative_start_offset);
+        let actual_count = std::cmp::min(count, available_count);
+
+        if actual_count == 0 || relative_start_offset >= self.count() {
             return None;
         }
 
-        // Validate the requested offsets
-        if relative_start_offset >= self.count - self.unsaved_count {
-            trace!(
-                "Start offset {} is out of bounds. Total cached indexes: {}, unsaved count: {}",
-                relative_start_offset,
-                self.count,
-                self.unsaved_count
-            );
-            return None;
+        let end_pos = relative_start_offset + actual_count;
+
+        let start_byte = relative_start_offset as usize * INDEX_SIZE;
+        let end_byte = end_pos as usize * INDEX_SIZE;
+        let slice = BytesMut::from(&self.buffer[start_byte..end_byte]);
+
+        let i = relative_start_offset.saturating_sub(1);
+        if i == 0 {
+            Some(IggyIndexes::new(slice.freeze(), 0))
+        } else {
+            let base_position = self.get(relative_start_offset - 1).unwrap().position();
+            Some(IggyIndexes::new(slice.freeze(), base_position))
         }
-
-        // Clamp the end offset to the available range
-        let effective_end_offset = relative_end_offset.min(self.count - self.unsaved_count - 1);
-
-        // Get position information from the cached indexes
-        let first_index = self.get(relative_start_offset)?;
-        let last_index = self.get(effective_end_offset)?;
-
-        // Calculate boundary information
-        let start_position = first_index.position();
-        let bytes = last_index.position() - start_position;
-        let messages_count = effective_end_offset - relative_start_offset + 1;
-
-        trace!(
-            "Calculated read boundary from cached indexes: start_pos={}, bytes={}, count={}",
-            start_position,
-            bytes,
-            messages_count
-        );
-
-        Some(ReadBoundary::new(start_position, bytes, messages_count))
     }
 
-    /// Calculate boundary information for reading messages from disk based on a timestamp.
-    ///
-    /// This finds the index with timestamp closest to the requested timestamp and returns
-    /// the boundary information to read the messages from that point forward.
-    ///
-    /// Returns None if the timestamp is not found or there are no indexes.
-    pub fn calculate_cached_read_boundary_by_timestamp(
-        &self,
-        timestamp: u64,
-        messages_count: u32,
-    ) -> Option<ReadBoundary> {
-        let start_index = self.find_by_timestamp(timestamp)?;
+    /// Loads indexes from cache based on timestamp
+    pub fn slice_by_timestamp(&self, timestamp: u64, count: u32) -> Option<IggyIndexes> {
+        if self.count() == 0 {
+            return None;
+        }
 
-        tracing::trace!("Found start_index: {}", start_index);
+        let start_index_pos = self.find_index_pos_by_timestamp(timestamp)?;
 
-        let start_position_in_array = start_index.offset() - self.first_offset();
-        // Calculate the end position without unnecessarily limiting by unsaved_count
-        // We want to include as many messages as possible up to messages_count
-        let end_position_in_array =
-            (start_position_in_array + messages_count - 1).min(self.count - 1);
+        let available_count = self.count().saturating_sub(start_index_pos);
+        let actual_count = std::cmp::min(count, available_count);
 
-        tracing::trace!(
-            "Calculated end_position_in_array: {}",
-            end_position_in_array
-        );
-        let end_index = self.get(end_position_in_array)?;
+        if actual_count == 0 {
+            return None;
+        }
 
-        tracing::trace!("Found end_index: {:?}", end_index);
+        let end_pos = start_index_pos + actual_count;
 
-        let start_position = start_index.position();
-        // Check to prevent overflow in case end_index.position() < start_position
-        let bytes = if end_index.position() >= start_position {
-            end_index.position() - start_position
+        let start_byte = start_index_pos as usize * INDEX_SIZE;
+        let end_byte = end_pos as usize * INDEX_SIZE;
+        let slice = BytesMut::from(&self.buffer[start_byte..end_byte]);
+
+        let base_position = if start_index_pos > 0 {
+            self.get(start_index_pos - 1).unwrap().position()
         } else {
-            tracing::warn!(
-                "End index position {} is less than start position {}. Using 0 bytes.",
-                end_index.position(),
-                start_position
-            );
             0
         };
 
-        // Ensure we don't have underflow when calculating messages count
-        let actual_messages_count = if end_position_in_array >= start_position_in_array {
-            end_position_in_array - start_position_in_array + 1
-        } else {
-            tracing::warn!(
-                "End position {} is less than start position {}. Using 1 message.",
-                end_position_in_array,
-                start_position_in_array
-            );
-            1
-        };
-
-        trace!(
-            "Calculated read boundary by timestamp: start_pos={}, bytes={}, count={}",
-            start_position,
-            bytes,
-            actual_messages_count
-        );
-
-        Some(ReadBoundary::new(
-            start_position,
-            bytes,
-            actual_messages_count,
-        ))
+        Some(IggyIndexes::new(slice.freeze(), base_position))
     }
 
-    /// Helper method to get the first index offset
-    fn first_offset(&self) -> u32 {
-        if self.count == 0 {
-            return 0;
+    /// Find the position of the index with timestamp closest to (but not exceeding) the target
+    fn find_index_pos_by_timestamp(&self, target_timestamp: u64) -> Option<u32> {
+        if self.count() == 0 {
+            return None;
         }
 
-        self.get(0).map(|idx| idx.offset()).unwrap_or(0)
+        let last_index = self.get(self.count() - 1)?;
+        if target_timestamp > last_index.timestamp() {
+            return Some(self.count() - 1);
+        }
+
+        let first_index = self.get(0)?;
+        if target_timestamp <= first_index.timestamp() {
+            return Some(0);
+        }
+
+        let mut low = 0;
+        let mut high = self.count() - 1;
+
+        while low <= high {
+            let mid = low + (high - low) / 2;
+            let mid_index = self.get(mid)?;
+            let mid_timestamp = mid_index.timestamp();
+
+            match mid_timestamp.cmp(&target_timestamp) {
+                std::cmp::Ordering::Equal => return Some(mid),
+                std::cmp::Ordering::Less => low = mid + 1,
+                std::cmp::Ordering::Greater => {
+                    if mid == 0 {
+                        break;
+                    }
+                    high = mid - 1;
+                }
+            }
+        }
+
+        if low > 0 {
+            Some(low - 1)
+        } else {
+            Some(0)
+        }
     }
 }
 
@@ -299,8 +280,8 @@ impl StdIndex<usize> for IggyIndexesMut {
     type Output = [u8];
 
     fn index(&self, index: usize) -> &Self::Output {
-        let start = index * 16;
-        let end = start + 16;
+        let start = index * INDEX_SIZE;
+        let end = start + INDEX_SIZE;
         &self.buffer[start..end]
     }
 }

@@ -1,6 +1,6 @@
-use crate::streaming::segments::indexes::INDEX_SIZE;
 use error_set::ErrContext;
 use iggy::error::IggyError;
+use iggy::models::messaging::INDEX_SIZE;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc,
@@ -67,9 +67,7 @@ impl IndexWriter {
             return Ok(());
         }
 
-        debug_assert!(indexes.len() % INDEX_SIZE as usize == 0);
-
-        let count = indexes.len() / INDEX_SIZE as usize;
+        let count = indexes.len() / INDEX_SIZE;
 
         self.file
             .write_all(indexes)

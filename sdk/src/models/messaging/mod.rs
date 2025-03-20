@@ -1,10 +1,18 @@
-mod header;
+mod index;
+mod index_view;
+mod indexes;
 mod message;
 mod message_header;
 mod message_header_view;
 mod message_view;
+mod messages_batch;
+mod user_headers;
 
-pub use header::{HeaderKey, HeaderKind, HeaderValue};
+pub const INDEX_SIZE: usize = 16;
+
+pub use index::IggyIndex;
+pub use index_view::IggyIndexView;
+pub use indexes::IggyIndexes;
 pub use message::IggyMessage;
 pub use message_header::{
     IggyMessageHeader, IGGY_MESSAGE_CHECKSUM_OFFSET_RANGE,
@@ -14,5 +22,6 @@ pub use message_header::{
     IGGY_MESSAGE_TIMESTAMP_OFFSET_RANGE,
 };
 pub use message_header_view::IggyMessageHeaderView;
-pub use message_view::IggyMessageView;
-pub use message_view::IggyMessageViewIterator;
+pub use message_view::{IggyMessageView, IggyMessageViewIterator};
+pub use messages_batch::IggyMessagesBatch;
+pub use user_headers::{HeaderKey, HeaderKind, HeaderValue};

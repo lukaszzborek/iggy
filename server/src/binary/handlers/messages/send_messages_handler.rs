@@ -1,12 +1,13 @@
 use crate::binary::command::{BinaryServerCommand, ServerCommandHandler};
 use crate::binary::sender::SenderKind;
-use crate::streaming::segments::IggyMessagesMut;
+use crate::streaming::segments::{IggyIndexesMut, IggyMessagesBatchMut};
 use crate::streaming::session::Session;
 use crate::streaming::systems::system::SharedSystem;
 use anyhow::Result;
 use bytes::{Buf, BytesMut};
 use iggy::error::IggyError;
 use iggy::identifier::Identifier;
+use iggy::models::messaging::INDEX_SIZE;
 use iggy::prelude::*;
 use iggy::utils::sizeable::Sizeable;
 use tracing::instrument;
@@ -51,21 +52,20 @@ impl ServerCommandHandler for SendMessages {
         element_size = partitioning.get_size_bytes().as_bytes_usize();
         buffer.advance(element_size);
 
-        let messages_count = buffer.get_u32_le();
-        let messages = buffer.split();
+        let messages_count = buffer.get_u32_le() as usize;
 
-        let messages = IggyMessagesMut::from_bytes(messages, messages_count);
+        let mut indexes_and_messages = buffer.split();
+
+        let messages = indexes_and_messages.split_off(messages_count * INDEX_SIZE);
+        let indexes = indexes_and_messages;
+
+        let indexes = IggyIndexesMut::from_bytes(indexes);
+
+        let batch = IggyMessagesBatchMut::from_bytes(indexes, messages);
 
         let system = system.read().await;
         system
-            .append_messages(
-                session,
-                &stream_id,
-                &topic_id,
-                &partitioning,
-                messages,
-                None,
-            )
+            .append_messages(session, &stream_id, &topic_id, &partitioning, batch, None)
             .await?;
         drop(system);
 

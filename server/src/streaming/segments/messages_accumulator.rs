@@ -1,9 +1,8 @@
 use super::{
     indexes::IggyIndexesMut,
-    types::{IggyBatch, IggyMessagesMut},
+    types::{IggyMessagesBatchMut, IggyMessagesBatchSet},
 };
 use iggy::utils::timestamp::IggyTimestamp;
-use tracing::trace;
 
 /// A container that accumulates messages before they are written to disk
 #[derive(Debug, Default)]
@@ -24,7 +23,7 @@ pub struct MessagesAccumulator {
     current_timestamp: u64,
 
     /// A buffer containing all accumulated messages
-    batches: IggyBatch,
+    batches: IggyMessagesBatchSet,
 
     /// Number of messages in the accumulator
     messages_count: u32,
@@ -32,17 +31,18 @@ pub struct MessagesAccumulator {
 
 impl MessagesAccumulator {
     /// Coalesces a batch of messages into the accumulator
-    /// This method also prepares the messages for persistence by setting their
-    /// offset, timestamp, record size, and checksum fields
+    /// This method also prepares the messages for persistence by setting
+    /// their offset, timestamp, record size, and checksum fields
     /// Returns the number of messages in the batch
     pub fn coalesce_batch(
         &mut self,
+        start_offset: u64,
         current_offset: u64,
         current_position: u32,
         indexes: &mut IggyIndexesMut,
-        messages: IggyMessagesMut,
+        batch: IggyMessagesBatchMut,
     ) -> u32 {
-        let batch_messages_count = messages.count();
+        let batch_messages_count = batch.count();
 
         if batch_messages_count == 0 {
             return 0;
@@ -56,31 +56,44 @@ impl MessagesAccumulator {
             self.current_position = current_position;
         }
 
-        let batch = messages.prepare_for_persistence(
+        let batch = batch.prepare_for_persistence(
+            start_offset,
             self.current_offset,
-            self.current_timestamp,
             self.current_position,
             indexes,
         );
         let batch_size = batch.size();
 
-        self.batches.add(batch);
+        self.batches.add_batch(batch);
 
         self.messages_count += batch_messages_count;
-        self.current_offset = self.base_offset + self.messages_count as u64;
-        self.current_timestamp = IggyTimestamp::now().as_micros();
+        self.current_offset = self.base_offset + self.messages_count as u64 - 1;
+        self.current_timestamp = self
+            .batches
+            .iter()
+            .last()
+            .unwrap()
+            .iter()
+            .last()
+            .unwrap()
+            .header()
+            .timestamp();
         self.current_position += batch_size;
 
         batch_messages_count
     }
 
     /// Gets messages from the accumulator based on start offset and count
-    pub fn get_messages_by_offset(&self, start_offset: u64, count: u32) -> IggyBatch {
+    pub fn get_messages_by_offset(&self, start_offset: u64, count: u32) -> IggyMessagesBatchSet {
         self.batches.get_by_offset(start_offset, count)
     }
 
     /// Gets messages from the accumulator based on start timestamp and count
-    pub fn get_messages_by_timestamp(&self, start_timestamp: u64, count: u32) -> IggyBatch {
+    pub fn get_messages_by_timestamp(
+        &self,
+        start_timestamp: u64,
+        count: u32,
+    ) -> IggyMessagesBatchSet {
         self.batches.get_by_timestamp(start_timestamp, count)
     }
 
@@ -115,7 +128,7 @@ impl MessagesAccumulator {
     }
 
     /// Takes ownership of the accumulator and returns the messages and indexes
-    pub fn materialize(self) -> IggyBatch {
+    pub fn materialize(self) -> IggyMessagesBatchSet {
         self.batches
     }
 }

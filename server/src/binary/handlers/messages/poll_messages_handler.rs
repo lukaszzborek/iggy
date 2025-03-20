@@ -6,10 +6,26 @@ use crate::streaming::session::Session;
 use crate::streaming::systems::messages::PollingArgs;
 use crate::streaming::systems::system::SharedSystem;
 use anyhow::Result;
+use bytes::Bytes;
 use error_set::ErrContext;
 use iggy::prelude::*;
 use std::io::IoSlice;
 use tracing::debug;
+
+#[derive(Debug)]
+pub struct IggyPollMetadata {
+    partition_id: u32,
+    current_offset: u64,
+}
+
+impl IggyPollMetadata {
+    pub fn new(partition_id: u32, current_offset: u64) -> Self {
+        Self {
+            partition_id,
+            current_offset,
+        }
+    }
+}
 
 impl ServerCommandHandler for PollMessages {
     fn code(&self) -> u32 {
@@ -26,7 +42,7 @@ impl ServerCommandHandler for PollMessages {
         debug!("session: {session}, command: {self}");
 
         let system = system.read().await;
-        let batches = system
+        let (metadata, messages) = system
             .poll_messages(
                 session,
                 &self.consumer,
@@ -43,16 +59,23 @@ impl ServerCommandHandler for PollMessages {
         drop(system);
 
         // Collect all chunks first into a Vec to extend their lifetimes.
-        // This ensures the Arc<[u8]> references from each ByteSliceView stay alive
+        // This ensures the Bytes (in reality Arc<[u8]>) references from each IggyMessagesBatch stay alive
         // throughout the async vectored I/O operation, preventing "borrowed value does not live
         // long enough" errors while optimizing transmission by using larger chunks.
 
-        let response_length = (batches.size() + 4).to_le_bytes();
-        let messages_count = batches.count().to_le_bytes();
+        // 4 bytes for partition_id + 8 bytes for current_offset + 4 bytes for messages_count + size of all batches.
+        let response_length = (4 + 8 + 4 + messages.size()).to_le_bytes();
 
-        let mut io_slices = Vec::with_capacity(batches.containers_count() + 1);
-        io_slices.push(IoSlice::new(&messages_count));
-        io_slices.extend(batches.iter().map(|m| IoSlice::new(m)));
+        let partition_id = metadata.partition_id.to_le_bytes();
+        let current_offset = metadata.current_offset.to_le_bytes();
+        let count = messages.count().to_le_bytes();
+
+        let mut io_slices = Vec::with_capacity(messages.containers_count() + 3);
+        io_slices.push(IoSlice::new(&partition_id));
+        io_slices.push(IoSlice::new(&current_offset));
+        io_slices.push(IoSlice::new(&count));
+
+        io_slices.extend(messages.iter().map(|m| IoSlice::new(m)));
 
         sender
             .send_ok_response_vectored(&response_length, io_slices)

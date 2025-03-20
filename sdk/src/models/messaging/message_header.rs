@@ -4,6 +4,7 @@ use crate::{
     utils::{byte_size::IggyByteSize, sizeable::Sizeable},
 };
 use bytes::{BufMut, Bytes, BytesMut};
+use serde::{Deserialize, Serialize};
 use std::ops::Range;
 
 pub const IGGY_MESSAGE_HEADER_SIZE: u32 = 8 + 16 + 8 + 8 + 8 + 4 + 4;
@@ -17,7 +18,7 @@ pub const IGGY_MESSAGE_ORIGIN_TIMESTAMP_OFFSET_RANGE: Range<usize> = 40..48;
 pub const IGGY_MESSAGE_HEADERS_LENGTH_OFFSET_RANGE: Range<usize> = 48..52;
 pub const IGGY_MESSAGE_PAYLOAD_LENGTH_OFFSET_RANGE: Range<usize> = 52..56;
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Default)]
 pub struct IggyMessageHeader {
     pub checksum: u64,
     pub id: u128,

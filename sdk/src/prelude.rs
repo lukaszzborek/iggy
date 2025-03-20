@@ -16,7 +16,8 @@ pub use crate::client::Client;
 pub use crate::error::IggyError;
 pub use crate::identifier::Identifier;
 pub use crate::messages::{
-    FlushUnsavedBuffer, Partitioning, PollMessages, PollingKind, PollingStrategy, SendMessages,
+    FlushUnsavedBuffer, Partitioning, PollMessages, PolledMessages, PollingKind, PollingStrategy,
+    SendMessages,
 };
 pub use crate::models::messaging::{
     HeaderKey, HeaderValue, IggyMessage, IggyMessageHeader, IggyMessageHeaderView, IggyMessageView,

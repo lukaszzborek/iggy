@@ -1,4 +1,4 @@
-use super::IggyMessagesMut;
+use super::IggyMessagesBatchMut;
 use crate::streaming::segments::segment::Segment;
 use error_set::ErrContext;
 use iggy::confirmation::Confirmation;
@@ -10,7 +10,7 @@ impl Segment {
     pub async fn append_batch(
         &mut self,
         current_offset: u64,
-        messages: IggyMessagesMut,
+        messages: IggyMessagesBatchMut,
     ) -> Result<u32, IggyError> {
         if self.is_closed {
             return Err(IggyError::SegmentClosed(
@@ -19,8 +19,10 @@ impl Segment {
             ));
         }
         let messages_size = messages.size();
+
         let messages_accumulator = &mut self.accumulator;
         let messages_count = messages_accumulator.coalesce_batch(
+            self.start_offset,
             current_offset,
             self.last_index_position,
             &mut self.indexes,

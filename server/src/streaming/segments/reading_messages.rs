@@ -1,6 +1,7 @@
-use super::{indexes::ReadBoundary, IggyBatch};
+use super::IggyMessagesBatchSet;
 use crate::streaming::segments::segment::Segment;
 use error_set::ErrContext;
+use iggy::models::messaging::IggyIndexes;
 use iggy::prelude::*;
 use tracing::trace;
 
@@ -19,9 +20,9 @@ impl Segment {
         &self,
         timestamp: u64,
         count: u32,
-    ) -> Result<IggyBatch, IggyError> {
+    ) -> Result<IggyMessagesBatchSet, IggyError> {
         if count == 0 {
-            return Ok(IggyBatch::default());
+            return Ok(IggyMessagesBatchSet::default());
         }
 
         trace!(
@@ -41,7 +42,7 @@ impl Segment {
 
         // Case 1: Requested timestamp is higher than any available timestamp
         if timestamp > accumulator_last_timestamp {
-            return Ok(IggyBatch::empty());
+            return Ok(IggyMessagesBatchSet::empty());
         }
 
         // Case 2: Requested timestamp falls within accumulator range only
@@ -76,62 +77,19 @@ impl Segment {
             .get_messages_by_timestamp(timestamp, remaining_count);
 
         // Combine the messages
-        let mut result = messages_from_disk;
-        result.add_batch(accumulator_messages);
+        let mut out = messages_from_disk;
+        out.add_batch_set(accumulator_messages);
 
-        Ok(result)
-    }
-
-    async fn load_messages_from_disk_by_timestamp(
-        &self,
-        timestamp: u64,
-        count: u32,
-    ) -> Result<IggyBatch, IggyError> {
-        let read_boundary = self
-            .calculate_read_boundary_by_timestamp(timestamp, count)
-            .await?;
-
-        if read_boundary.is_none() {
-            return Ok(IggyBatch::empty());
-        }
-
-        let read_boundary = read_boundary.unwrap();
-
-        // Add defensive check to ensure read_boundary.messages_count doesn't exceed count
-        // This prevents reading more messages than asked for
-        if read_boundary.messages_count > count {
-            let adjusted_boundary =
-                ReadBoundary::new(read_boundary.start_position, read_boundary.bytes, count);
-            return self
-                .messages_reader
-                .as_ref()
-                .unwrap()
-                .load_messages_impl(adjusted_boundary)
-                .await
-                .with_error_context(|error| {
-                    format!(
-                        "Failed to load messages from segment file by timestamp: {self}. {error}"
-                    )
-                });
-        }
-
-        self.messages_reader
-            .as_ref()
-            .unwrap()
-            .load_messages_impl(read_boundary)
-            .await
-            .with_error_context(|error| {
-                format!("Failed to load messages from segment file by timestamp: {self}. {error}")
-            })
+        Ok(out)
     }
 
     pub async fn get_messages_by_offset(
         &self,
         mut offset: u64,
         count: u32,
-    ) -> Result<IggyBatch, IggyError> {
+    ) -> Result<IggyMessagesBatchSet, IggyError> {
         if count == 0 {
-            return Ok(IggyBatch::default());
+            return Ok(IggyMessagesBatchSet::default());
         }
 
         if offset < self.start_offset {
@@ -144,7 +102,7 @@ impl Segment {
         }
 
         if self.accumulator.is_empty() {
-            return self.load_messages_from_disk(offset, count).await;
+            return self.load_messages_from_disk_by_offset(offset, count).await;
         }
 
         let accumulator_first_msg_offset = self.accumulator.base_offset();
@@ -157,14 +115,14 @@ impl Segment {
 
         // Case 2: All messages are on disk
         if end_offset < accumulator_first_msg_offset {
-            return self.load_messages_from_disk(offset, count).await;
+            return self.load_messages_from_disk_by_offset(offset, count).await;
         }
 
         // Case 3: Messages span disk and messages_require_to_save buffer boundary
 
         // Load messages from disk up to the messages_require_to_save buffer boundary
         let mut messages = self
-                .load_messages_from_disk(offset, (accumulator_first_msg_offset - offset) as u32)
+                .load_messages_from_disk_by_offset(offset, (accumulator_first_msg_offset - offset) as u32)
                 .await.with_error_context(|error| format!(
             "{COMPONENT} (error: {error}) - failed to load messages from disk, stream ID: {}, topic ID: {}, partition ID: {}, start offset: {offset}, end offset :{}",
             self.stream_id, self.topic_id, self.partition_id, accumulator_first_msg_offset - 1
@@ -177,42 +135,9 @@ impl Segment {
             .accumulator
             .get_messages_by_offset(buffer_start, buffer_count);
 
-        messages.add_batch(buffer_messages);
+        messages.add_batch_set(buffer_messages);
 
         Ok(messages)
-    }
-
-    /// Loads and verifies message checksums from the log file.
-    pub async fn load_message_checksums(&self) -> Result<(), IggyError> {
-        // self.log_reader
-        //     .as_ref()
-        //     .unwrap()
-        //     .load_batches_by_range_with_callback(&IndexRange::max_range(), |batch| {
-        //         for message in batch.into_messages_iter() {
-        //             let calculated_checksum = checksum::calculate(&message.payload);
-        //             trace!(
-        //                 "Loaded message for offset: {}, checksum: {}, expected: {}",
-        //                 message.offset,
-        //                 calculated_checksum,
-        //                 message.checksum
-        //             );
-        //             if calculated_checksum != message.checksum {
-        //                 return Err(IggyError::InvalidMessageChecksum(
-        //                     calculated_checksum,
-        //                     message.checksum,
-        //                     message.offset,
-        //                 ));
-        //             }
-        //         }
-        //         Ok(())
-        //     })
-        //     .await
-        //     .with_error_context(|error| {
-        //         format!("Failed to load batches by max range for {}. {error}", self)
-        //     })?;
-        // Ok(())
-
-        todo!()
     }
 
     /// Loads and returns all message IDs from the log file.
@@ -231,64 +156,59 @@ impl Segment {
         Ok(ids)
     }
 
-    async fn calculate_read_boundary_by_offset(
+    async fn load_indexes_by_offset(
         &self,
         relative_start_offset: u32,
-        relative_end_offset: u32,
-    ) -> Result<Option<ReadBoundary>, IggyError> {
-        let read_boundary = if self.config.segment.cache_indexes {
-            self.indexes.calculate_cached_read_boundary_by_offset(
-                relative_start_offset,
-                relative_end_offset,
-            )
+        count: u32,
+    ) -> Result<Option<IggyIndexes>, IggyError> {
+        let indexes = if self.config.segment.cache_indexes {
+            self.indexes.slice_by_offset(relative_start_offset, count)
         } else {
             self.index_reader
                 .as_ref()
                 .unwrap()
-                .calculate_disk_read_boundary_by_offset(relative_start_offset, relative_end_offset)
+                .load_from_disk_by_offset(relative_start_offset, count)
                 .await?
         };
-        Ok(read_boundary)
+        Ok(indexes)
     }
 
-    async fn calculate_read_boundary_by_timestamp(
+    async fn load_indexes_by_timestamp(
         &self,
         timestamp: u64,
-        messages_count: u32,
-    ) -> Result<Option<ReadBoundary>, IggyError> {
-        let read_boundary = if self.config.segment.cache_indexes {
-            self.indexes
-                .calculate_cached_read_boundary_by_timestamp(timestamp, messages_count)
+        count: u32,
+    ) -> Result<Option<IggyIndexes>, IggyError> {
+        let indexes = if self.config.segment.cache_indexes {
+            self.indexes.slice_by_timestamp(timestamp, count)
         } else {
             self.index_reader
                 .as_ref()
                 .unwrap()
-                .calculate_disk_read_boundary_by_timestamp(timestamp, messages_count)
+                .load_from_disk_by_timestamp(timestamp, count)
                 .await?
         };
-        Ok(read_boundary)
+        Ok(indexes)
     }
 
-    async fn load_messages_from_disk(
+    async fn load_messages_from_disk_by_offset(
         &self,
         start_offset: u64,
         count: u32,
-    ) -> Result<IggyBatch, IggyError> {
+    ) -> Result<IggyMessagesBatchSet, IggyError> {
         tracing::trace!(
                 "Loading {count} messages from disk, start_offset: {start_offset}, current_offset: {}...",
                 self.end_offset
             );
         let relative_start_offset = (start_offset - self.start_offset) as u32;
-        let relative_end_offset = relative_start_offset + count - 1;
 
-        let read_boundary = self
-            .calculate_read_boundary_by_offset(relative_start_offset, relative_end_offset)
+        let indexes_to_read = self
+            .load_indexes_by_offset(relative_start_offset, count)
             .await?;
 
-        if read_boundary.is_none() {
-            return Ok(IggyBatch::empty());
+        if indexes_to_read.is_none() {
+            return Ok(IggyMessagesBatchSet::empty());
         }
-        let read_boundary = read_boundary.unwrap();
+        let read_boundary = indexes_to_read.unwrap();
 
         let msgs = self
             .messages_reader
@@ -300,6 +220,36 @@ impl Segment {
                 format!("Failed to load messages from segment file: {self}. {error}")
             })?;
 
+        tracing::trace!("XD Loaded {} messages from disk", msgs.count());
+
         Ok(msgs)
+    }
+
+    async fn load_messages_from_disk_by_timestamp(
+        &self,
+        timestamp: u64,
+        count: u32,
+    ) -> Result<IggyMessagesBatchSet, IggyError> {
+        tracing::trace!(
+            "Loading {count} messages from disk, timestamp: {timestamp}, current_timestamp: {}...",
+            self.end_timestamp
+        );
+
+        let indexes_to_read = self.load_indexes_by_timestamp(timestamp, count).await?;
+
+        if indexes_to_read.is_none() {
+            return Ok(IggyMessagesBatchSet::empty());
+        }
+
+        let read_boundary = indexes_to_read.unwrap();
+
+        self.messages_reader
+            .as_ref()
+            .unwrap()
+            .load_messages_impl(read_boundary)
+            .await
+            .with_error_context(|error| {
+                format!("Failed to load messages from segment file by timestamp: {self}. {error}")
+            })
     }
 }

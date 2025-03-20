@@ -1,3 +1,7 @@
+use bytes::{Bytes, BytesMut};
+
+use crate::{error::IggyError, prelude::BytesSerializable};
+
 use super::message_header::*;
 
 /// A read-only, typed view into a message header in a raw buffer.
@@ -11,8 +15,6 @@ pub struct IggyMessageHeaderView<'a> {
 
 impl<'a> IggyMessageHeaderView<'a> {
     /// Creates a new `IggyMessageHeaderView` over `data`.
-    ///
-    /// Returns an error if `data.len() < IGGY_MESSAGE_HEADER_SIZE`.
     pub fn new(data: &'a [u8]) -> Self {
         debug_assert!(
             data.len() >= IGGY_MESSAGE_HEADER_SIZE as usize,
@@ -75,5 +77,23 @@ impl<'a> IggyMessageHeaderView<'a> {
             headers_length: self.headers_length(),
             payload_length: self.payload_length(),
         }
+    }
+}
+
+impl BytesSerializable for IggyMessageHeaderView<'_> {
+    fn to_bytes(&self) -> Bytes {
+        panic!("should not be used")
+    }
+
+    fn from_bytes(bytes: Bytes) -> Result<Self, IggyError> {
+        panic!("should not be used")
+    }
+
+    fn write_to_buffer(&self, buf: &mut BytesMut) {
+        buf.extend_from_slice(self.data);
+    }
+
+    fn get_buffer_size(&self) -> u32 {
+        IGGY_MESSAGE_HEADER_SIZE
     }
 }

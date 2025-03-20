@@ -1,7 +1,10 @@
-use crate::streaming::segments::{indexes::ReadBoundary, IggyBatch, IggyMessages};
+use crate::streaming::segments::IggyMessagesBatchSet;
 use bytes::{Bytes, BytesMut};
 use error_set::ErrContext;
-use iggy::error::IggyError;
+use iggy::{
+    error::IggyError,
+    models::messaging::{IggyIndexes, IggyMessagesBatch},
+};
 use std::{
     fs::{File, OpenOptions},
     os::unix::prelude::FileExt,
@@ -33,6 +36,14 @@ impl MessagesReader {
             .with_error_context(|error| format!("Failed to open log file: {file_path}. {error}"))
             .map_err(|_| IggyError::CannotReadFile)?;
 
+        let actual_log_size = file
+            .metadata()
+            .with_error_context(|error| {
+                format!("Failed to get metadata of log file: {file_path}. {error}")
+            })
+            .map_err(|_| IggyError::CannotReadFileMetadata)?
+            .len();
+
         // posix_fadvise() doesn't exist on MacOS
         #[cfg(not(target_os = "macos"))]
         {
@@ -41,21 +52,13 @@ impl MessagesReader {
             let _ = nix::fcntl::posix_fadvise(
                 fd,
                 0,
-                0,
+                actual_log_size as i64,
                 nix::fcntl::PosixFadviseAdvice::POSIX_FADV_SEQUENTIAL,
             )
             .with_info_context(|error| {
                 format!("Failed to set sequential access pattern on log file: {file_path}. {error}")
             });
         }
-
-        let actual_log_size = file
-            .metadata()
-            .with_error_context(|error| {
-                format!("Failed to get metadata of log file: {file_path}. {error}")
-            })
-            .map_err(|_| IggyError::CannotReadFileMetadata)?
-            .len();
 
         log_size_bytes.store(actual_log_size, Ordering::Release);
 
@@ -70,59 +73,31 @@ impl MessagesReader {
 
     /// Loads and returns all message IDs from the log file.
     pub async fn load_message_ids_impl(&self) -> Result<Vec<u128>, IggyError> {
-        let file_size = self.file_size();
-        if file_size == 0 {
-            trace!("Log file {} is empty.", self.file_path);
-            return Ok(Vec::new());
-        }
-        //TODO: Fix me
-        /*
-
-        let mut offset = 0_u64;
-        let mut message_ids = Vec::new();
-
-        while offset < file_size {
-            file_size = self.file_size();
-            match self.read_next_batch(offset, file_size).await? {
-                Some((batch, bytes_read)) => {
-                    offset += bytes_read;
-                    for msg in batch.into_messages_iter() {
-                        message_ids.push(msg.id);
-                    }
-                }
-                None => {
-                    // Possibly reached EOF or truncated
-                    break;
-                }
-            }
-        }
-
-        trace!("Loaded {} message IDs from the log.", message_ids.len());
-        Ok(message_ids)
-        */
         todo!()
     }
 
     pub async fn load_messages_impl(
         &self,
-        read_boundary: ReadBoundary,
-    ) -> Result<IggyBatch, IggyError> {
+        indexes: IggyIndexes,
+    ) -> Result<IggyMessagesBatchSet, IggyError> {
         let file_size = self.file_size();
         if file_size == 0 {
             trace!("Messages file {} is empty.", self.file_path);
-            return Ok(IggyBatch::empty());
+            return Ok(IggyMessagesBatchSet::empty());
         }
 
-        let start_pos = read_boundary.start_position;
-        let count_bytes = read_boundary.bytes;
-        let messages_count = read_boundary.messages_count;
+        let start_pos = indexes.base_position();
+        let count_bytes = indexes.messages_size();
+        let messages_count = indexes.count();
 
         let messages_bytes = match self
             .read_bytes_at(start_pos as u64, count_bytes as u64)
             .await
         {
             Ok(buf) => buf,
-            Err(error) if error.kind() == ErrorKind::UnexpectedEof => return Ok(IggyBatch::empty()),
+            Err(error) if error.kind() == ErrorKind::UnexpectedEof => {
+                return Ok(IggyMessagesBatchSet::empty())
+            }
             Err(error) => {
                 error!(
                     "Error reading {messages_count} messages at position {start_pos} in file {} of size {}: {error}",
@@ -132,10 +107,17 @@ impl MessagesReader {
             }
         };
 
-        Ok(IggyBatch::from(IggyMessages::new(
+        // TODO(hubcio): validate
+        // - check checksum(s)
+        // - check offset
+
+        let out = IggyMessagesBatchSet::from(IggyMessagesBatch::new(
+            indexes,
             messages_bytes,
             messages_count,
-        )))
+        ));
+
+        Ok(out)
     }
 
     fn file_size(&self) -> u64 {

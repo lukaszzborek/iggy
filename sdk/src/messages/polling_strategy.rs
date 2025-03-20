@@ -1,17 +1,11 @@
 use super::polling_kind::PollingKind;
 use crate::bytes_serializable::BytesSerializable;
-use crate::command::{Command, POLL_MESSAGES_CODE};
-use crate::consumer::{Consumer, ConsumerKind};
 use crate::error::IggyError;
-use crate::identifier::Identifier;
-use crate::utils::sizeable::Sizeable;
 use crate::utils::timestamp::IggyTimestamp;
-use crate::validatable::Validatable;
 use bytes::{BufMut, Bytes, BytesMut};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 use std::fmt::Display;
-use std::str::FromStr;
 
 /// Default value for the polling strategy.
 const DEFAULT_POLLING_STRATEGY_VALUE: u64 = 0;

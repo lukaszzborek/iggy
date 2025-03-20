@@ -1,8 +1,8 @@
-use super::header::get_headers_size_bytes;
+use super::user_headers::get_headers_size_bytes;
 use super::message_header::{IggyMessageHeader, IGGY_MESSAGE_HEADER_SIZE};
 use crate::bytes_serializable::BytesSerializable;
 use crate::error::IggyError;
-use crate::models::messaging::header::{HeaderKey, HeaderValue};
+use crate::models::messaging::user_headers::{HeaderKey, HeaderValue};
 use crate::utils::byte_size::IggyByteSize;
 use crate::utils::sizeable::Sizeable;
 use crate::utils::timestamp::IggyTimestamp;
@@ -12,6 +12,7 @@ use serde_with::base64::Base64;
 use serde_with::serde_as;
 use std::collections::HashMap;
 use std::str::FromStr;
+use tracing::error;
 
 /// The single message. It is exact format in which message is saved to / retrieved from the disk.
 #[serde_as]
@@ -39,8 +40,8 @@ impl IggyMessage {
         IggyMessageBuilder::new()
     }
 
-    /// Convert bytes to messages
-    pub(crate) fn from_raw_bytes(buffer: Bytes, count: u32) -> Vec<IggyMessage> {
+    /// Convert Bytes to messages
+    pub(crate) fn from_raw_bytes(buffer: Bytes, count: u32) -> Result<Vec<IggyMessage>, IggyError> {
         let mut messages = Vec::with_capacity(count as usize);
         let mut position = 0;
         let buf_len = buffer.len();
@@ -52,7 +53,10 @@ impl IggyMessage {
             let header_bytes = buffer.slice(position..position + IGGY_MESSAGE_HEADER_SIZE as usize);
             let header = match IggyMessageHeader::from_bytes(header_bytes) {
                 Ok(h) => h,
-                Err(_) => break,
+                Err(e) => {
+                    error!("Failed to parse message header: {}", e);
+                    return Err(e);
+                }
             };
             position += IGGY_MESSAGE_HEADER_SIZE as usize;
 
@@ -74,7 +78,10 @@ impl IggyMessage {
 
                     match HashMap::from_bytes(headers_bytes) {
                         Ok(map) => Some(map),
-                        Err(_) => break,
+                        Err(e) => {
+                            error!("Failed to parse user headers: {}", e);
+                            return Err(e);
+                        }
                     }
                 } else {
                     None
@@ -87,7 +94,7 @@ impl IggyMessage {
             });
         }
 
-        messages
+        Ok(messages)
     }
 }
 
@@ -245,7 +252,6 @@ impl IggyMessageBuilder {
     }
 }
 
-// Convenience impl for conversion from common types
 impl From<String> for IggyMessage {
     fn from(s: String) -> Self {
         Self::new(Bytes::from(s))

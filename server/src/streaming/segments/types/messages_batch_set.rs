@@ -1,22 +1,22 @@
-use super::IggyMessages;
+use iggy::models::messaging::IggyMessagesBatch;
 use iggy::prelude::*;
 
-/// A batch container for multiple IggyMessages objects
+/// A container for multiple IggyMessagesBatch objects
 #[derive(Debug, Clone, Default)]
-pub struct IggyBatch {
+pub struct IggyMessagesBatchSet {
     /// The collection of message containers
-    messages: Vec<IggyMessages>,
+    batches: Vec<IggyMessagesBatch>,
     /// Total number of messages across all containers
     count: u32,
     /// Total size in bytes across all containers
     size: u32,
 }
 
-impl IggyBatch {
+impl IggyMessagesBatchSet {
     /// Create a new empty batch
     pub fn empty() -> Self {
         Self {
-            messages: Vec::new(),
+            batches: Vec::new(),
             count: 0,
             size: 0,
         }
@@ -25,33 +25,33 @@ impl IggyBatch {
     /// Create a new empty batch with a specified initial capacity of message containers
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            messages: Vec::with_capacity(capacity),
+            batches: Vec::with_capacity(capacity),
             count: 0,
             size: 0,
         }
     }
 
     /// Create a batch from an existing vector of IggyMessages
-    pub fn from_vec(messages: Vec<IggyMessages>) -> Self {
+    pub fn from_vec(messages: Vec<IggyMessagesBatch>) -> Self {
         let mut batch = Self::with_capacity(messages.len());
         for msg in messages {
-            batch.add(msg);
+            batch.add_batch(msg);
         }
         batch
     }
 
     /// Add a message container to the batch
-    pub fn add(&mut self, messages: IggyMessages) {
+    pub fn add_batch(&mut self, messages: IggyMessagesBatch) {
         self.count += messages.count();
         self.size += messages.size();
-        self.messages.push(messages);
+        self.batches.push(messages);
     }
 
     /// Add another batch of messages to the batch
-    pub fn add_batch(&mut self, other: IggyBatch) {
+    pub fn add_batch_set(&mut self, other: IggyMessagesBatchSet) {
         self.count += other.count();
         self.size += other.size();
-        self.messages.extend(other.messages);
+        self.batches.extend(other.batches);
     }
 
     /// Get the total number of messages in the batch
@@ -66,30 +66,30 @@ impl IggyBatch {
 
     /// Get the number of message containers in the batch
     pub fn containers_count(&self) -> usize {
-        self.messages.len()
+        self.batches.len()
     }
 
     /// Check if the batch is empty
     pub fn is_empty(&self) -> bool {
-        self.messages.is_empty() || self.count == 0
+        self.batches.is_empty() || self.count == 0
     }
 
     /// Get a reference to the underlying vector of message containers
-    pub fn inner(&self) -> &Vec<IggyMessages> {
-        &self.messages
+    pub fn inner(&self) -> &Vec<IggyMessagesBatch> {
+        &self.batches
     }
 
     /// Consume the batch, returning the underlying vector of message containers
-    pub fn into_inner(self) -> Vec<IggyMessages> {
-        self.messages
+    pub fn into_inner(self) -> Vec<IggyMessagesBatch> {
+        self.batches
     }
 
     /// Iterate over all message containers in the batch
-    pub fn iter(&self) -> impl Iterator<Item = &IggyMessages> {
-        self.messages.iter()
+    pub fn iter(&self) -> impl Iterator<Item = &IggyMessagesBatch> {
+        self.batches.iter()
     }
 
-    /// Returns a new IggyBatch containing only messages with offsets greater than or equal to the specified offset,
+    /// Returns a new IggyMessagesBatch containing only messages with offsets greater than or equal to the specified offset,
     /// up to the specified count.
     ///
     /// If no messages match the criteria, returns an empty batch.
@@ -101,27 +101,20 @@ impl IggyBatch {
         let mut result = Self::with_capacity(self.containers_count());
         let mut remaining_count = count;
 
-        // Process each container, extracting messages that match the offset criteria
         for container in self.iter() {
-            // If we've collected enough messages, stop processing containers
             if remaining_count == 0 {
                 break;
             }
 
-            // Skip this container if all its messages have offsets less than what we're looking for
-            // We can do this check because we know the last message's offset in this container
-            // must be greater than or equal to the first message's offset
             let first_offset = container.first_index();
             if first_offset + container.count() as u64 <= start_offset {
                 continue;
             }
 
-            // Try to extract messages from this container
             if let Some(sliced) = container.slice_by_offset(start_offset, remaining_count) {
-                // If we got some messages, add them to result and update remaining count
                 if sliced.count() > 0 {
                     remaining_count -= sliced.count();
-                    result.add(sliced);
+                    result.add_batch(sliced);
                 }
             }
         }
@@ -129,7 +122,7 @@ impl IggyBatch {
         result
     }
 
-    /// Returns a new IggyBatch containing only messages with timestamps greater than or equal
+    /// Returns a new IggyMessagesBatch containing only messages with timestamps greater than or equal
     /// to the specified timestamp, up to the specified count.
     ///
     /// If no messages match the criteria, returns an empty batch.
@@ -141,21 +134,15 @@ impl IggyBatch {
         let mut result = Self::with_capacity(self.containers_count());
         let mut remaining_count = count;
 
-        // Process each container, extracting messages that match the timestamp criteria
         for container in self.iter() {
-            // If we've collected enough messages, stop processing containers
             if remaining_count == 0 {
                 break;
             }
 
-            // Since multiple messages can have the same timestamp,
-            // we can't safely skip containers based on first_timestamp alone.
-            // Instead, we'll let slice_by_timestamp handle the filtering.
             if let Some(sliced) = container.slice_by_timestamp(timestamp, remaining_count) {
-                // If we got some messages, add them to result and update remaining count
                 if sliced.count() > 0 {
                     remaining_count -= sliced.count();
-                    result.add(sliced);
+                    result.add_batch(sliced);
                 }
             }
         }
@@ -170,12 +157,12 @@ impl IggyBatch {
 
         for batch in self.iter() {
             for view in batch.iter() {
-                let header = view.msg_header().to_header();
+                let header = view.header().to_header();
                 let payload = bytes::Bytes::copy_from_slice(view.payload());
 
                 let headers = if header.headers_length > 0 {
                     let headers_bytes = bytes::Bytes::copy_from_slice(
-                        &view.headers()[..header.headers_length as usize],
+                        &view.user_headers()[..header.headers_length as usize],
                     );
 
                     match std::collections::HashMap::<HeaderKey, HeaderValue>::from_bytes(
@@ -206,20 +193,20 @@ impl IggyBatch {
     }
 }
 
-impl Sizeable for IggyBatch {
+impl Sizeable for IggyMessagesBatchSet {
     fn get_size_bytes(&self) -> IggyByteSize {
         IggyByteSize::from(self.size as u64)
     }
 }
 
-impl From<Vec<IggyMessages>> for IggyBatch {
-    fn from(messages: Vec<IggyMessages>) -> Self {
+impl From<Vec<IggyMessagesBatch>> for IggyMessagesBatchSet {
+    fn from(messages: Vec<IggyMessagesBatch>) -> Self {
         Self::from_vec(messages)
     }
 }
 
-impl From<IggyMessages> for IggyBatch {
-    fn from(messages: IggyMessages) -> Self {
+impl From<IggyMessagesBatch> for IggyMessagesBatchSet {
+    fn from(messages: IggyMessagesBatch) -> Self {
         Self::from_vec(vec![messages])
     }
 }

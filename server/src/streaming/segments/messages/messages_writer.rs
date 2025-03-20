@@ -1,5 +1,5 @@
 use super::PersisterTask;
-use crate::streaming::segments::{messages::write_batch, IggyBatch};
+use crate::streaming::segments::{messages::write_batch, IggyMessagesBatchSet};
 use error_set::ErrContext;
 use iggy::{confirmation::Confirmation, error::IggyError, utils::byte_size::IggyByteSize};
 use std::sync::{
@@ -80,7 +80,7 @@ impl MessagesWriter {
     /// Append a messages to the messages file.
     pub async fn save_batches(
         &mut self,
-        batches: IggyBatch,
+        batches: IggyMessagesBatchSet,
         confirmation: Confirmation,
     ) -> Result<IggyByteSize, IggyError> {
         let messages_size = batches.size();

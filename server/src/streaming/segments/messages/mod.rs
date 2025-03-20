@@ -9,7 +9,7 @@ pub use messages_reader::MessagesReader;
 pub use messages_writer::MessagesWriter;
 pub use persister_task::PersisterTask;
 
-use super::IggyBatch;
+use super::IggyMessagesBatchSet;
 use iggy::error::IggyError;
 use tokio::{fs::File, io::AsyncWriteExt};
 
@@ -17,7 +17,7 @@ use tokio::{fs::File, io::AsyncWriteExt};
 async fn write_batch(
     file: &mut File,
     file_path: &str,
-    batches: IggyBatch,
+    batches: IggyMessagesBatchSet,
 ) -> Result<usize, IggyError> {
     let mut slices: Vec<IoSlice> = batches.iter().map(|b| IoSlice::new(b)).collect();
 

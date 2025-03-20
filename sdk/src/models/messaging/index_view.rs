@@ -1,6 +1,7 @@
-use super::IggyIndex;
-use crate::streaming::segments::indexes::INDEX_SIZE;
+use crate::models::messaging::INDEX_SIZE;
 use bytes::Buf;
+
+use super::IggyIndex;
 
 /// View into a single index entry in a binary buffer.
 /// Provides zero-copy access to index data.
@@ -14,9 +15,9 @@ impl<'a> IggyIndexView<'a> {
     /// Slice must be exactly INDEX_SIZE (16 bytes) long
     pub fn new(data: &'a [u8]) -> Self {
         debug_assert!(
-            data.len() == INDEX_SIZE as usize,
+            data.len() == INDEX_SIZE,
             "Index data must be exactly {INDEX_SIZE} bytes"
-        );
+        );  
         Self { data }
     }
 
@@ -38,7 +39,7 @@ impl<'a> IggyIndexView<'a> {
         buf.get_u64_le()
     }
 
-    /// Converts the view to an Index struct
+    /// Converts the view into an `IggyIndex`
     pub fn to_index(&self) -> IggyIndex {
         IggyIndex {
             offset: self.offset(),

@@ -327,7 +327,7 @@ pub trait MessageClient {
         strategy: &PollingStrategy,
         count: u32,
         auto_commit: bool,
-    ) -> Result<Vec<IggyMessage>, IggyError>;
+    ) -> Result<PolledMessages, IggyError>;
 
     /// Send messages using specified partitioning strategy to the given stream and topic by unique IDs or names.
     ///

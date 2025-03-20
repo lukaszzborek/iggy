@@ -9,9 +9,7 @@ use crate::utils::sizeable::Sizeable;
 use crate::validatable::Validatable;
 use bytes::{BufMut, Bytes, BytesMut};
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr};
 use std::fmt::Display;
-use std::str::FromStr;
 
 pub const DEFAULT_PARTITION_ID: u32 = 1;
 pub const DEFAULT_NUMBER_OF_MESSAGES_TO_POLL: u32 = 10;

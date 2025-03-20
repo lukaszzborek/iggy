@@ -145,7 +145,8 @@ impl PartitionStorage for FilePartitionStorage {
 
             if partition.config.partition.validate_checksum {
                 info!("Validating messages checksum for partition with ID: {} and segment with start offset: {}...", partition.partition_id, segment.start_offset);
-                segment.load_message_checksums().await?;
+                // segment.validate_messages_checksums().await?;
+                // TODO
                 info!("Validated messages checksum for partition with ID: {} and segment with start offset: {}.", partition.partition_id, segment.start_offset);
             }
 

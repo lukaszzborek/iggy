@@ -3,23 +3,14 @@ use crate::bytes_serializable::BytesSerializable;
 use crate::command::{Command, SEND_MESSAGES_CODE};
 use crate::error::IggyError;
 use crate::identifier::Identifier;
-use crate::messages::{MAX_HEADERS_SIZE, MAX_PAYLOAD_SIZE};
-use crate::models::messaging::{HeaderKey, HeaderValue};
-use crate::models::messaging::{IggyMessage, IggyMessageHeader};
+use crate::messages::MAX_PAYLOAD_SIZE;
+use crate::models::messaging::{IggyMessage, IggyMessagesBatch, INDEX_SIZE};
 use crate::prelude::{IggyMessageViewIterator, IGGY_MESSAGE_HEADER_SIZE};
-use crate::utils::byte_size::IggyByteSize;
 use crate::utils::sizeable::Sizeable;
-use crate::utils::varint::IggyVarInt;
 use crate::validatable::Validatable;
-use bytes::{Buf, BufMut, Bytes, BytesMut};
+use bytes::{BufMut, Bytes, BytesMut};
 use serde::{Deserialize, Serialize};
-use serde_with::base64::Base64;
-use serde_with::serde_as;
-use std::collections::HashMap;
 use std::fmt::Display;
-use std::hash::{Hash, Hasher};
-use std::str::FromStr;
-use uuid::Uuid;
 
 /// `SendMessages` command is used to send messages to a topic in a stream.
 /// It has additional payload:
@@ -37,10 +28,8 @@ pub struct SendMessages {
     pub topic_id: Identifier,
     /// To which partition the messages should be sent - either provided by the client or calculated by the server.
     pub partitioning: Partitioning,
-    /// Number of messages to be sent.
-    pub messages_count: u32,
     /// Messages collection
-    pub messages: Bytes,
+    pub batch: IggyMessagesBatch,
 }
 
 impl SendMessages {
@@ -54,15 +43,18 @@ impl SendMessages {
         let topic_id_size = topic_id.get_buffer_size();
         let partitioning_size = partitioning.get_buffer_size();
         let messages_count = messages.len() as u32;
+        let messages_count_size = std::mem::size_of::<u32>() as u32;
+        let indexes_size = messages_count * INDEX_SIZE as u32;
 
         let total_size = stream_id_size
-        + topic_id_size
-        + partitioning_size
-        + 4  // For messages_count (u32)
-        + messages
-            .iter()
-            .map(|m| m.get_size_bytes().as_bytes_u64() as u32)
-            .sum::<u32>();
+            + topic_id_size
+            + partitioning_size
+            + messages_count_size
+            + indexes_size
+            + messages
+                .iter()
+                .map(|m| m.get_size_bytes().as_bytes_u64() as u32)
+                .sum::<u32>();
 
         let mut bytes = BytesMut::with_capacity(total_size as usize);
 
@@ -71,8 +63,18 @@ impl SendMessages {
         partitioning.write_to_buffer(&mut bytes);
         bytes.put_u32_le(messages_count);
 
-        for message in messages {
+        let mut current_position = bytes.len();
+
+        bytes.put_bytes(0, indexes_size as usize);
+
+        let mut msgs_size: u32 = 0;
+        for (cnt, message) in messages.iter().enumerate() {
             message.write_to_buffer(&mut bytes);
+            msgs_size += message.get_size_bytes().as_bytes_u64() as u32;
+            write_value_at(&mut bytes, (cnt as u32).to_le_bytes(), current_position);
+            write_value_at(&mut bytes, msgs_size.to_le_bytes(), current_position + 4);
+            write_value_at(&mut bytes, 0u64.to_le_bytes(), current_position + 8);
+            current_position += INDEX_SIZE;
         }
 
         let result = bytes.freeze();
@@ -80,12 +82,18 @@ impl SendMessages {
         debug_assert_eq!(
             total_size as usize,
             result.len(),
-            "Calculated size ({}) doesn't match actual bytes length ({})",
-            total_size,
-            result.len()
+            "Calculated size doesn't match actual bytes length",
         );
 
         result
+    }
+}
+
+fn write_value_at<const N: usize>(slice: &mut [u8], value: [u8; N], position: usize) {
+    let slice = &mut slice[position..position + N];
+    let ptr = slice.as_mut_ptr();
+    unsafe {
+        std::ptr::copy_nonoverlapping(value.as_ptr(), ptr, N);
     }
 }
 
@@ -95,8 +103,7 @@ impl Default for SendMessages {
             stream_id: Identifier::default(),
             topic_id: Identifier::default(),
             partitioning: Partitioning::default(),
-            messages: Bytes::new(),
-            messages_count: 0,
+            batch: IggyMessagesBatch::empty(),
         }
     }
 }
@@ -109,7 +116,7 @@ impl Command for SendMessages {
 
 impl Validatable<IggyError> for SendMessages {
     fn validate(&self) -> Result<(), IggyError> {
-        if self.messages.is_empty() || self.messages_count == 0 {
+        if self.batch.is_empty() {
             return Err(IggyError::InvalidMessagesCount);
         }
 
@@ -123,7 +130,7 @@ impl Validatable<IggyError> for SendMessages {
         let mut payload_size = 0;
         let mut message_count = 0;
 
-        for message in IggyMessageViewIterator::new(&self.messages) {
+        for message in IggyMessageViewIterator::new(&self.batch) {
             message_count += 1;
 
             // TODO(hubcio): IMHO validation of headers should be purely on SDK side
@@ -236,15 +243,12 @@ impl BytesSerializable for SendMessages {
 
 impl Display for SendMessages {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let count = self.messages_count;
+        let messages_count = self.batch.count();
+        let messages_size = self.batch.size();
         write!(
             f,
-            "{}|{}|{}|messages.len:{}|messages_size:{}",
-            self.stream_id,
-            self.topic_id,
-            self.partitioning,
-            count,
-            self.messages.len()
+            "{}|{}|{}|messages_count:{}|messages_size:{}",
+            self.stream_id, self.topic_id, self.partitioning, messages_count, messages_size
         )
     }
 }

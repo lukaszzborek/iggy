@@ -5,7 +5,7 @@ use crate::http::client::HttpClient;
 use crate::http::HttpTransport;
 use crate::identifier::Identifier;
 use crate::messages::{Partitioning, PollingStrategy};
-use crate::prelude::IggyMessage;
+use crate::prelude::{IggyMessage, PolledMessages};
 use async_trait::async_trait;
 
 #[async_trait]
@@ -19,7 +19,7 @@ impl MessageClient for HttpClient {
         strategy: &PollingStrategy,
         count: u32,
         auto_commit: bool,
-    ) -> Result<Vec<IggyMessage>, IggyError> {
+    ) -> Result<PolledMessages, IggyError> {
         /*
         let response = self
             .get_with_query(

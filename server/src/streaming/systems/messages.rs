@@ -1,8 +1,8 @@
-use crate::streaming::segments::{IggyBatch, IggyMessages, IggyMessagesMut};
+use crate::binary::handlers::messages::poll_messages_handler::IggyPollMetadata;
+use crate::streaming::segments::{IggyMessagesBatchMut, IggyMessagesBatchSet};
 use crate::streaming::session::Session;
 use crate::streaming::systems::system::System;
 use crate::streaming::systems::COMPONENT;
-use bytes::Bytes;
 use error_set::ErrContext;
 use iggy::confirmation::Confirmation;
 use iggy::consumer::Consumer;
@@ -19,7 +19,7 @@ impl System {
         topic_id: &Identifier,
         partition_id: Option<u32>,
         args: PollingArgs,
-    ) -> Result<IggyBatch, IggyError> {
+    ) -> Result<(IggyPollMetadata, IggyMessagesBatchSet), IggyError> {
         self.ensure_authenticated(session)?;
         if args.count == 0 {
             return Err(IggyError::InvalidMessagesCount);
@@ -45,22 +45,14 @@ impl System {
             .resolve_consumer_with_partition_id(consumer, session.client_id, partition_id, true)
             .await
             .with_error_context(|error| format!("{COMPONENT} (error: {error}) - failed to resolve consumer with partition id, consumer: {consumer}, client ID: {}, partition ID: {:?}", session.client_id, partition_id))? else {
-            // TODO: Fix me
-            /*
-            return Ok(PolledMessages {
-                messages: vec![],
-                partition_id: 0,
-                current_offset: 0,
-            })
-            */
-            todo!()
+            return Ok((IggyPollMetadata::new(0, 0), IggyMessagesBatchSet::empty()));
         };
 
-        let result = topic
+        let (metadata, messages) = topic
             .get_messages(polling_consumer, partition_id, args.strategy, args.count)
             .await?;
 
-        Ok(result)
+        Ok((metadata, messages))
 
         // let offset = polled_messages.messages.last().unwrap().offset;
         // if args.auto_commit {
@@ -108,7 +100,7 @@ impl System {
         stream_id: &Identifier,
         topic_id: &Identifier,
         partitioning: &Partitioning,
-        messages: IggyMessagesMut,
+        messages: IggyMessagesBatchMut,
         confirmation: Option<Confirmation>,
     ) -> Result<(), IggyError> {
         self.ensure_authenticated(session)?;

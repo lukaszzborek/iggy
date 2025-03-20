@@ -1,8 +1,8 @@
-use super::{
-    index::IggyIndex, index_view::IggyIndexView, IggyIndexesMut, ReadBoundary, INDEX_SIZE,
-};
+use super::IggyIndexesMut;
+use bytes::BytesMut;
 use error_set::ErrContext;
-use iggy::error::IggyError;
+use iggy::models::messaging::{IggyIndex, IggyIndexes, INDEX_SIZE};
+use iggy::{error::IggyError, models::messaging::IggyIndexView};
 use std::{
     fs::{File, OpenOptions},
     io::ErrorKind,
@@ -71,14 +71,8 @@ impl IndexReader {
                 return Err(IggyError::CannotReadFile);
             }
         };
-        let index_count = file_size / INDEX_SIZE;
-        let mut indexes = IggyIndexesMut::with_capacity(index_count as usize);
-
-        for chunk in buf.chunks_exact(INDEX_SIZE as usize) {
-            let view = IggyIndexView::new(chunk);
-            indexes.add_unsaved_index(view.offset(), view.position(), view.timestamp());
-        }
-
+        let index_count = file_size / INDEX_SIZE as u32;
+        let indexes = IggyIndexesMut::from_bytes(buf);
         if indexes.count() != index_count {
             error!(
                 "Loaded {} indexes from disk, expected {}, file {} is probably corrupted!",
@@ -91,21 +85,21 @@ impl IndexReader {
         Ok(indexes)
     }
 
-    /// Calculate boundary information for reading messages from disk.
+    /// Loads a specific range of indexes from disk based on offset.
     ///
-    /// This computes the exact file position, bytes to read, and expected message count
-    /// based on the provided relative offsets
-    pub async fn calculate_disk_read_boundary_by_offset(
+    /// Returns a slice of indexes starting at the relative_start_offset with the specified count,
+    /// or None if the requested range is not available.
+    pub async fn load_from_disk_by_offset(
         &self,
         relative_start_offset: u32,
-        relative_end_offset: u32,
-    ) -> Result<Option<ReadBoundary>, IggyError> {
+        count: u32,
+    ) -> Result<Option<IggyIndexes>, IggyError> {
         let file_size = self.file_size();
-        let total_indexes = file_size / INDEX_SIZE;
+        let total_indexes = file_size / INDEX_SIZE as u32;
 
         if file_size == 0 || total_indexes == 0 {
             trace!(
-                "Index file {} is empty, cannot calculate read boundary",
+                "Index file {} is empty, cannot load indexes",
                 self.file_path
             );
             return Ok(None);
@@ -120,225 +114,198 @@ impl IndexReader {
             return Ok(None);
         }
 
-        let effective_end_offset = relative_end_offset.min(total_indexes - 1);
+        let available_count = total_indexes.saturating_sub(relative_start_offset);
+        let actual_count = std::cmp::min(count, available_count);
 
-        let first_index = match self.load_nth_index(relative_start_offset).await? {
-            Some(idx) => idx,
-            None => {
-                trace!("Failed to load index at position {}", relative_start_offset);
-                return Ok(None);
+        if actual_count == 0 {
+            trace!(
+                "No available indexes to load. Start offset: {}, requested count: {}",
+                relative_start_offset,
+                count
+            );
+            return Ok(None);
+        }
+
+        let start_byte = relative_start_offset as usize * INDEX_SIZE;
+        let end_byte = start_byte + (actual_count as usize * INDEX_SIZE);
+
+        let indexes_bytes = self
+            .read_at(start_byte as u32, (end_byte - start_byte) as u32)
+            .await
+            .with_error_context(|error| {
+                format!(
+                    "Failed to read indexes from file {} at offset {start_byte}, {error}",
+                    self.file_path,
+                )
+            })
+            .map_err(|_| IggyError::CannotReadFile)?;
+
+        let base_position = if relative_start_offset > 0 {
+            match self.load_nth_index(relative_start_offset - 1).await? {
+                Some(prev_index) => prev_index.position,
+                None => {
+                    trace!(
+                        "Failed to load previous index at position {}",
+                        relative_start_offset - 1
+                    );
+                    0
+                }
             }
+        } else {
+            0
         };
-
-        let last_index = match self.load_nth_index(effective_end_offset).await? {
-            Some(idx) => idx,
-            None => {
-                trace!("Failed to load index at position {}", effective_end_offset);
-                return Ok(None);
-            }
-        };
-
-        let start_position = first_index.position;
-        let bytes = last_index.position - start_position;
-        let messages_count = effective_end_offset - relative_start_offset + 1;
 
         trace!(
-            "Calculated read boundary: start_pos={}, bytes={}, count={}",
-            start_position,
-            bytes,
-            messages_count
+            "Loaded {} indexes from disk starting at offset {}, base position: {}",
+            actual_count,
+            relative_start_offset,
+            base_position
         );
 
-        Ok(Some(ReadBoundary::new(
-            start_position,
-            bytes,
-            messages_count,
+        Ok(Some(IggyIndexes::new(
+            indexes_bytes.freeze(),
+            base_position,
         )))
     }
 
-    /// Calculate boundary information for reading messages from disk based on a timestamp.
+    /// Loads a specific range of indexes from disk based on timestamp.
     ///
-    /// This finds the index with timestamp closest to the requested timestamp and returns
-    /// the boundary information to read the messages from that point forward.
-    pub async fn calculate_disk_read_boundary_by_timestamp(
+    /// Returns a slice of indexes starting from the index with timestamp closest to
+    /// (but not exceeding) the requested timestamp, with the specified count.
+    pub async fn load_from_disk_by_timestamp(
         &self,
         timestamp: u64,
-        messages_count: u32,
-    ) -> Result<Option<ReadBoundary>, IggyError> {
+        count: u32,
+    ) -> Result<Option<IggyIndexes>, IggyError> {
         let file_size = self.file_size();
-        if file_size == 0 {
+        let total_indexes = file_size / INDEX_SIZE as u32;
+
+        if file_size == 0 || total_indexes == 0 {
             trace!("Index file is empty");
             return Ok(None);
         }
 
-        let start_index = match self.find_index_by_timestamp(timestamp).await? {
-            Some(index) => index,
+        let start_index_pos = match self.find_index_pos_by_timestamp(timestamp).await? {
+            Some(pos) => pos,
             None => return Ok(None),
         };
 
-        let total_indexes = file_size / INDEX_SIZE;
-        let start_position_in_array = start_index.offset;
+        let available_count = total_indexes.saturating_sub(start_index_pos);
+        let actual_count = std::cmp::min(count, available_count);
 
-        let available_count = total_indexes - start_position_in_array;
-        let requested_count = messages_count;
-        let actual_count = std::cmp::min(available_count, requested_count);
-
-        // If actual count is 0, we can't read any messages
         if actual_count == 0 {
+            trace!(
+                "No available indexes to load. Start index pos: {}, requested count: {}",
+                start_index_pos,
+                count
+            );
             return Ok(None);
         }
 
-        let end_position_in_array = start_position_in_array + actual_count - 1;
+        let start_byte = start_index_pos as usize * INDEX_SIZE;
+        let end_byte = start_byte + (actual_count as usize * INDEX_SIZE);
 
-        if end_position_in_array >= total_indexes {
-            return Ok(None);
-        }
+        let indexes_bytes = self
+            .read_at(start_byte as u32, (end_byte - start_byte) as u32)
+            .await
+            .with_error_context(|error| {
+                format!(
+                    "Failed to read indexes from file {} at offset {start_byte}, {error}",
+                    self.file_path
+                )
+            })
+            .map_err(|_| IggyError::CannotReadFile)?;
 
-        let end_index = match self.load_nth_index(end_position_in_array as u32).await? {
-            Some(index) => index,
-            None => return Ok(None),
-        };
-
-        let start_position = start_index.position;
-        // Check to prevent overflow in case end_index.position < start_position
-        let bytes = if end_index.position >= start_position {
-            end_index.position - start_position
+        let base_position = if start_index_pos > 0 {
+            match self.load_nth_index(start_index_pos - 1).await? {
+                Some(prev_index) => prev_index.position,
+                None => {
+                    trace!(
+                        "Failed to load previous index at position {}",
+                        start_index_pos - 1
+                    );
+                    0
+                }
+            }
         } else {
-            // This shouldn't normally happen but we need to handle it
-            tracing::warn!(
-                "End index position {} is less than start position {}. Using 0 bytes.",
-                end_index.position,
-                start_position
-            );
-            0
-        };
-
-        // Ensure we don't have underflow when calculating messages count
-        // This is safer than the original calculation
-        let actual_messages_count = if end_position_in_array >= start_position_in_array {
-            (end_position_in_array - start_position_in_array + 1) as u32
-        } else {
-            tracing::warn!(
-                "End position {} is less than start position {}. Using 0 messages.",
-                end_position_in_array,
-                start_position_in_array
-            );
             0
         };
 
         trace!(
-            "Calculated disk read boundary by timestamp {timestamp}, count {messages_count}: start_pos={start_position}, bytes={bytes}, count={actual_messages_count}",
+            "Loaded {} indexes from disk starting at timestamp {}, base position: {}",
+            actual_count,
+            timestamp,
+            base_position
         );
 
-        Ok(Some(ReadBoundary::new(
-            start_position,
-            bytes,
-            actual_messages_count,
+        Ok(Some(IggyIndexes::new(
+            indexes_bytes.freeze(),
+            base_position,
         )))
     }
 
-    /// Finds the index with the timestamp greater than or equal to the given timestamp
-    /// Uses binary search for efficiency
-    async fn find_index_by_timestamp(
+    /// Finds the position of the index with timestamp closest to (but not exceeding) the target
+    async fn find_index_pos_by_timestamp(
         &self,
-        timestamp: u64,
-    ) -> Result<Option<IggyIndex>, IggyError> {
+        target_timestamp: u64,
+    ) -> Result<Option<u32>, IggyError> {
         let file_size = self.file_size();
         if file_size == 0 {
             return Ok(None);
         }
 
-        let total_indexes = file_size / INDEX_SIZE;
+        let total_indexes = file_size / INDEX_SIZE as u32;
         if total_indexes == 0 {
             return Ok(None);
         }
 
-        let first_idx = self.load_nth_index(0).await?;
-        if first_idx.is_none() {
-            return Ok(None);
+        let last_idx = match self.load_nth_index(total_indexes - 1).await? {
+            Some(idx) => idx,
+            None => return Ok(None),
+        };
+
+        if target_timestamp > last_idx.timestamp {
+            return Ok(Some(total_indexes - 1));
         }
 
-        let first_idx = first_idx.unwrap();
+        let first_idx = match self.load_nth_index(0).await? {
+            Some(idx) => idx,
+            None => return Ok(None),
+        };
 
-        // If the requested timestamp is less than the first index,
-        // return the first index since that's the earliest available
-        if timestamp <= first_idx.timestamp {
-            tracing::trace!(
-                "Requested timestamp {} is less than or equal to first index timestamp {}",
-                timestamp,
-                first_idx.timestamp
-            );
-            return Ok(Some(first_idx));
+        if target_timestamp <= first_idx.timestamp {
+            return Ok(Some(0));
         }
 
-        let last_idx = self.load_nth_index(total_indexes - 1).await?;
-        if last_idx.is_none() {
-            return Ok(None);
-        }
-        let last_idx = last_idx.unwrap();
+        let mut low = 0;
+        let mut high = total_indexes - 1;
 
-        // If the requested timestamp is greater than the last index,
-        // we can't find any valid indexes
-        if timestamp > last_idx.timestamp {
-            tracing::trace!(
-                "Requested timestamp {} is greater than last index timestamp {}",
-                timestamp,
-                last_idx.timestamp
-            );
-            return Ok(None);
-        }
-
-        let mut left = 0;
-        let mut right = total_indexes - 1;
-        let mut result: Option<IggyIndex> = None;
-
-        // Binary search to find the first index with timestamp >= requested timestamp
-        while left <= right {
-            let mid = left + (right - left) / 2;
-            let index = match self.load_nth_index(mid).await? {
+        while low <= high {
+            let mid = low + (high - low) / 2;
+            let mid_index = match self.load_nth_index(mid).await? {
                 Some(idx) => idx,
                 None => break,
             };
 
-            match index.timestamp.cmp(&timestamp) {
-                std::cmp::Ordering::Equal => {
-                    // Found exact match
-                    return Ok(Some(index));
-                }
-                std::cmp::Ordering::Less => {
-                    // Index timestamp is less than requested, look in right half
-                    left = mid + 1;
-                }
+            match mid_index.timestamp.cmp(&target_timestamp) {
+                std::cmp::Ordering::Equal => return Ok(Some(mid)),
+                std::cmp::Ordering::Less => low = mid + 1,
                 std::cmp::Ordering::Greater => {
-                    // Index timestamp is greater than requested
-                    result = Some(index); // This could be our answer, but there might be a better one
-                    right = mid - 1; // Look in left half for a potentially better match
+                    if mid == 0 {
+                        break;
+                    }
+                    high = mid - 1;
                 }
             }
         }
 
-        // If we didn't find an exact match but reached here,
-        // we need to return the first index that's greater than the timestamp
-        if result.is_none() {
-            // Scan forward to find the first index >= timestamp
-            for i in left..total_indexes {
-                let index = match self.load_nth_index(i).await? {
-                    Some(idx) => idx,
-                    None => continue,
-                };
-
-                if index.timestamp >= timestamp {
-                    result = Some(index);
-                    break;
-                }
-            }
+        // At this point, low is the position of the first index with timestamp > target_timestamp
+        // So low-1 is the position of the last index with timestamp <= target_timestamp
+        if low > 0 {
+            Ok(Some(low - 1))
+        } else {
+            Ok(Some(0))
         }
-
-        if result.is_none() && left < total_indexes {
-            result = self.load_nth_index(left).await?;
-        }
-
-        Ok(result)
     }
 
     /// Returns the size of the index file in bytes.
@@ -347,10 +314,11 @@ impl IndexReader {
     }
 
     /// Reads a specified number of bytes from the index file at a given offset.
-    async fn read_at(&self, offset: u32, len: u32) -> Result<Vec<u8>, std::io::Error> {
+    async fn read_at(&self, offset: u32, len: u32) -> Result<BytesMut, std::io::Error> {
         let file = self.file.clone();
         spawn_blocking(move || {
-            let mut buf = vec![0u8; len as usize];
+            let mut buf = BytesMut::with_capacity(len as usize);
+            unsafe { buf.set_len(len as usize) };
             file.read_exact_at(&mut buf, offset as u64)?;
             Ok(buf)
         })
@@ -363,7 +331,7 @@ impl IndexReader {
     /// Returns None if the specified position is out of bounds.
     async fn load_nth_index(&self, position: u32) -> Result<Option<IggyIndex>, IggyError> {
         let file_size = self.file_size();
-        let total_indexes = file_size / INDEX_SIZE;
+        let total_indexes = file_size / INDEX_SIZE as u32;
 
         if position >= total_indexes {
             trace!(
@@ -374,9 +342,9 @@ impl IndexReader {
             return Ok(None);
         }
 
-        let offset = position * INDEX_SIZE;
+        let offset = position * INDEX_SIZE as u32;
 
-        let buf = match self.read_at(offset, INDEX_SIZE).await {
+        let buf = match self.read_at(offset, INDEX_SIZE as u32).await {
             Ok(buf) => buf,
             Err(error) if error.kind() == ErrorKind::UnexpectedEof => return Ok(None),
             Err(error) => {

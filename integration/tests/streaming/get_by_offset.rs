@@ -1,10 +1,9 @@
 use crate::streaming::common::test_setup::TestSetup;
 use bytes::BytesMut;
 use iggy::prelude::*;
-use server::configs::resource_quota::MemoryResourceQuota;
-use server::configs::system::{CacheConfig, PartitionConfig, SegmentConfig, SystemConfig};
+use server::configs::system::{PartitionConfig, SegmentConfig, SystemConfig};
 use server::streaming::partitions::partition::Partition;
-use server::streaming::segments::IggyMessagesMut;
+use server::streaming::segments::IggyMessagesBatchMut;
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU32, AtomicU64};
@@ -25,13 +24,6 @@ fn segment_size(size: u64) -> IggyByteSize {
 
 fn msgs_req_to_save(count: u32) -> u32 {
     count
-}
-
-fn msg_cache_size(size: u64) -> Option<IggyByteSize> {
-    if size == 0 {
-        return None;
-    }
-    Some(IggyByteSize::from_str(&format!("{}b", size)).unwrap())
 }
 
 fn index_cache_enabled() -> bool {
@@ -142,8 +134,9 @@ async fn test_get_messages_by_offset(
 
     // Append all batches
     for batch_size in batch_sizes {
-        let batch =
-            IggyMessagesMut::from(&all_messages[current_pos..current_pos + batch_size as usize]);
+        let batch = IggyMessagesBatchMut::from(
+            &all_messages[current_pos..current_pos + batch_size as usize],
+        );
         assert_eq!(batch.count(), batch_size);
         partition.append_messages(batch, None).await.unwrap();
 

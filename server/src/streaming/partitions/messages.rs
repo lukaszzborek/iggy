@@ -14,7 +14,7 @@ impl Partition {
         &self,
         timestamp: IggyTimestamp,
         count: u32,
-    ) -> Result<IggyBatch, IggyError> {
+    ) -> Result<IggyMessagesBatchSet, IggyError> {
         trace!(
             "Getting {count} messages by timestamp: {} for partition: {}...",
             timestamp.as_micros(),
@@ -22,7 +22,7 @@ impl Partition {
         );
 
         if self.segments.is_empty() || count == 0 {
-            return Ok(IggyBatch::empty());
+            return Ok(IggyMessagesBatchSet::empty());
         }
 
         let query_ts = timestamp.as_micros();
@@ -43,7 +43,7 @@ impl Partition {
         &self,
         start_offset: u64,
         count: u32,
-    ) -> Result<IggyBatch, IggyError> {
+    ) -> Result<IggyMessagesBatchSet, IggyError> {
         trace!(
             "Getting {count} messages for start offset: {start_offset} for partition: {}, current offset: {}...",
             self.partition_id,
@@ -51,7 +51,7 @@ impl Partition {
         );
 
         if self.segments.is_empty() || start_offset > self.current_offset {
-            return Ok(IggyBatch::empty());
+            return Ok(IggyMessagesBatchSet::empty());
         }
 
         let end_offset = self.get_end_offset(start_offset, count);
@@ -59,22 +59,23 @@ impl Partition {
         // TODO: Most likely don't need to find the specific range of segments, just find the first segment containing the first offset
         // and during reads roll to the next one, when the first is exhausted.
         let segments = self.filter_segments_by_offsets(start_offset, end_offset);
-        match segments.len() {
+        let out = match segments.len() {
             0 => panic!("TODO"),
             1 => Ok(segments[0]
                 .get_messages_by_offset(start_offset, count)
                 .await?),
             _ => Ok(Self::get_messages_from_segments(segments, start_offset, count).await?),
-        }
+        }?;
+        Ok(out)
     }
 
     // Retrieves the first messages (up to a specified count).
-    pub async fn get_first_messages(&self, count: u32) -> Result<IggyBatch, IggyError> {
+    pub async fn get_first_messages(&self, count: u32) -> Result<IggyMessagesBatchSet, IggyError> {
         self.get_messages_by_offset(0, count).await
     }
 
     // Retrieves the last messages (up to a specified count).
-    pub async fn get_last_messages(&self, count: u32) -> Result<IggyBatch, IggyError> {
+    pub async fn get_last_messages(&self, count: u32) -> Result<IggyMessagesBatchSet, IggyError> {
         let mut requested_count = count as u64;
         if requested_count > self.current_offset + 1 {
             requested_count = self.current_offset + 1
@@ -89,7 +90,7 @@ impl Partition {
         &self,
         consumer: PollingConsumer,
         count: u32,
-    ) -> Result<IggyBatch, IggyError> {
+    ) -> Result<IggyMessagesBatchSet, IggyError> {
         let (consumer_offsets, consumer_id) = match consumer {
             PollingConsumer::Consumer(consumer_id, _) => (&self.consumer_offsets, consumer_id),
             PollingConsumer::ConsumerGroup(group_id, _) => (&self.consumer_group_offsets, group_id),
@@ -113,7 +114,7 @@ impl Partition {
                 consumer_offset.offset,
                 self.partition_id
             );
-            return Ok(IggyBatch::empty());
+            return Ok(IggyMessagesBatchSet::empty());
         }
 
         let offset = consumer_offset.offset + 1;
@@ -156,10 +157,10 @@ impl Partition {
         segments: Vec<&Segment>,
         offset: u64,
         count: u32,
-    ) -> Result<IggyBatch, IggyError> {
+    ) -> Result<IggyMessagesBatchSet, IggyError> {
         let mut remaining_count = count;
         let mut current_offset = offset;
-        let mut batches = IggyBatch::empty();
+        let mut batches = IggyMessagesBatchSet::empty();
         for segment in segments {
             if remaining_count == 0 {
                 break;
@@ -176,18 +177,17 @@ impl Partition {
                     )
                 })?;
 
-            // Update remaining count and offset for next segment
             let messages_count = messages.count();
-            remaining_count = remaining_count.saturating_sub(messages_count);
-
-            // Update the offset for the next segment if needed
-            if messages_count > 0 {
-                // If we got messages, the next offset should be after the last message
-                // from this segment
-                current_offset += messages_count as u64;
+            if messages_count == 0 {
+                continue;
             }
 
-            batches.add_batch(messages);
+            remaining_count = remaining_count.saturating_sub(messages_count);
+
+            if messages_count > 0 {
+                current_offset += messages_count as u64;
+            }
+            batches.add_batch_set(messages);
         }
 
         Ok(batches)
@@ -222,9 +222,9 @@ impl Partition {
         segments: Vec<&Segment>,
         timestamp: u64,
         count: u32,
-    ) -> Result<IggyBatch, IggyError> {
+    ) -> Result<IggyMessagesBatchSet, IggyError> {
         let mut remaining_count = count;
-        let mut batches = IggyBatch::empty();
+        let mut batches = IggyMessagesBatchSet::empty();
 
         for segment in segments {
             if remaining_count == 0 {
@@ -246,7 +246,7 @@ impl Partition {
             let messages_count = messages.count();
             remaining_count = remaining_count.saturating_sub(messages_count);
 
-            batches.add_batch(messages);
+            batches.add_batch_set(messages);
         }
 
         Ok(batches)
@@ -254,7 +254,7 @@ impl Partition {
 
     pub async fn append_messages(
         &mut self,
-        messages: IggyMessagesMut,
+        messages: IggyMessagesBatchMut,
         confirmation: Option<Confirmation>,
     ) -> Result<(), IggyError> {
         trace!(

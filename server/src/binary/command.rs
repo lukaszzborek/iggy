@@ -1,11 +1,9 @@
 use crate::binary::sender::SenderKind;
-use crate::binary::COMPONENT;
 use crate::define_server_command_enum;
 use crate::streaming::session::Session;
 use crate::streaming::systems::system::SharedSystem;
 use bytes::{BufMut, Bytes, BytesMut};
 use enum_dispatch::enum_dispatch;
-use error_set::ErrContext;
 use iggy::command::*;
 use iggy::consumer_groups::create_consumer_group::CreateConsumerGroup;
 use iggy::consumer_groups::delete_consumer_group::DeleteConsumerGroup;
@@ -51,7 +49,7 @@ use iggy::users::logout_user::LogoutUser;
 use iggy::users::update_permissions::UpdatePermissions;
 use iggy::users::update_user::UpdateUser;
 use strum::EnumString;
-use tracing::{debug, error};
+use tracing::error;
 
 define_server_command_enum! {
     Ping(Ping), PING_CODE, PING, false;
