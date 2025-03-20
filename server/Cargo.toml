@@ -106,6 +106,7 @@ tracing-subscriber = { version = "0.3.19", features = ["fmt", "env-filter"] }
 twox-hash = { version = "2.1.0", features = ["xxhash32"] }
 ulid = "1.2.0"
 uuid = { version = "1.14.0", features = ["v7", "fast-rng", "zerocopy"] }
+memmap2 = "0.9.5"
 
 [dev-dependencies]
 mockall = "0.13.1"

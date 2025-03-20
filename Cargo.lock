@@ -4761,6 +4761,7 @@ dependencies = [
  "iggy",
  "jsonwebtoken",
  "lending-iterator",
+ "memmap2",
  "mimalloc",
  "mockall",
  "moka",
