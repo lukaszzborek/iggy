@@ -121,9 +121,9 @@ async fn test_get_messages_by_timestamp(
             HeaderValue::from_uint64(123456).unwrap(),
         );
         let message = IggyMessage::builder()
-            .id(id)
-            .payload(payload)
-            .headers(headers)
+            .with_id(id)
+            .with_payload(payload)
+            .with_user_headers_map(headers)
             .build();
         all_messages.push(message);
     }
@@ -133,14 +133,19 @@ async fn test_get_messages_by_timestamp(
     let mut current_pos = 0;
 
     // Append all batches with timestamps
-    for batch_size in batch_sizes {
-        let batch = IggyMessagesBatchMut::from(
-            &all_messages[current_pos..current_pos + batch_size as usize],
-        );
-        assert_eq!(batch.count(), batch_size);
+    for batch_len in batch_sizes {
+        let messages_slice_to_append = &all_messages[current_pos..current_pos + batch_len as usize];
+
+        let messages_size = messages_slice_to_append
+            .iter()
+            .map(|m| m.get_size_bytes().as_bytes_u32())
+            .sum();
+
+        let batch = IggyMessagesBatchMut::from_messages(messages_slice_to_append, messages_size);
+        assert_eq!(batch.count(), batch_len);
         partition.append_messages(batch, None).await.unwrap();
         batch_timestamps.push(IggyTimestamp::now());
-        current_pos += batch_size as usize;
+        current_pos += batch_len as usize;
         sleep(std::time::Duration::from_millis(10));
     }
 
@@ -207,35 +212,47 @@ async fn test_get_messages_by_timestamp(
         subset_messages.count()
     );
 
-    let subset_messages = subset_messages.into_messages_vec();
-
     println!("initial timestamp: {}", initial_timestamp.as_micros());
 
-    for i in 0..subset_messages.len() {
-        let loaded_message = &subset_messages[i];
-        let original_message = &all_messages[i];
-        assert_eq!(
-            loaded_message.header.id, original_message.header.id,
-            "Message ID mismatch at position {}: expected {}, got {}",
-            i, original_message.header.id, loaded_message.header.id
-        );
-        assert_eq!(
-            loaded_message.payload, original_message.payload,
-            "Payload mismatch at position {}: expected {:?}, got {:?}",
-            i, original_message.payload, loaded_message.payload
-        );
-        assert_eq!(
-            loaded_message.user_headers, original_message.user_headers,
-            "Headers mismatch at position {}: expected {:?}, got {:?}",
-            i, original_message.user_headers, loaded_message.user_headers
-        );
-        assert!(
-            loaded_message.header.timestamp >= initial_timestamp.as_micros(),
-            "Message timestamp {} at position {} is less than initial timestamp {}",
-            loaded_message.header.timestamp,
-            i,
-            initial_timestamp
-        );
+    let mut i = 0;
+    for batch in subset_messages.iter() {
+        for message in batch.iter() {
+            let loaded_message = subset_messages.get(i).unwrap();
+            let original_message = &all_messages[i];
+
+            let loaded_header = loaded_message.header();
+            let original_header = &original_message.header;
+
+            assert_eq!(
+                loaded_header.id(),
+                original_header.id,
+                "Message ID mismatch at position {}",
+                i
+            );
+            assert_eq!(
+                loaded_message.payload(),
+                original_message.payload,
+                "Payload mismatch at position {}",
+                i
+            );
+            let loaded_headers = msg.user_headers().map(|headers| headers.to_vec());
+            let original_headers = original_message.user_headers.as_ref().unwrap().clone();
+            assert_eq!(
+                HashMap::from_bytes(loaded_headers),
+                HashMap::from_bytes(original_headers),
+                "Headers mismatch at position {}",
+                i
+            );
+            assert!(
+                loaded_message.header().timestamp() >= initial_timestamp.as_micros(),
+                "Message timestamp mismatch at position {}, timestamp {} is less than initial timestamp {}",
+                i,
+                loaded_message.header().timestamp(),
+                initial_timestamp
+            );
+
+            i += 1;
+        }
     }
 
     // Test 5: Messages spanning multiple batches (from middle of 2nd batch timestamp)

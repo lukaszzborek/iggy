@@ -1,3 +1,5 @@
+use std::sync::atomic::Ordering;
+
 use super::IggyMessagesBatchSet;
 use crate::streaming::segments::segment::Segment;
 use error_set::ErrContext;
@@ -8,12 +10,16 @@ use tracing::trace;
 const COMPONENT: &str = "STREAMING_SEGMENT";
 
 impl Segment {
-    pub fn get_messages_count(&self) -> u64 {
-        if self.size_bytes == 0 {
+    pub fn get_messages_size(&self) -> IggyByteSize {
+        IggyByteSize::from(self.messages_size.load(Ordering::Relaxed))
+    }
+
+    pub fn get_messages_count(&self) -> u32 {
+        if self.get_messages_size() == 0 {
             return 0;
         }
 
-        self.end_offset - self.start_offset + 1
+        (self.end_offset - self.start_offset + 1) as u32
     }
 
     pub async fn get_messages_by_timestamp(
@@ -30,7 +36,7 @@ impl Segment {
             self.end_offset
         );
 
-        // Handle empty accumulator case
+        // Case 0: Accumulator is empty, so all messages have to be on disk
         if self.accumulator.is_empty() {
             return self
                 .load_messages_from_disk_by_timestamp(timestamp, count)
@@ -38,7 +44,7 @@ impl Segment {
         }
 
         let accumulator_first_timestamp = self.accumulator.base_timestamp();
-        let accumulator_last_timestamp = self.accumulator.max_timestamp();
+        let accumulator_last_timestamp = self.accumulator.last_timestamp();
 
         // Case 1: Requested timestamp is higher than any available timestamp
         if timestamp > accumulator_last_timestamp {
@@ -101,14 +107,15 @@ impl Segment {
             end_offset = self.end_offset;
         }
 
+        // Case 0: Accumulator is empty, so all messages have to be on disk
         if self.accumulator.is_empty() {
             return self.load_messages_from_disk_by_offset(offset, count).await;
         }
 
         let accumulator_first_msg_offset = self.accumulator.base_offset();
-        let accumulator_last_msg_offset = self.accumulator.max_offset();
+        let accumulator_last_msg_offset = self.accumulator.last_offset();
 
-        // Case 1: All messages are in messages_require_to_save buffer
+        // Case 1: All messages are in accumulator buffer
         if offset >= accumulator_first_msg_offset && end_offset <= accumulator_last_msg_offset {
             return Ok(self.accumulator.get_messages_by_offset(offset, count));
         }
@@ -118,9 +125,9 @@ impl Segment {
             return self.load_messages_from_disk_by_offset(offset, count).await;
         }
 
-        // Case 3: Messages span disk and messages_require_to_save buffer boundary
+        // Case 3: Messages span disk and accumulator buffer boundary
 
-        // Load messages from disk up to the messages_require_to_save buffer boundary
+        // Load messages from disk up to the accumulator buffer boundary
         let mut messages = self
                 .load_messages_from_disk_by_offset(offset, (accumulator_first_msg_offset - offset) as u32)
                 .await.with_error_context(|error| format!(
@@ -128,7 +135,7 @@ impl Segment {
             self.stream_id, self.topic_id, self.partition_id, accumulator_first_msg_offset - 1
         ))?;
 
-        // Load remaining messages from messages_require_to_save buffer
+        // Load remaining messages from accumulator buffer
         let buffer_start = std::cmp::max(offset, accumulator_first_msg_offset);
         let buffer_count = (end_offset - buffer_start + 1) as u32;
         let buffer_messages = self
@@ -142,12 +149,25 @@ impl Segment {
 
     /// Loads and returns all message IDs from the log file.
     pub async fn load_message_ids(&self) -> Result<Vec<u128>, IggyError> {
-        trace!("Loading message IDs from log file: {}", self.log_path);
+        let messages_count = self.get_messages_count();
+        trace!(
+            "Loading message IDs for {messages_count} messages from log file: {}",
+            self.messages_path
+        );
+
+        let indexes = self.load_indexes_by_offset(0, messages_count).await?;
+
+        if indexes.is_none() {
+            return Ok(vec![]);
+        }
+
+        let indexes = indexes.unwrap();
+
         let ids = self
             .messages_reader
             .as_ref()
             .unwrap()
-            .load_message_ids_impl()
+            .load_all_message_ids_from_disk(indexes, messages_count)
             .await
             .with_error_context(|error| {
                 format!("Failed to load message IDs, error: {error} for {self}")
@@ -166,7 +186,7 @@ impl Segment {
         } else {
             self.index_reader
                 .as_ref()
-                .unwrap()
+                .expect("Index reader not initialized")
                 .load_from_disk_by_offset(relative_start_offset, count)
                 .await?
         };
@@ -208,19 +228,19 @@ impl Segment {
         if indexes_to_read.is_none() {
             return Ok(IggyMessagesBatchSet::empty());
         }
-        let read_boundary = indexes_to_read.unwrap();
+        let indexes_to_read = indexes_to_read.unwrap();
 
         let msgs = self
             .messages_reader
             .as_ref()
-            .unwrap()
-            .load_messages_impl(read_boundary)
+            .expect("Messages reader not initialized")
+            .load_messages_from_disk(indexes_to_read)
             .await
             .with_error_context(|error| {
                 format!("Failed to load messages from segment file: {self}. {error}")
             })?;
 
-        tracing::trace!("XD Loaded {} messages from disk", msgs.count());
+        tracing::trace!("Loaded {} messages from disk", msgs.count());
 
         Ok(msgs)
     }
@@ -241,12 +261,12 @@ impl Segment {
             return Ok(IggyMessagesBatchSet::empty());
         }
 
-        let read_boundary = indexes_to_read.unwrap();
+        let indexes_to_read = indexes_to_read.unwrap();
 
         self.messages_reader
             .as_ref()
-            .unwrap()
-            .load_messages_impl(read_boundary)
+            .expect("Messages reader not initialized")
+            .load_messages_from_disk(indexes_to_read)
             .await
             .with_error_context(|error| {
                 format!("Failed to load messages from segment file by timestamp: {self}. {error}")

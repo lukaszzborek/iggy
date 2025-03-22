@@ -2,16 +2,15 @@ mod messages_reader;
 mod messages_writer;
 mod persister_task;
 
-use std::io::IoSlice;
-
+use super::IggyMessagesBatchSet;
 use error_set::ErrContext;
+use iggy::error::IggyError;
+use std::io::IoSlice;
+use tokio::{fs::File, io::AsyncWriteExt};
+
 pub use messages_reader::MessagesReader;
 pub use messages_writer::MessagesWriter;
 pub use persister_task::PersisterTask;
-
-use super::IggyMessagesBatchSet;
-use iggy::error::IggyError;
-use tokio::{fs::File, io::AsyncWriteExt};
 
 /// Vectored write a batches of messages to file
 async fn write_batch(

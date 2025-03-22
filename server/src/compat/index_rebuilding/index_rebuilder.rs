@@ -5,15 +5,15 @@ use std::io::SeekFrom;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, BufWriter};
 
 pub struct IndexRebuilder {
-    pub log_path: String,
+    pub messages_file_path: String,
     pub index_path: String,
     pub start_offset: u64,
 }
 
 impl IndexRebuilder {
-    pub fn new(log_path: String, index_path: String, start_offset: u64) -> Self {
+    pub fn new(messages_file_path: String, index_path: String, start_offset: u64) -> Self {
         Self {
-            log_path,
+            messages_file_path,
             index_path,
             start_offset,
         }
@@ -49,7 +49,7 @@ impl IndexRebuilder {
     }
 
     pub async fn rebuild(&self) -> Result<(), CompatError> {
-        let mut reader = BufReader::new(file::open(&self.log_path).await?);
+        let mut reader = BufReader::new(file::open(&self.messages_file_path).await?);
         let mut writer = BufWriter::new(file::overwrite(&self.index_path).await?);
         let mut position = 0;
         let mut next_position;
@@ -61,7 +61,7 @@ impl IndexRebuilder {
                     next_position = position
                         + IGGY_MESSAGE_HEADER_SIZE
                         + header.payload_length
-                        + header.headers_length;
+                        + header.user_headers_length;
 
                     // Write index entry using current position
                     Self::write_index_entry(&mut writer, &header, position, self.start_offset)
@@ -70,7 +70,7 @@ impl IndexRebuilder {
                     // Skip message payload and headers
                     reader
                         .seek(SeekFrom::Current(
-                            header.payload_length as i64 + header.headers_length as i64,
+                            header.payload_length as i64 + header.user_headers_length as i64,
                         ))
                         .await?;
 

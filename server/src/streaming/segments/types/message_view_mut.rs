@@ -42,7 +42,8 @@ impl<'a> IggyMessageViewMut<'a> {
     /// Returns the size of the entire message (header + payload + user headers).
     pub fn size(&self) -> usize {
         let hdr_view = self.header();
-        (IGGY_MESSAGE_HEADER_SIZE + hdr_view.payload_length() + hdr_view.headers_length()) as usize
+        (IGGY_MESSAGE_HEADER_SIZE + hdr_view.payload_length() + hdr_view.user_headers_length())
+            as usize
     }
 
     /// Get the byte range this message occupies in the buffer

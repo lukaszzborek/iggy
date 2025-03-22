@@ -10,7 +10,7 @@ use tracing::info;
 
 pub struct DeletedSegment {
     pub end_offset: u64,
-    pub messages_count: u64,
+    pub messages_count: u32,
 }
 
 impl Partition {
@@ -29,20 +29,20 @@ impl Partition {
     pub fn get_segment(&self, start_offset: u64) -> Option<&Segment> {
         self.segments
             .iter()
-            .find(|s| s.start_offset == start_offset)
+            .find(|s| s.start_offset() == start_offset)
     }
 
     pub fn get_segment_mut(&mut self, start_offset: u64) -> Option<&mut Segment> {
         self.segments
             .iter_mut()
-            .find(|s| s.start_offset == start_offset)
+            .find(|s| s.start_offset() == start_offset)
     }
 
     pub async fn get_expired_segments_start_offsets(&self, now: IggyTimestamp) -> Vec<u64> {
         let mut expired_segments = Vec::new();
         for segment in &self.segments {
             if segment.is_expired(now).await {
-                expired_segments.push(segment.start_offset);
+                expired_segments.push(segment.start_offset());
             }
         }
 
@@ -76,8 +76,7 @@ impl Partition {
         self.segments.push(new_segment);
         self.segments_count_of_parent_stream
             .fetch_add(1, Ordering::SeqCst);
-        self.segments
-            .sort_by(|a, b| a.start_offset.cmp(&b.start_offset));
+        self.segments.sort_by_key(|a| a.start_offset());
         Ok(())
     }
 
@@ -95,7 +94,7 @@ impl Partition {
             })?;
 
             deleted_segment = DeletedSegment {
-                end_offset: segment.end_offset,
+                end_offset: segment.end_offset(),
                 messages_count: segment.get_messages_count(),
             };
         }
@@ -103,9 +102,8 @@ impl Partition {
         self.segments_count_of_parent_stream
             .fetch_sub(1, Ordering::SeqCst);
 
-        self.segments.retain(|s| s.start_offset != start_offset);
-        self.segments
-            .sort_by(|a, b| a.start_offset.cmp(&b.start_offset));
+        self.segments.retain(|s| s.start_offset() != start_offset);
+        self.segments.sort_by_key(|a| a.start_offset());
         info!(
             "Segment with start offset: {} has been deleted from partition with ID: {}, stream with ID: {}, topic with ID: {}",
             start_offset, self.partition_id, self.stream_id, self.topic_id

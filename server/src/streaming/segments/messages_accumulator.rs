@@ -48,12 +48,26 @@ impl MessagesAccumulator {
             return 0;
         }
 
+        println!("Coalescing batch: base_offset={}, current_offset={}, messages_count={}, batch_count={}",
+                 self.base_offset, current_offset, self.messages_count, batch_messages_count);
+
         if self.batches.is_empty() {
             self.base_offset = current_offset;
             self.base_timestamp = IggyTimestamp::now().as_micros();
             self.current_offset = current_offset;
             self.current_timestamp = self.base_timestamp;
             self.current_position = current_position;
+        } else {
+            // Important: If we already have messages, the current_offset should be the correct
+            // starting point for this batch.
+            // If current_offset is greater than our current highest offset + 1, use it as is.
+            // Otherwise, use our highest offset + 1 to ensure no overlap.
+            let next_expected_offset = self.current_offset + 1;
+            if current_offset > next_expected_offset {
+                self.current_offset = current_offset;
+            } else {
+                self.current_offset = next_expected_offset;
+            }
         }
 
         let batch = batch.prepare_for_persistence(
@@ -67,7 +81,14 @@ impl MessagesAccumulator {
         self.batches.add_batch(batch);
 
         self.messages_count += batch_messages_count;
+        // Update current_offset to be the last offset in this batch
         self.current_offset = self.base_offset + self.messages_count as u64 - 1;
+
+        println!(
+            "After coalescing: base_offset={}, current_offset={}, messages_count={}",
+            self.base_offset, self.current_offset, self.messages_count
+        );
+
         self.current_timestamp = self
             .batches
             .iter()
@@ -108,12 +129,12 @@ impl MessagesAccumulator {
     }
 
     /// Returns the maximum offset in the accumulator
-    pub fn max_offset(&self) -> u64 {
+    pub fn last_offset(&self) -> u64 {
         self.current_offset
     }
 
     /// Returns the maximum timestamp in the accumulator
-    pub fn max_timestamp(&self) -> u64 {
+    pub fn last_timestamp(&self) -> u64 {
         self.current_timestamp
     }
 

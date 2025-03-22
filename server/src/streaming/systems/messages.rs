@@ -1,12 +1,15 @@
 use crate::binary::handlers::messages::poll_messages_handler::IggyPollMetadata;
-use crate::streaming::segments::{IggyMessagesBatchMut, IggyMessagesBatchSet};
+use crate::streaming::segments::{IggyIndexesMut, IggyMessagesBatchMut, IggyMessagesBatchSet};
 use crate::streaming::session::Session;
 use crate::streaming::systems::system::System;
 use crate::streaming::systems::COMPONENT;
+use bytes::BytesMut;
 use error_set::ErrContext;
 use iggy::confirmation::Confirmation;
 use iggy::consumer::Consumer;
+use iggy::models::messaging::IggyMessagesBatch;
 use iggy::prelude::*;
+use iggy::utils::crypto::EncryptorKind;
 use iggy::{error::IggyError, identifier::Identifier};
 use tracing::{error, trace};
 
@@ -40,7 +43,6 @@ impl System {
         }
 
         // There might be no partition assigned, if it's the consumer group member without any partitions.
-        // TODO: Fix me
         let Some((polling_consumer, partition_id)) = topic
             .resolve_consumer_with_partition_id(consumer, session.client_id, partition_id, true)
             .await
@@ -48,50 +50,29 @@ impl System {
             return Ok((IggyPollMetadata::new(0, 0), IggyMessagesBatchSet::empty()));
         };
 
-        let (metadata, messages) = topic
+        let (metadata, batch_set) = topic
             .get_messages(polling_consumer, partition_id, args.strategy, args.count)
             .await?;
 
-        Ok((metadata, messages))
+        let offset = batch_set
+            .last_offset()
+            .expect("Batch set should have at least one batch");
 
-        // let offset = polled_messages.messages.last().unwrap().offset;
-        // if args.auto_commit {
-        //     trace!("Last offset: {} will be automatically stored for {}, stream: {}, topic: {}, partition: {}", offset, consumer, stream_id, topic_id, partition_id);
-        //     topic
-        //         .store_consumer_offset_internal(polling_consumer, offset, partition_id)
-        //         .await
-        //         .with_error_context(|error| format!("{COMPONENT} (error: {error}) - failed to store consumer offset internal, polling consumer: {}, offset: {}, partition ID: {}", polling_consumer, offset, partition_id)) ?;
-        // }
+        if args.auto_commit {
+            trace!("Last offset: {} will be automatically stored for {}, stream: {}, topic: {}, partition: {}", offset, consumer, stream_id, topic_id, partition_id);
+            topic
+                .store_consumer_offset_internal(polling_consumer, offset, partition_id)
+                .await
+                .with_error_context(|error| format!("{COMPONENT} (error: {error}) - failed to store consumer offset internal, polling consumer: {}, offset: {}, partition ID: {}", polling_consumer, offset, partition_id)) ?;
+        }
 
-        // if self.encryptor.is_none() {
-        //     return Ok(result);
-        // }
-        // TODO: Fix me
-        // let encryptor = self.encryptor.as_ref().unwrap();
-        // let mut decrypted_messages = Vec::with_capacity(polled_messages.messages.len());
-        // for message in polled_messages.messages.iter() {
-        //     let payload = encryptor.decrypt(&message.payload);
-        //     match payload {
-        //         Ok(payload) => {
-        //             decrypted_messages.push(PolledMessage {
-        //                 id: message.id,
-        //                 state: message.state,
-        //                 offset: message.offset,
-        //                 timestamp: message.timestamp,
-        //                 checksum: message.checksum,
-        //                 length: IggyByteSize::from(payload.len() as u64),
-        //                 payload: Bytes::from(payload),
-        //                 headers: message.headers.clone(),
-        //             });
-        //         }
-        //         Err(error) => {
-        //             error!("Cannot decrypt the message. Error: {}", error);
-        //             return Err(IggyError::CannotDecryptData);
-        //         }
-        //     }
-        // }
-        // polled_messages.messages = decrypted_messages;
-        // Ok(polled_messages)
+        let batch_set = if let Some(encryptor) = &self.encryptor {
+            self.decrypt_messages(batch_set, encryptor.as_ref()).await?
+        } else {
+            batch_set
+        };
+
+        Ok((metadata, batch_set))
     }
 
     pub async fn append_messages(
@@ -108,53 +89,27 @@ impl System {
         self.permissioner.append_messages(
             session.get_user_id(),
             topic.stream_id,
-            topic.topic_id,
+            topic.topic_id
         ).with_error_context(|error| format!(
             "{COMPONENT} (error: {error}) - permission denied to append messages for user {} on stream_id: {}, topic_id: {}",
             session.get_user_id(),
             topic.stream_id,
             topic.topic_id
         ))?;
+        let messages_count = messages.count();
 
-        //TODO: Fix me
-        /*
-        let mut batch_size_bytes = IggyByteSize::default();
-        let mut messages = messages;
-        if let Some(encryptor) = &self.encryptor {
-            for message in messages.iter_mut() {
-                let payload = encryptor.encrypt(&message.payload);
-                match payload {
-                    Ok(payload) => {
-                        message.payload = Bytes::from(payload);
-                        message.length = message.payload.len() as u32;
-                        batch_size_bytes += message.get_size_bytes();
-                    }
-                    Err(error) => {
-                        error!("Cannot encrypt the message. Error: {}", error);
-                        return Err(IggyError::CannotEncryptData);
-                    }
-                }
-            }
+        // Encrypt messages if encryptor is configured
+        let messages = if let Some(encryptor) = &self.encryptor {
+            self.encrypt_messages(messages, encryptor.as_ref())?
         } else {
-            batch_size_bytes = messages
-                .iter()
-                .map(|msg| msg.get_size_bytes())
-                .sum::<IggyByteSize>();
-        }
-        */
+            messages
+        };
 
-        /*
-        if let Some(memory_tracker) = CacheMemoryTracker::get_instance() {
-            if !memory_tracker.will_fit_into_cache(batch_size_bytes) {
-                self.clean_cache(batch_size_bytes).await;
-            }
-        }
-        */
         topic
             .append_messages(partitioning, messages, confirmation)
             .await?;
-        //TODO: Fix me
-        //self.metrics.increment_messages(messages_count);
+
+        self.metrics.increment_messages(messages_count as u64);
         Ok(())
     }
 
@@ -168,11 +123,10 @@ impl System {
     ) -> Result<(), IggyError> {
         self.ensure_authenticated(session)?;
         let topic = self.find_topic(session, &stream_id, &topic_id).with_error_context(|error| format!("{COMPONENT} (error: {error}) - topic not found for stream_id: {stream_id}, topic_id: {topic_id}"))?;
-        // Reuse those permissions as if you can append messages you can flush them
         self.permissioner.append_messages(
             session.get_user_id(),
             topic.stream_id,
-            topic.topic_id,
+            topic.topic_id
         ).with_error_context(|error| format!(
             "{COMPONENT} (error: {error}) - permission denied to append messages for user {} on stream_id: {}, topic_id: {}",
             session.get_user_id(),
@@ -181,6 +135,87 @@ impl System {
         ))?;
         topic.flush_unsaved_buffer(partition_id, fsync).await?;
         Ok(())
+    }
+
+    async fn decrypt_messages(
+        &self,
+        batches: IggyMessagesBatchSet,
+        encryptor: &EncryptorKind,
+    ) -> Result<IggyMessagesBatchSet, IggyError> {
+        let mut decrypted_batches = Vec::with_capacity(batches.containers_count());
+        for batch in batches.iter() {
+            let count = batch.count();
+
+            let mut indexes = IggyIndexesMut::with_capacity(batch.count() as usize);
+            let mut decrypted_messages = BytesMut::with_capacity(batch.size() as usize);
+            let mut position = 0;
+
+            for message in batch.iter() {
+                let payload = encryptor.decrypt(message.payload());
+                match payload {
+                    Ok(payload) => {
+                        message.header().write_to_buffer(&mut decrypted_messages);
+                        decrypted_messages.extend_from_slice(&payload);
+                        if let Some(user_headers) = message.user_headers() {
+                            decrypted_messages.extend_from_slice(user_headers);
+                        }
+                        indexes.insert(0, position, 0);
+                        position += message.size();
+                    }
+                    Err(error) => {
+                        error!("Cannot decrypt the message. Error: {}", error);
+                        continue;
+                    }
+                }
+            }
+            let indexes = indexes.make_immutable();
+            let decrypted_messages = decrypted_messages.freeze();
+            let decrypted_batch = IggyMessagesBatch::new(indexes, decrypted_messages, count);
+            decrypted_batches.push(decrypted_batch);
+        }
+
+        Ok(IggyMessagesBatchSet::from_vec(decrypted_batches))
+    }
+
+    fn encrypt_messages(
+        &self,
+        batch: IggyMessagesBatchMut,
+        encryptor: &EncryptorKind,
+    ) -> Result<IggyMessagesBatchMut, IggyError> {
+        let mut encrypted_messages = BytesMut::with_capacity(batch.size() as usize * 2);
+        let mut indexes = IggyIndexesMut::with_capacity(batch.count() as usize);
+        let mut position = 0;
+
+        for message in batch.iter() {
+            let header = message.header();
+            let payload_length = header.payload_length();
+            let user_headers_length = header.user_headers_length();
+            let payload_bytes = message.payload();
+            let user_headers_bytes = message.user_headers();
+
+            let encrypted_payload = encryptor.encrypt(payload_bytes);
+
+            match encrypted_payload {
+                Ok(encrypted_payload) => {
+                    encrypted_messages.extend_from_slice(&header.to_bytes());
+                    encrypted_messages.extend_from_slice(&encrypted_payload);
+                    if let Some(user_headers_bytes) = user_headers_bytes {
+                        encrypted_messages.extend_from_slice(user_headers_bytes);
+                    }
+                    indexes.insert(0, position, 0);
+                    position += IGGY_MESSAGE_HEADER_SIZE + payload_length + user_headers_length;
+                }
+                Err(error) => {
+                    error!("Cannot encrypt the message. Error: {}", error);
+                    continue;
+                }
+            }
+        }
+
+        Ok(IggyMessagesBatchMut::from_indexes_and_messages(
+            indexes,
+            encrypted_messages,
+        ))
     }
 }
 

@@ -31,7 +31,7 @@ impl Partition {
         let filtered_segments: Vec<&Segment> = self
             .segments
             .iter()
-            .filter(|segment| segment.end_timestamp >= query_ts)
+            .filter(|segment| segment.end_timestamp() >= query_ts)
             .collect();
 
         // Use a dedicated method to retrieve messages across segments by timestamp
@@ -131,7 +131,7 @@ impl Partition {
     fn get_end_offset(&self, offset: u64, count: u32) -> u64 {
         let mut end_offset = offset + (count - 1) as u64;
         let segment = self.segments.last().unwrap();
-        let max_offset = segment.end_offset;
+        let max_offset = segment.end_offset();
         if end_offset > max_offset {
             end_offset = max_offset;
         }
@@ -143,12 +143,12 @@ impl Partition {
         let slice_start = self
             .segments
             .iter()
-            .rposition(|segment| segment.start_offset <= start_offset)
+            .rposition(|segment| segment.start_offset() <= start_offset)
             .unwrap_or(0);
 
         self.segments[slice_start..]
             .iter()
-            .filter(|segment| segment.start_offset <= end_offset)
+            .filter(|segment| segment.start_offset() <= end_offset)
             .collect()
     }
 
@@ -265,8 +265,8 @@ impl Partition {
         );
         {
             let last_segment = self.segments.last_mut().ok_or(IggyError::SegmentNotFound)?;
-            if last_segment.is_closed {
-                let start_offset = last_segment.end_offset + 1;
+            if last_segment.is_closed() {
+                let start_offset = last_segment.end_offset() + 1;
                 trace!(
                     "Current segment is closed, creating new segment with start offset: {} for partition with ID: {}...",
                     start_offset, self.partition_id
@@ -285,7 +285,7 @@ impl Partition {
         };
 
         // TODO: Fix me
-        // Use a sequence number on the batch and hold a stream local collection of the last few sequence numbers.
+        // Use a sequence number on the SendMessages and hold local collection of the last few sequence numbers.
         /*
         let mut retained_messages = Vec::with_capacity(messages.len());
         if let Some(message_deduplicator) = &self.message_deduplicator {
@@ -317,6 +317,8 @@ impl Partition {
         }
         */
 
+        println!("Current offset before appending batch: {}", current_offset);
+
         let messages_count = {
             let last_segment = self.segments.last_mut().ok_or(IggyError::SegmentNotFound)?;
             last_segment
@@ -336,6 +338,8 @@ impl Partition {
             current_offset + messages_count as u64 - 1
         };
 
+        println!("Last offset after appending batch: {}", last_offset);
+
         if self.should_increment_offset {
             self.current_offset = last_offset;
         } else {
@@ -351,7 +355,7 @@ impl Partition {
             {
                 trace!(
                     "Segment with start offset: {} for partition with ID: {} will be persisted on disk...",
-                    last_segment.start_offset,
+                    last_segment.start_offset(),
                     self.partition_id
                 );
 
@@ -376,13 +380,12 @@ impl Partition {
         let last_segment = self.segments.last_mut().ok_or(IggyError::SegmentNotFound)?;
         trace!(
             "Segment with start offset: {} for partition with ID: {} will be forcefully persisted on disk...",
-            last_segment.start_offset,
+            last_segment.start_offset(),
             self.partition_id
         );
 
-        if !last_segment.accumulator.is_empty() {
-            last_segment.persist_messages(None).await.unwrap();
-        }
+        last_segment.persist_messages(None).await.unwrap();
+
         self.unsaved_messages_count = 0;
         Ok(())
     }

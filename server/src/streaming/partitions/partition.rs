@@ -237,46 +237,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_not_initialize_cache_given_zero_capacity() {
-        // TODO: Fix me
-        /*
-        let tempdir = tempfile::TempDir::new().unwrap();
-        let config = Arc::new(SystemConfig {
-            path: tempdir.path().to_str().unwrap().to_string(),
-            ..Default::default()
-        });
-        let storage = Arc::new(SystemStorage::new(
-            config.clone(),
-            Arc::new(PersisterKind::FileWithSync(FileWithSyncPersister {})),
-        ));
-
-        let partition = Partition::create(
-            1,
-            1,
-            1,
-            true,
-            Arc::new(SystemConfig {
-                cache: CacheConfig {
-                    enabled: false,
-                    size: "0".parse().unwrap(),
-                },
-                ..Default::default()
-            }),
-            storage,
-            IggyExpiry::NeverExpire,
-            Arc::new(AtomicU64::new(0)),
-            Arc::new(AtomicU64::new(0)),
-            Arc::new(AtomicU64::new(0)),
-            Arc::new(AtomicU64::new(0)),
-            Arc::new(AtomicU32::new(0)),
-            IggyTimestamp::now(),
-        )
-        .await;
-        assert!(partition.cache.is_none());
-        */
-    }
-
-    #[tokio::test]
     async fn should_not_initialize_segments_given_false_with_segment_parameter() {
         let tempdir = tempfile::TempDir::new().unwrap();
         let config = Arc::new(SystemConfig {

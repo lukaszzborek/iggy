@@ -447,12 +447,14 @@ validate_checksum = false
 # The threshold of buffered messages before triggering a save to disk (integer).
 # Specifies how many messages accumulate before persisting to storage.
 # Adjusting this can balance between write performance and data durability.
+# This is soft limit, actual number of messages may be higher, depending on last batch size.
 # Together with `size_of_messages_required_to_save` it defines the threshold of buffered messages.
-messages_required_to_save = 1000
+messages_required_to_save = 10000
 
 # The threshold of buffered messages size before triggering a save to disk (string).
-# Specifies how much messages accumulate before persisting to storage.
+# Specifies how much size of messages accumulate before persisting to storage.
 # Adjusting this can balance between write performance and data durability.
+# This is soft limit, actual number of messages may be higher, depending on last batch size.
 # Together with `messages_required_to_save` it defines the threshold of buffered messages.
 size_of_messages_required_to_save = "1 MB"
 

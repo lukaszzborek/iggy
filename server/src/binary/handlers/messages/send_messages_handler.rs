@@ -61,7 +61,7 @@ impl ServerCommandHandler for SendMessages {
 
         let indexes = IggyIndexesMut::from_bytes(indexes);
 
-        let batch = IggyMessagesBatchMut::from_bytes(indexes, messages);
+        let batch = IggyMessagesBatchMut::from_indexes_and_messages(indexes, messages);
 
         let system = system.read().await;
         system

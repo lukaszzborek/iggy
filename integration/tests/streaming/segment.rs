@@ -105,13 +105,16 @@ async fn should_load_existing_segment_from_disk() {
         let loaded_messages = loaded_segment.get_messages_by_offset(0, 10).await.unwrap();
 
         assert_eq!(loaded_segment.partition_id, segment.partition_id);
-        assert_eq!(loaded_segment.start_offset, segment.start_offset);
+        assert_eq!(loaded_segment.start_offset(), segment.start_offset());
         assert_eq!(loaded_segment.current_offset, segment.current_offset);
-        assert_eq!(loaded_segment.end_offset, segment.end_offset);
+        assert_eq!(loaded_segment.end_offset(), segment.end_offset());
         assert_eq!(loaded_segment.size_bytes, segment.size_bytes);
-        assert_eq!(loaded_segment.is_closed, segment.is_closed);
-        assert_eq!(loaded_segment.log_path, segment.log_path);
-        assert_eq!(loaded_segment.index_path, segment.index_path);
+        assert_eq!(loaded_segment.is_closed(), segment.is_closed());
+        assert_eq!(
+            loaded_segment.messages_file_path,
+            segment.messages_file_path
+        );
+        assert_eq!(loaded_segment.index_file_path(), segment.index_file_path());
         assert!(loaded_messages.is_empty());
     }
 }
@@ -347,7 +350,7 @@ async fn given_all_expired_messages_segment_should_be_expired() {
         .unwrap();
     segment.persist_messages(None).await.unwrap();
 
-    segment.is_closed = true;
+    segment.is_closed() = true;
     let is_expired = segment.is_expired(now).await;
     assert!(is_expired);
 }
@@ -437,9 +440,9 @@ async fn given_at_least_one_not_expired_message_segment_should_not_be_expired() 
 
 async fn assert_persisted_segment(partition_path: &str, start_offset: u64) {
     let segment_path = format!("{}/{:0>20}", partition_path, start_offset);
-    let log_path = format!("{}.{}", segment_path, LOG_EXTENSION);
+    let messages_file_path = format!("{}.{}", segment_path, LOG_EXTENSION);
     let index_path = format!("{}.{}", segment_path, INDEX_EXTENSION);
-    assert!(fs::metadata(&log_path).await.is_ok());
+    assert!(fs::metadata(&messages_file_path).await.is_ok());
     assert!(fs::metadata(&index_path).await.is_ok());
 }
 

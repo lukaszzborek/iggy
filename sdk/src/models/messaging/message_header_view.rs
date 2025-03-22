@@ -55,7 +55,7 @@ impl<'a> IggyMessageHeaderView<'a> {
     }
 
     /// The size in bytes of the user headers
-    pub fn headers_length(&self) -> u32 {
+    pub fn user_headers_length(&self) -> u32 {
         let bytes = &self.data[IGGY_MESSAGE_HEADERS_LENGTH_OFFSET_RANGE];
         u32::from_le_bytes(bytes.try_into().unwrap())
     }
@@ -74,7 +74,7 @@ impl<'a> IggyMessageHeaderView<'a> {
             offset: self.offset(),
             timestamp: self.timestamp(),
             origin_timestamp: self.origin_timestamp(),
-            headers_length: self.headers_length(),
+            user_headers_length: self.user_headers_length(),
             payload_length: self.payload_length(),
         }
     }

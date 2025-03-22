@@ -17,7 +17,7 @@ impl<'a> IggyIndexView<'a> {
         debug_assert!(
             data.len() == INDEX_SIZE,
             "Index data must be exactly {INDEX_SIZE} bytes"
-        );  
+        );
         Self { data }
     }
 

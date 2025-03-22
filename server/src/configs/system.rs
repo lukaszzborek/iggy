@@ -97,6 +97,7 @@ pub struct TopicConfig {
 pub struct PartitionConfig {
     pub path: String,
     pub messages_required_to_save: u32,
+    pub size_of_messages_required_to_save: IggyByteSize,
     pub enforce_fsync: bool,
     pub validate_checksum: bool,
 }
@@ -145,7 +146,7 @@ impl SystemConfig {
         format!("{}/state", self.get_system_path())
     }
 
-    pub fn get_state_log_path(&self) -> String {
+    pub fn get_state_messages_file_path(&self) -> String {
         format!("{}/log", self.get_state_path())
     }
 

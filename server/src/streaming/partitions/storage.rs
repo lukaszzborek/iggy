@@ -90,8 +90,8 @@ impl PartitionStorage for FilePartitionStorage {
                 partition.messages_count.clone(),
             );
 
-            let index_path = segment.index_path.to_owned();
-            let log_path = segment.log_path.to_owned();
+            let index_path = segment.index_file_path().to_owned();
+            let messages_file_path = segment.messages_file_path().to_owned();
             let time_index_path = index_path.replace(INDEX_EXTENSION, "timeindex");
 
             let index_cache_enabled = partition.config.segment.cache_indexes;
@@ -105,11 +105,14 @@ impl PartitionStorage for FilePartitionStorage {
             if index_cache_enabled && (!index_path_exists || time_index_path_exists) {
                 warn!(
                     "Index at path {} does not exist, rebuilding it based on {}...",
-                    index_path, log_path
+                    index_path, messages_file_path
                 );
                 let now = tokio::time::Instant::now();
-                let index_rebuilder =
-                    IndexRebuilder::new(log_path.clone(), index_path.clone(), start_offset);
+                let index_rebuilder = IndexRebuilder::new(
+                    messages_file_path.clone(),
+                    index_path.clone(),
+                    start_offset,
+                );
                 index_rebuilder.rebuild().await.unwrap_or_else(|e| {
                     panic!(
                         "Failed to rebuild index for partition with ID: {} for
@@ -134,26 +137,26 @@ impl PartitionStorage for FilePartitionStorage {
             })?;
             let capacity = partition.config.partition.messages_required_to_save;
             // TODO(hubcio)
-            // if !segment.is_closed {
+            // if !segment.is_closed() {
             //     segment.unsaved_messages = Some(Default::default());
             // }
 
             // If the first segment has at least a single message, we should increment the offset.
             if !partition.should_increment_offset {
-                partition.should_increment_offset = segment.size_bytes > 0;
+                partition.should_increment_offset = segment.get_messages_size() > 0;
             }
 
             if partition.config.partition.validate_checksum {
-                info!("Validating messages checksum for partition with ID: {} and segment with start offset: {}...", partition.partition_id, segment.start_offset);
+                info!("Validating messages checksum for partition with ID: {} and segment with start offset: {}...", partition.partition_id, segment.start_offset());
+                // TODO(hubcio)
                 // segment.validate_messages_checksums().await?;
-                // TODO
-                info!("Validated messages checksum for partition with ID: {} and segment with start offset: {}.", partition.partition_id, segment.start_offset);
+                info!("Validated messages checksum for partition with ID: {} and segment with start offset: {}.", partition.partition_id, segment.start_offset());
             }
 
             // Load the unique message IDs for the partition if the deduplication feature is enabled.
             let mut unique_message_ids_count = 0;
             if let Some(message_deduplicator) = &partition.message_deduplicator {
-                info!("Loading unique message IDs for partition with ID: {} and segment with start offset: {}...", partition.partition_id, segment.start_offset);
+                info!("Loading unique message IDs for partition with ID: {} and segment with start offset: {}...", partition.partition_id, segment.start_offset());
                 let message_ids = segment.load_message_ids().await.with_error_context(|error| {
                     format!("{COMPONENT} (error: {error}) - failed to load message ids, segment: {segment}",)
                 })?;
@@ -161,10 +164,10 @@ impl PartitionStorage for FilePartitionStorage {
                     if message_deduplicator.try_insert(&message_id).await {
                         unique_message_ids_count += 1;
                     } else {
-                        warn!("Duplicated message ID: {} for partition with ID: {} and segment with start offset: {}.", message_id, partition.partition_id, segment.start_offset);
+                        warn!("Duplicated message ID: {} for partition with ID: {} and segment with start offset: {}.", message_id, partition.partition_id, segment.start_offset());
                     }
                 }
-                info!("Loaded: {} unique message IDs for partition with ID: {} and segment with start offset: {}...", unique_message_ids_count, partition.partition_id, segment.start_offset);
+                info!("Loaded: {} unique message IDs for partition with ID: {} and segment with start offset: {}...", unique_message_ids_count, partition.partition_id, segment.start_offset());
             }
 
             partition
@@ -173,15 +176,13 @@ impl PartitionStorage for FilePartitionStorage {
             partition.segments.push(segment);
         }
 
-        partition
-            .segments
-            .sort_by(|a, b| a.start_offset.cmp(&b.start_offset));
+        partition.segments.sort_by_key(|a| a.start_offset());
 
         let end_offsets = partition
             .segments
             .iter()
             .skip(1)
-            .map(|segment| segment.start_offset - 1)
+            .map(|segment| segment.start_offset() - 1)
             .collect::<Vec<u64>>();
 
         let segments_count = partition.segments.len();
@@ -190,12 +191,13 @@ impl PartitionStorage for FilePartitionStorage {
                 break;
             }
 
-            segment.end_offset = end_offsets[end_offset_index];
+            // TODO(hubcio): fix this
+            // segment.end_offset() = end_offsets[end_offset_index];
         }
 
         if !partition.segments.is_empty() {
             let last_segment = partition.segments.last_mut().unwrap();
-            partition.current_offset = last_segment.end_offset;
+            partition.current_offset = last_segment.end_offset();
         }
 
         partition

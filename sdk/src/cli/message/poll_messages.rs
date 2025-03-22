@@ -12,7 +12,7 @@ use crate::utils::{byte_size::IggyByteSize, duration::IggyDuration};
 use anyhow::Context;
 use async_trait::async_trait;
 use comfy_table::{Cell, CellAlignment, Row, Table};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::mem::size_of_val;
 use tokio::io::AsyncWriteExt;
 use tracing::{event, Level};
@@ -65,24 +65,20 @@ impl PollMessagesCmd {
         &self,
         polled_messages: &Vec<IggyMessage>,
     ) -> HashSet<(HeaderKey, HeaderKind)> {
-        //TODO: Fix me
-        /*
-        if !self.show_headers {
-            return HashSet::new();
-        }
-        polled_messages
-            .messages
-            .iter()
-            .flat_map(|m| match m.headers.as_ref() {
-                Some(h) => h
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.kind))
-                    .collect::<Vec<_>>(),
-                None => vec![],
-            })
-            .collect::<HashSet<_>>()
-        */
-        todo!()
+        todo!();
+        // if !self.show_headers {
+        //     return HashSet::new();
+        // }
+        // polled_messages
+        //     .iter()
+        //     .flat_map(|m| match m.user_headers.as_ref() {
+        //         Some(h) => HashMap::from_bytes(h.clone())
+        //             .iter()
+        //             .map(|(k, v)| (k.clone(), v.kind))
+        //             .collect::<Vec<_>>(),
+        //         None => vec![],
+        //     })
+        //     .collect::<HashSet<_>>()
     }
 
     fn create_table_header(header_key_set: &HashSet<(HeaderKey, HeaderKind)>) -> Row {
@@ -108,41 +104,39 @@ impl PollMessagesCmd {
         polled_messages: &Vec<IggyMessage>,
         message_header_keys: &HashSet<(HeaderKey, HeaderKind)>,
     ) -> Vec<Row> {
-        //TODO: Fix me
-        /*
-        polled_messages
-            .messages
-            .iter()
-            .map(|message| {
-                let mut row = vec![
-                    format!("{}", message.offset),
-                    IggyTimestamp::from(message.timestamp).to_local_string("%Y-%m-%d %H:%M:%S%.6f"),
-                    format!("{}", message.id),
-                    format!("{}", message.payload.len()),
-                    String::from_utf8_lossy(&message.payload).to_string(),
-                ];
+        todo!();
+        // polled_messages
+        //     .iter()
+        //     .map(|message| {
+        //         let mut row = vec![
+        //             format!("{}", message.header.offset),
+        //             IggyTimestamp::from(message.header.timestamp)
+        //                 .to_local_string("%Y-%m-%d %H:%M:%S%.6f"),
+        //             format!("{}", message.header.id),
+        //             format!("{}", message.payload.len()),
+        //             String::from_utf8_lossy(&message.payload).to_string(),
+        //         ];
 
-                let values = message_header_keys
-                    .iter()
-                    .map(|(key, kind)| {
-                        message
-                            .headers
-                            .as_ref()
-                            .map(|h| {
-                                h.get(key)
-                                    .filter(|v| v.kind == *kind)
-                                    .map(|v| v.value_only_to_string())
-                                    .unwrap_or_default()
-                            })
-                            .unwrap_or_default()
-                    })
-                    .collect::<Vec<_>>();
-                row.extend(values);
-                Row::from(row)
-            })
-            .collect::<_>()
-            */
-        todo!()
+        //         let values = message_header_keys
+        //             .iter()
+        //             .map(|(key, kind)| {
+        //                 let user_headers = HashMap::from_bytes(message.user_headers);
+        //                 message
+        //                     .user_headers
+        //                     .as_ref()
+        //                     .map(|h| {
+        //                         h.get(key)
+        //                             .filter(|v| v.kind == *kind)
+        //                             .map(|v| v.value_only_to_string())
+        //                             .unwrap_or_default()
+        //                     })
+        //                     .unwrap_or_default()
+        //             })
+        //             .collect::<Vec<_>>();
+        //         row.extend(values);
+        //         Row::from(row)
+        //     })
+        //     .collect::<_>()
     }
 }
 
@@ -157,7 +151,7 @@ impl CliCommand for PollMessagesCmd {
 
     async fn execute_cmd(&mut self, client: &dyn Client) -> anyhow::Result<(), anyhow::Error> {
         let start = std::time::Instant::now();
-        let messages = client
+        let polled_messages = client
             .poll_messages(
                 &self.poll_messages.stream_id,
                 &self.poll_messages.topic_id,
@@ -176,24 +170,22 @@ impl CliCommand for PollMessagesCmd {
             })?;
         let elapsed = IggyDuration::new(start.elapsed());
 
-        //TODO: Fix me
-        /*
         event!(target: PRINT_TARGET, Level::INFO,
             "Polled messages from topic with ID: {} and stream with ID: {} (from partition with ID: {})",
             self.poll_messages.topic_id,
             self.poll_messages.stream_id,
-            messages.partition_id,
+            polled_messages.partition_id,
         );
 
         let polled_size = IggyByteSize::from(
-            messages
+            polled_messages
                 .messages
                 .iter()
                 .map(|m| size_of_val(m) as u64)
                 .sum::<u64>(),
         );
 
-        let message_count_message = match messages.messages.len() {
+        let message_count_message = match polled_messages.messages.len() {
             1 => "1 message".into(),
             count => format!("{} messages", count),
         };
@@ -210,15 +202,10 @@ impl CliCommand for PollMessagesCmd {
                 .await
                 .with_context(|| format!("Problem opening file for writing: {output_file}"))?;
 
-            for message in messages.messages.iter() {
-                let message = Message::new(
-                    Some(message.id),
-                    message.payload.clone(),
-                    message.headers.clone(),
-                );
-                saved_size += message.get_size_bytes();
-
-                file.write_all(&message.to_bytes())
+            for message in polled_messages.messages.iter() {
+                let message = message.to_bytes();
+                saved_size += IggyByteSize::from(message.len() as u64);
+                file.write_all(&message)
                     .await
                     .with_context(|| format!("Problem writing message to file: {output_file}"))?;
             }
@@ -226,17 +213,17 @@ impl CliCommand for PollMessagesCmd {
             let saved_size_str = saved_size.as_human_string();
             event!(target: PRINT_TARGET, Level::INFO, "Stored {message_count_message} of total size {saved_size_str} to {output_file} binary file");
         } else {
-            let message_header_keys = self.create_message_header_keys(&messages);
+            let message_header_keys = self.create_message_header_keys(&polled_messages.messages);
 
             let mut table = Table::new();
             let table_header = Self::create_table_header(&message_header_keys);
-            let table_content = Self::create_table_content(&messages, &message_header_keys);
+            let table_content =
+                Self::create_table_content(&polled_messages.messages, &message_header_keys);
             table.set_header(table_header);
             table.add_rows(table_content);
 
             event!(target: PRINT_TARGET, Level::INFO, "{table}");
         }
-        */
 
         Ok(())
     }

@@ -1,17 +1,17 @@
-use bytes::{Bytes, BytesMut};
-
 use super::message_header::*;
-use super::message_header_view::IggyMessageHeaderView;
+use super::HeaderValue;
+use super::{message_header_view::IggyMessageHeaderView, HeaderKey};
 use crate::error::IggyError;
 use crate::prelude::BytesSerializable;
-use std::iter::Iterator;
+use bytes::{Bytes, BytesMut};
+use std::{collections::HashMap, iter::Iterator};
 
 /// A immutable view of a message.
 #[derive(Debug)]
 pub struct IggyMessageView<'a> {
     buffer: &'a [u8],
     payload_offset: usize,
-    headers_offset: usize,
+    user_headers_offset: usize,
 }
 
 impl<'a> IggyMessageView<'a> {
@@ -25,7 +25,7 @@ impl<'a> IggyMessageView<'a> {
         Self {
             buffer,
             payload_offset,
-            headers_offset,
+            user_headers_offset: headers_offset,
         }
     }
 
@@ -35,14 +35,52 @@ impl<'a> IggyMessageView<'a> {
     }
 
     /// Returns an immutable slice of the user headers.
-    pub fn user_headers(&self) -> &[u8] {
-        &self.buffer[self.headers_offset..]
+    pub fn user_headers(&self) -> Option<&[u8]> {
+        if self.header().user_headers_length() > 0 {
+            let header_length = self.header().user_headers_length() as usize;
+            let end_offset = self.user_headers_offset + header_length;
+
+            if end_offset <= self.buffer.len() {
+                Some(&self.buffer[self.user_headers_offset..end_offset])
+            } else {
+                tracing::error!(
+                    "Header length in message exceeds buffer bounds: length={}, buffer_remaining={}",
+                    header_length,
+                    self.buffer.len() - self.user_headers_offset
+                );
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Return instantiated user headers map
+    pub fn user_headers_map(&self) -> Result<Option<HashMap<HeaderKey, HeaderValue>>, IggyError> {
+        if let Some(headers) = self.user_headers() {
+            let headers_bytes = Bytes::copy_from_slice(headers);
+
+            match HashMap::<HeaderKey, HeaderValue>::from_bytes(headers_bytes) {
+                Ok(h) => Ok(Some(h)),
+                Err(e) => {
+                    tracing::error!(
+                        "Error parsing headers: {}, header_length={}",
+                        e,
+                        self.header().user_headers_length()
+                    );
+
+                    Ok(None)
+                }
+            }
+        } else {
+            Ok(None)
+        }
     }
 
     /// Returns the size of the entire message.
     pub fn size(&self) -> u32 {
         let header_view = self.header();
-        IGGY_MESSAGE_HEADER_SIZE + header_view.payload_length() + header_view.headers_length()
+        IGGY_MESSAGE_HEADER_SIZE + header_view.payload_length() + header_view.user_headers_length()
     }
 
     /// Returns a reference to the payload portion.
@@ -60,8 +98,8 @@ impl<'a> IggyMessageView<'a> {
 
         let header = self.header();
         let payload_len = header.payload_length() as usize;
-        let headers_len = header.headers_length() as usize;
-        let total_size = IGGY_MESSAGE_HEADER_SIZE as usize + payload_len + headers_len;
+        let user_headers_len = header.user_headers_length() as usize;
+        let total_size = IGGY_MESSAGE_HEADER_SIZE as usize + payload_len + user_headers_len;
 
         if self.buffer.len() < total_size {
             return Err(IggyError::InvalidMessagePayloadLength);

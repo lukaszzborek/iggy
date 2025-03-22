@@ -1,11 +1,12 @@
 use super::{index_view::IggyIndexView, INDEX_SIZE};
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::ops::{Deref, Index as StdIndex};
 
 /// A container for binary-encoded index data.
 /// Optimized for efficient storage and I/O operations.
-#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct IggyIndexes {
     base_position: u32,
     buffer: Bytes,
@@ -336,5 +337,39 @@ impl Deref for IggyIndexes {
 
     fn deref(&self) -> &Self::Target {
         &self.buffer
+    }
+}
+
+impl fmt::Debug for IggyIndexes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let count = self.count();
+
+        if count == 0 {
+            return write!(
+                f,
+                "IggyIndexes {{ count: 0, base_position: {}, indexes: [] }}",
+                self.base_position
+            );
+        }
+
+        writeln!(f, "IggyIndexes {{")?;
+        writeln!(f, "    count: {},", count)?;
+        writeln!(f, "    base_position: {},", self.base_position)?;
+        writeln!(f, "    indexes: [")?;
+
+        for i in 0..count {
+            if let Some(index) = self.get(i) {
+                writeln!(
+                    f,
+                    "        {{ offset: {}, position: {}, timestamp: {} }},",
+                    index.offset(),
+                    index.position(),
+                    index.timestamp()
+                )?;
+            }
+        }
+
+        writeln!(f, "    ]")?;
+        write!(f, "}}")
     }
 }

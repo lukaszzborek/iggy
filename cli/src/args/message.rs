@@ -81,7 +81,7 @@ pub(crate) struct SendMessagesArgs {
     pub(crate) messages: Option<Vec<String>>,
     /// Comma separated list of key:kind:value, sent as header with the message
     ///
-    /// Headers are comma seperated key-value pairs that can be sent with the message.
+    /// Headers are comma separated key-value pairs that can be sent with the message.
     /// Kind can be one of the following: raw, string, bool, int8, int16, int32, int64,
     /// int128, uint8, uint16, uint32, uint64, uint128, float32, float64
     #[clap(verbatim_doc_comment)]

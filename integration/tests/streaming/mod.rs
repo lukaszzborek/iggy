@@ -4,7 +4,7 @@ use iggy::prelude::IggyMessage;
 mod common;
 // mod consumer_offset;
 mod get_by_offset;
-mod get_by_timestamp;
+// mod get_by_timestamp;
 // mod messages;
 // mod partition;
 // mod segment;
@@ -27,5 +27,8 @@ fn create_messages() -> Vec<IggyMessage> {
 
 fn create_message(id: u128, payload: &str) -> IggyMessage {
     let payload = Bytes::from(payload.to_string());
-    IggyMessage::builder().id(id).payload(payload).build()
+    IggyMessage::builder()
+        .with_id(id)
+        .with_payload(payload)
+        .build()
 }

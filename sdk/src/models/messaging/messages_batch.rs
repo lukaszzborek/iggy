@@ -1,4 +1,4 @@
-use super::{IggyIndexes, IggyMessageHeaderView, IggyMessageViewIterator};
+use super::{IggyIndexes, IggyMessageHeaderView, IggyMessageView, IggyMessageViewIterator};
 use crate::{
     error::IggyError,
     models::messaging::INDEX_SIZE,
@@ -6,7 +6,7 @@ use crate::{
 };
 use bytes::{BufMut, Bytes, BytesMut};
 use serde::{Deserialize, Serialize};
-use std::ops::Deref;
+use std::ops::{Deref, Index};
 
 /// An immutable messages container that holds a buffer of messages
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -97,6 +97,11 @@ impl IggyMessagesBatch {
         &self.messages
     }
 
+    /// Decompose the batch into its components
+    pub fn decompose(self) -> (IggyIndexes, Bytes, u32) {
+        (self.indexes, self.messages, self.count)
+    }
+
     /// Get index of first message
     pub fn first_index(&self) -> u64 {
         self.iter()
@@ -113,10 +118,31 @@ impl IggyMessagesBatch {
             .unwrap_or(0)
     }
 
+    /// Get offset of last message
+    pub fn last_offset(&self) -> u64 {
+        self.iter()
+            .last()
+            .map(|msg| msg.header().offset())
+            .unwrap_or(0)
+    }
+
+    /// Get timestamp of last message
+    pub fn last_timestamp(&self) -> u64 {
+        self.iter()
+            .last()
+            .map(|msg| msg.header().timestamp())
+            .unwrap_or(0)
+    }
+
     /// Helper method to read a position (u32) from the byte array at the given index
     fn read_position_at(&self, position_index: u32) -> u32 {
         let idx = position_index * INDEX_SIZE as u32;
-        self.indexes.get(idx).unwrap().position()
+        println!("idx={idx}");
+        if let Some(index) = self.indexes.get(idx) {
+            index.position()
+        } else {
+            0
+        }
     }
 
     /// Returns a contiguous slice (as a new `IggyMessagesBatch`) of up to `count` messages
@@ -222,6 +248,62 @@ impl IggyMessagesBatch {
             indexes: sub_indexes,
             messages: sub_buffer,
         })
+    }
+
+    /// Get the message at the specified index.
+    /// Returns None if the index is out of bounds.
+    pub fn get(&self, index: usize) -> Option<IggyMessageView> {
+        if index >= self.count as usize {
+            return None;
+        }
+
+        let start_position = if index == 0 {
+            0
+        } else {
+            self.read_position_at(index as u32 - 1) as usize
+        };
+
+        let end_position = if index == self.count as usize - 1 {
+            self.messages.len()
+        } else {
+            self.read_position_at(index as u32) as usize
+        };
+
+        Some(IggyMessageView::new(
+            &self.messages[start_position..end_position],
+        ))
+    }
+}
+
+impl Index<usize> for IggyMessagesBatch {
+    type Output = [u8];
+
+    /// Get the message bytes at the specified index
+    ///
+    /// # Panics
+    ///
+    /// Panics if the index is out of bounds (>= count)
+    fn index(&self, index: usize) -> &Self::Output {
+        if index >= self.count as usize {
+            panic!(
+                "Index out of bounds: the len is {} but the index is {}",
+                self.count, index
+            );
+        }
+
+        let start_position = if index == 0 {
+            0
+        } else {
+            self.read_position_at(index as u32 - 1) as usize
+        };
+
+        let end_position = if index == self.count as usize - 1 {
+            self.messages.len()
+        } else {
+            self.read_position_at(index as u32) as usize
+        };
+
+        &self.messages[start_position..end_position]
     }
 }
 

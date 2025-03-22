@@ -97,7 +97,7 @@ impl System {
         let partition_persister = Self::resolve_persister(config.partition.enforce_fsync);
 
         let state = Arc::new(StateKind::File(FileState::new(
-            &config.get_state_log_path(),
+            &config.get_state_messages_file_path(),
             &version,
             state_persister,
             encryptor.clone(),

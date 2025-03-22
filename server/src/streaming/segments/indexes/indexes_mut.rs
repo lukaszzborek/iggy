@@ -1,10 +1,11 @@
 use bytes::{BufMut, BytesMut};
 use iggy::models::messaging::{IggyIndexView, IggyIndexes, INDEX_SIZE};
+use std::fmt;
 use std::ops::{Deref, Index as StdIndex};
 
 /// A container for binary-encoded index data.
 /// Optimized for efficient storage and I/O operations.
-#[derive(Debug, Default, Clone)]
+#[derive(Default, Clone)]
 pub struct IggyIndexesMut {
     buffer: BytesMut,
     unsaved_count: u32,
@@ -12,7 +13,7 @@ pub struct IggyIndexesMut {
 
 impl IggyIndexesMut {
     /// Creates a new empty container
-    pub fn new() -> Self {
+    pub fn empty() -> Self {
         Self {
             buffer: BytesMut::new(),
             unsaved_count: 0,
@@ -27,12 +28,17 @@ impl IggyIndexesMut {
         }
     }
 
-    /// Creates a new container with the specified capacity in bytes
-    pub fn with_capacity(index_count: usize) -> Self {
+    /// Creates a new container with the specified capacity
+    pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            buffer: BytesMut::with_capacity(index_count * INDEX_SIZE),
+            buffer: BytesMut::with_capacity(capacity * INDEX_SIZE),
             unsaved_count: 0,
         }
+    }
+
+    /// Makes the indexes immutable
+    pub fn make_immutable(self) -> IggyIndexes {
+        IggyIndexes::new(self.buffer.freeze(), self.unsaved_count)
     }
 
     /// Sets the number of unsaved messages
@@ -40,8 +46,15 @@ impl IggyIndexesMut {
         self.unsaved_count = count;
     }
 
-    /// Appends another IggyIndexesMut instance to this one
-    pub fn append(&mut self, other: IggyIndexesMut) {
+    /// Inserts a new index at the end of buffer
+    pub fn insert(&mut self, offset: u32, position: u32, timestamp: u64) {
+        self.buffer.put_u32_le(offset);
+        self.buffer.put_u32_le(position);
+        self.buffer.put_u64_le(timestamp);
+    }
+
+    /// Appends another IggyIndexesMut instance to this one. Other indexes buffer is consumed.
+    pub fn concatenate(&mut self, other: IggyIndexesMut) {
         self.buffer.put_slice(&other.buffer);
         self.unsaved_count += other.unsaved_count;
     }
@@ -208,7 +221,7 @@ impl IggyIndexesMut {
             return None;
         }
 
-        let start_index_pos = self.find_index_pos_by_timestamp(timestamp)?;
+        let start_index_pos = self.binary_search_position_for_timestamp_sync(timestamp)?;
 
         let available_count = self.count().saturating_sub(start_index_pos);
         let actual_count = std::cmp::min(count, available_count);
@@ -233,7 +246,7 @@ impl IggyIndexesMut {
     }
 
     /// Find the position of the index with timestamp closest to (but not exceeding) the target
-    fn find_index_pos_by_timestamp(&self, target_timestamp: u64) -> Option<u32> {
+    fn binary_search_position_for_timestamp_sync(&self, target_timestamp: u64) -> Option<u32> {
         if self.count() == 0 {
             return None;
         }
@@ -291,5 +304,35 @@ impl Deref for IggyIndexesMut {
 
     fn deref(&self) -> &Self::Target {
         &self.buffer
+    }
+}
+
+impl fmt::Debug for IggyIndexesMut {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let count = self.count();
+
+        if count == 0 {
+            return write!(f, "IggyIndexesMut {{ count: 0, indexes: [] }}");
+        }
+
+        writeln!(f, "IggyIndexesMut {{")?;
+        writeln!(f, "    count: {},", count)?;
+        writeln!(f, "    unsaved_count: {},", self.unsaved_count)?;
+        writeln!(f, "    indexes: [")?;
+
+        for i in 0..count {
+            if let Some(index) = self.get(i) {
+                writeln!(
+                    f,
+                    "        {{ offset: {}, position: {}, timestamp: {} }},",
+                    index.offset(),
+                    index.position(),
+                    index.timestamp()
+                )?;
+            }
+        }
+
+        writeln!(f, "    ]")?;
+        write!(f, "}}")
     }
 }

@@ -1,5 +1,7 @@
+use iggy::models::messaging::IggyMessageView;
 use iggy::models::messaging::IggyMessagesBatch;
 use iggy::prelude::*;
+use std::ops::Index;
 
 /// A container for multiple IggyMessagesBatch objects
 #[derive(Debug, Clone, Default)]
@@ -72,6 +74,16 @@ impl IggyMessagesBatchSet {
     /// Check if the batch is empty
     pub fn is_empty(&self) -> bool {
         self.batches.is_empty() || self.count == 0
+    }
+
+    /// Get offset of last message of last batch
+    pub fn last_offset(&self) -> Option<u64> {
+        self.batches.last().map(|batch| batch.last_offset())
+    }
+
+    /// Get timestamp of last message of last batch
+    pub fn last_timestamp(&self) -> Option<u64> {
+        self.batches.last().map(|batch| batch.last_timestamp())
     }
 
     /// Get a reference to the underlying vector of message containers
@@ -150,46 +162,60 @@ impl IggyMessagesBatchSet {
         result
     }
 
-    /// Convert IggyMessagesBatch to flat Vec<IggyMessage>
-    /// This should be used only for testing purposes.
-    pub fn into_messages_vec(self) -> Vec<IggyMessage> {
-        let mut messages = Vec::with_capacity(self.count() as usize);
-
-        for batch in self.iter() {
-            for view in batch.iter() {
-                let header = view.header().to_header();
-                let payload = bytes::Bytes::copy_from_slice(view.payload());
-
-                let headers = if header.headers_length > 0 {
-                    let headers_bytes = bytes::Bytes::copy_from_slice(
-                        &view.user_headers()[..header.headers_length as usize],
-                    );
-
-                    match std::collections::HashMap::<HeaderKey, HeaderValue>::from_bytes(
-                        headers_bytes,
-                    ) {
-                        Ok(h) => Some(h),
-                        Err(e) => {
-                            tracing::error!(
-                                "Error parsing headers: {}, header_length={}",
-                                e,
-                                header.headers_length
-                            );
-                            None
-                        }
-                    }
-                } else {
-                    None
-                };
-
-                messages.push(IggyMessage {
-                    header,
-                    payload,
-                    user_headers: headers,
-                });
-            }
+    /// Get the message at the specified index.
+    /// Returns None if the index is out of bounds.
+    pub fn get(&self, index: usize) -> Option<IggyMessageView> {
+        if index >= self.count as usize {
+            return None;
         }
-        messages
+
+        let mut seen_messages = 0;
+
+        for batch in &self.batches {
+            let batch_count = batch.count() as usize;
+
+            if index < seen_messages + batch_count {
+                let local_index = index - seen_messages;
+                return batch.get(local_index);
+            }
+
+            seen_messages += batch_count;
+        }
+
+        None
+    }
+}
+
+impl Index<usize> for IggyMessagesBatchSet {
+    type Output = [u8];
+
+    /// Get the message bytes at the specified index across all batches
+    ///
+    /// # Panics
+    ///
+    /// Panics if the index is out of bounds (>= total number of messages)
+    fn index(&self, index: usize) -> &Self::Output {
+        if index >= self.count as usize {
+            panic!(
+                "Index out of bounds: the len is {} but the index is {}",
+                self.count, index
+            );
+        }
+
+        let mut seen_messages = 0;
+
+        for batch in &self.batches {
+            let batch_count = batch.count() as usize;
+
+            if index < seen_messages + batch_count {
+                let local_index = index - seen_messages;
+                return &batch[local_index];
+            }
+
+            seen_messages += batch_count;
+        }
+
+        unreachable!("Failed to find message at index {}", index);
     }
 }
 
@@ -208,5 +234,43 @@ impl From<Vec<IggyMessagesBatch>> for IggyMessagesBatchSet {
 impl From<IggyMessagesBatch> for IggyMessagesBatchSet {
     fn from(messages: IggyMessagesBatch) -> Self {
         Self::from_vec(vec![messages])
+    }
+}
+
+/// Iterator that consumes an IggyMessagesBatchSet and yields batches
+pub struct IggyMessagesBatchSetIntoIter {
+    batches: Vec<IggyMessagesBatch>,
+    position: usize,
+}
+
+impl Iterator for IggyMessagesBatchSetIntoIter {
+    type Item = IggyMessagesBatch;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.position < self.batches.len() {
+            let batch =
+                std::mem::replace(&mut self.batches[self.position], IggyMessagesBatch::empty());
+            self.position += 1;
+            Some(batch)
+        } else {
+            None
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.batches.len() - self.position;
+        (remaining, Some(remaining))
+    }
+}
+
+impl IntoIterator for IggyMessagesBatchSet {
+    type Item = IggyMessagesBatch;
+    type IntoIter = IggyMessagesBatchSetIntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IggyMessagesBatchSetIntoIter {
+            batches: self.batches,
+            position: 0,
+        }
     }
 }

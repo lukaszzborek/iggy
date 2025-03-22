@@ -421,6 +421,12 @@ impl Default for PartitionConfig {
     fn default() -> PartitionConfig {
         PartitionConfig {
             path: SERVER_CONFIG.system.partition.path.parse().unwrap(),
+            size_of_messages_required_to_save: SERVER_CONFIG
+                .system
+                .partition
+                .size_of_messages_required_to_save
+                .parse()
+                .unwrap(),
             messages_required_to_save: SERVER_CONFIG.system.partition.messages_required_to_save
                 as u32,
             enforce_fsync: SERVER_CONFIG.system.partition.enforce_fsync,

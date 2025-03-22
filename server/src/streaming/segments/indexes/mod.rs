@@ -1,6 +1,6 @@
-pub mod index_reader;
-pub mod index_writer;
-pub mod indexes_mut;
+mod index_reader;
+mod index_writer;
+mod indexes_mut;
 
 pub use index_reader::IndexReader;
 pub use index_writer::IndexWriter;

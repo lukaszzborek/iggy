@@ -36,7 +36,7 @@ impl System {
             }
             &SystemSnapshotType::all_snapshot_types()
         } else {
-            &snapshot_types
+            snapshot_types
         };
 
         let cursor = Cursor::new(Vec::new());

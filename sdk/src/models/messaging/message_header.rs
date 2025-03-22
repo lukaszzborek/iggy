@@ -25,7 +25,7 @@ pub struct IggyMessageHeader {
     pub offset: u64,
     pub timestamp: u64,
     pub origin_timestamp: u64,
-    pub headers_length: u32,
+    pub user_headers_length: u32,
     pub payload_length: u32,
 }
 
@@ -67,7 +67,7 @@ impl IggyMessageHeader {
                     .try_into()
                     .map_err(|_| IggyError::InvalidNumberEncoding)?,
             ),
-            headers_length: u32::from_le_bytes(
+            user_headers_length: u32::from_le_bytes(
                 bytes[IGGY_MESSAGE_HEADERS_LENGTH_OFFSET_RANGE]
                     .try_into()
                     .map_err(|_| IggyError::InvalidNumberEncoding)?,
@@ -89,7 +89,7 @@ impl BytesSerializable for IggyMessageHeader {
         bytes.put_u64_le(self.offset);
         bytes.put_u64_le(self.timestamp);
         bytes.put_u64_le(self.origin_timestamp);
-        bytes.put_u32_le(self.headers_length);
+        bytes.put_u32_le(self.user_headers_length);
         bytes.put_u32_le(self.payload_length);
         bytes.freeze()
     }
@@ -147,7 +147,7 @@ impl BytesSerializable for IggyMessageHeader {
             offset,
             timestamp,
             origin_timestamp,
-            headers_length,
+            user_headers_length: headers_length,
             payload_length,
         })
     }

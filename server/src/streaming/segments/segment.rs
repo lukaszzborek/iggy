@@ -17,35 +17,34 @@ const INDEXES_CAPACITY: usize = 16 * 1000 * 1000 * 1000; // 16 MB, 1 million ind
 
 #[derive(Debug)]
 pub struct Segment {
-    pub stream_id: u32,
-    pub topic_id: u32,
-    pub partition_id: u32,
-    pub start_offset: u64,
-    pub start_timestamp: u64, // first message timestamp
-    pub end_timestamp: u64,   // last message timestamp
-    pub end_offset: u64,
-    pub index_path: String,
-    pub log_path: String,
-    pub size_bytes: IggyByteSize,
-    pub last_index_position: u32,
-    pub max_size_bytes: IggyByteSize,
-    pub size_of_parent_stream: Arc<AtomicU64>,
-    pub size_of_parent_topic: Arc<AtomicU64>,
-    pub size_of_parent_partition: Arc<AtomicU64>,
-    pub messages_count_of_parent_stream: Arc<AtomicU64>,
-    pub messages_count_of_parent_topic: Arc<AtomicU64>,
-    pub messages_count_of_parent_partition: Arc<AtomicU64>,
-    pub is_closed: bool,
+    pub(super) stream_id: u32,
+    pub(super) topic_id: u32,
+    pub(super) partition_id: u32,
+    pub(super) start_offset: u64,
+    pub(super) start_timestamp: u64, // first message timestamp
+    pub(super) end_timestamp: u64,   // last message timestamp
+    pub(super) end_offset: u64,
+    pub(super) index_path: String,
+    pub(super) messages_path: String,
+    pub(super) last_index_position: u32,
+    pub(super) max_size_bytes: IggyByteSize,
+    pub(super) size_of_parent_stream: Arc<AtomicU64>,
+    pub(super) size_of_parent_topic: Arc<AtomicU64>,
+    pub(super) size_of_parent_partition: Arc<AtomicU64>,
+    pub(super) messages_count_of_parent_stream: Arc<AtomicU64>,
+    pub(super) messages_count_of_parent_topic: Arc<AtomicU64>,
+    pub(super) messages_count_of_parent_partition: Arc<AtomicU64>,
+    pub(super) is_closed: bool,
     pub(super) messages_writer: Option<MessagesWriter>,
     pub(super) messages_reader: Option<MessagesReader>,
     pub(super) index_writer: Option<IndexWriter>,
     pub(super) index_reader: Option<IndexReader>,
-    pub message_expiry: IggyExpiry,
-    pub accumulator: MessagesAccumulator,
-    pub config: Arc<SystemConfig>,
-    pub indexes: IggyIndexesMut,
-    pub(super) log_size_bytes: Arc<AtomicU64>,
-    pub(super) index_size_bytes: Arc<AtomicU64>,
+    pub(super) message_expiry: IggyExpiry,
+    pub(super) accumulator: MessagesAccumulator,
+    pub(super) config: Arc<SystemConfig>,
+    pub(super) indexes: IggyIndexesMut,
+    pub(super) messages_size: Arc<AtomicU64>,
+    pub(super) indexes_size: Arc<AtomicU64>,
 }
 
 impl Segment {
@@ -65,7 +64,7 @@ impl Segment {
         messages_count_of_parent_partition: Arc<AtomicU64>,
     ) -> Segment {
         let path = config.get_segment_path(stream_id, topic_id, partition_id, start_offset);
-        let log_path = Self::get_log_path(&path);
+        let messages_path = Self::get_messages_file_path(&path);
         let index_path = Self::get_index_path(&path);
         let message_expiry = match message_expiry {
             IggyExpiry::ServerDefault => config.segment.message_expiry,
@@ -80,9 +79,8 @@ impl Segment {
             start_timestamp: IggyTimestamp::now().as_micros(),
             end_timestamp: IggyTimestamp::now().as_micros(),
             end_offset: start_offset,
-            log_path,
+            messages_path,
             index_path,
-            size_bytes: IggyByteSize::from(0),
             last_index_position: 0,
             max_size_bytes: config.segment.size,
             message_expiry,
@@ -100,16 +98,16 @@ impl Segment {
             messages_count_of_parent_topic,
             messages_count_of_parent_partition,
             config,
-            log_size_bytes: Arc::new(AtomicU64::new(0)),
-            index_size_bytes: Arc::new(AtomicU64::new(0)),
+            messages_size: Arc::new(AtomicU64::new(0)),
+            indexes_size: Arc::new(AtomicU64::new(0)),
         }
     }
 
     /// Load the segment state from disk.
     pub async fn load_from_disk(&mut self) -> Result<(), IggyError> {
         info!(
-            "Loading segment from disk: log_path: {}, index_path: {}",
-            self.log_path, self.index_path
+            "Loading segment from disk: messages_file_path: {}, index_path: {}",
+            self.messages_path, self.index_path
         );
 
         if self.messages_reader.is_none() || self.index_reader.is_none() {
@@ -117,18 +115,16 @@ impl Segment {
             self.initialize_reading().await?;
         }
 
-        let log_size_bytes = self.log_size_bytes.load(Ordering::Acquire);
+        let log_size_bytes = self.messages_size.load(Ordering::Acquire);
         info!("Log file size: {}", IggyByteSize::from(log_size_bytes));
 
-        // TODO(hubcio): in future, remove size_bytes and use only atomic log_size_bytes everywhere
-        self.size_bytes = IggyByteSize::from(log_size_bytes);
         self.last_index_position = log_size_bytes as _;
 
         self.indexes = self
             .index_reader
             .as_ref()
             .unwrap()
-            .load_all_indexes_impl()
+            .load_all_indexes_from_disk()
             .await
             .with_error_context(|error| format!("Failed to load indexes for {self}. {error}"))
             .map_err(|_| IggyError::CannotReadFile)?;
@@ -152,7 +148,7 @@ impl Segment {
             self.is_closed = true;
         }
 
-        let messages_count = self.get_messages_count();
+        let messages_count = self.get_messages_count() as u64;
 
         info!(
             "Loaded segment with log file of size {} ({} messages) for start offset {}, current offset: {}, and partition with ID: {} for topic with ID: {} and stream with ID: {}.",
@@ -193,22 +189,21 @@ impl Segment {
     }
 
     pub async fn initialize_writing(&mut self) -> Result<(), IggyError> {
-        // TODO(hubcio): consider splitting enforce_fsync for index/log to separate entries in config
         let log_fsync = self.config.partition.enforce_fsync;
         let index_fsync = self.config.partition.enforce_fsync;
 
         let server_confirmation = self.config.segment.server_confirmation;
 
         let log_writer = MessagesWriter::new(
-            &self.log_path,
-            self.log_size_bytes.clone(),
+            &self.messages_path,
+            self.messages_size.clone(),
             log_fsync,
             server_confirmation,
         )
         .await?;
 
         let index_writer =
-            IndexWriter::new(&self.index_path, self.index_size_bytes.clone(), index_fsync).await?;
+            IndexWriter::new(&self.index_path, self.indexes_size.clone(), index_fsync).await?;
 
         self.messages_writer = Some(log_writer);
         self.index_writer = Some(index_writer);
@@ -216,10 +211,10 @@ impl Segment {
     }
 
     pub async fn initialize_reading(&mut self) -> Result<(), IggyError> {
-        let log_reader = MessagesReader::new(&self.log_path, self.log_size_bytes.clone()).await?;
+        let log_reader =
+            MessagesReader::new(&self.messages_path, self.messages_size.clone()).await?;
         // TODO(hubcio): there is no need to store open fd for reader if we have index cache enabled
-        let index_reader =
-            IndexReader::new(&self.index_path, self.index_size_bytes.clone()).await?;
+        let index_reader = IndexReader::new(&self.index_path, self.indexes_size.clone()).await?;
 
         self.messages_reader = Some(log_reader);
         self.index_reader = Some(index_reader);
@@ -227,7 +222,7 @@ impl Segment {
     }
 
     pub async fn is_full(&self) -> bool {
-        if self.size_bytes >= self.max_size_bytes {
+        if self.get_messages_size() >= self.max_size_bytes {
             return true;
         }
 
@@ -235,30 +230,29 @@ impl Segment {
     }
 
     pub async fn is_expired(&self, now: IggyTimestamp) -> bool {
-        false
-        // if !self.is_closed {
-        //     return false;
-        // }
+        if !self.is_closed {
+            return false;
+        }
 
-        // match self.message_expiry {
-        //     IggyExpiry::NeverExpire => false,
-        //     IggyExpiry::ServerDefault => false,
-        //     IggyExpiry::ExpireDuration(expiry) => {
-        //         let last_messages = self.get_messages_by_offset(self.end_offset, 1).await;
-        //         if last_messages.is_err() {
-        //             return false;
-        //         }
+        match self.message_expiry {
+            IggyExpiry::NeverExpire => false,
+            IggyExpiry::ServerDefault => false,
+            IggyExpiry::ExpireDuration(expiry) => {
+                let last_messages = self.get_messages_by_offset(self.end_offset, 1).await;
+                if last_messages.is_err() {
+                    return false;
+                }
 
-        //         let last_messages = last_messages.unwrap();
-        //         if last_messages.is_empty() {
-        //             return false;
-        //         }
+                let last_messages = last_messages.unwrap();
+                if last_messages.is_empty() {
+                    return false;
+                }
 
-        //         let last_message = last_messages.iter().last().unwrap();
-        //         let last_message_timestamp = last_message.timestamp;
-        //         last_message_timestamp + expiry.as_micros() <= now.as_micros()
-        //     }
-        // }
+                let last_message = last_messages.iter().last().unwrap().iter().last().unwrap();
+                let last_message_timestamp = last_message.header().timestamp();
+                last_message_timestamp + expiry.as_micros() <= now.as_micros()
+            }
+        }
     }
 
     pub async fn shutdown_reading(&mut self) {
@@ -294,10 +288,10 @@ impl Segment {
     }
 
     pub async fn delete(&mut self) -> Result<(), IggyError> {
-        let segment_size = self.size_bytes;
-        let segment_count_of_messages = self.get_messages_count();
+        let segment_size = self.get_messages_size();
+        let segment_count_of_messages = self.get_messages_count() as u64;
         info!(
-            "Deleting segment of size {segment_size} with start offset: {} for partition with ID: {} for stream with ID: {} and topic with ID: {}...",
+            "Deleting segment of size {segment_size} ({segment_count_of_messages} messages) with start offset: {} for partition with ID: {} for stream with ID: {} and topic with ID: {}...",
             self.start_offset, self.partition_id, self.stream_id, self.topic_id,
         );
 
@@ -307,10 +301,10 @@ impl Segment {
             self.shutdown_writing().await;
         }
 
-        let _ = remove_file(&self.log_path)
+        let _ = remove_file(&self.messages_path)
             .await
             .with_error_context(|error| {
-                format!("Failed to delete log file: {}. {error}", self.log_path)
+                format!("Failed to delete log file: {}. {error}", self.messages_path)
             });
         let _ = remove_file(&self.index_path)
             .await
@@ -318,7 +312,7 @@ impl Segment {
                 format!("Failed to delete index file: {}. {error}", self.index_path)
             });
 
-        let segment_size_bytes = self.size_bytes.as_bytes_u64();
+        let segment_size_bytes = segment_size.as_bytes_u64();
         self.size_of_parent_stream
             .fetch_sub(segment_size_bytes, Ordering::SeqCst);
         self.size_of_parent_topic
@@ -340,12 +334,40 @@ impl Segment {
         Ok(())
     }
 
-    fn get_log_path(path: &str) -> String {
+    fn get_messages_file_path(path: &str) -> String {
         format!("{}.{}", path, LOG_EXTENSION)
     }
 
     fn get_index_path(path: &str) -> String {
         format!("{}.{}", path, INDEX_EXTENSION)
+    }
+
+    pub fn update_message_expiry(&mut self, message_expiry: IggyExpiry) {
+        self.message_expiry = message_expiry;
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.is_closed
+    }
+
+    pub fn start_offset(&self) -> u64 {
+        self.start_offset
+    }
+
+    pub fn end_offset(&self) -> u64 {
+        self.end_offset
+    }
+
+    pub fn end_timestamp(&self) -> u64 {
+        self.end_timestamp
+    }
+
+    pub fn index_file_path(&self) -> &str {
+        &self.index_path
+    }
+
+    pub fn messages_file_path(&self) -> &str {
+        &self.messages_path
     }
 }
 
@@ -359,7 +381,7 @@ impl std::fmt::Display for Segment {
             self.partition_id,
             self.start_offset,
             self.end_offset,
-            self.size_bytes,
+            self.get_messages_size(),
             self.last_index_position,
             self.max_size_bytes,
             self.is_closed
@@ -381,7 +403,7 @@ mod tests {
         let start_offset = 0;
         let config = Arc::new(SystemConfig::default());
         let path = config.get_segment_path(stream_id, topic_id, partition_id, start_offset);
-        let log_path = Segment::get_log_path(&path);
+        let messages_file_path = Segment::get_messages_file_path(&path);
         let index_path = Segment::get_index_path(&path);
         let message_expiry = IggyExpiry::ExpireDuration(IggyDuration::from(10));
         let size_of_parent_stream = Arc::new(AtomicU64::new(0));
@@ -409,14 +431,14 @@ mod tests {
         assert_eq!(segment.stream_id, stream_id);
         assert_eq!(segment.topic_id, topic_id);
         assert_eq!(segment.partition_id, partition_id);
-        assert_eq!(segment.start_offset, start_offset);
-        assert_eq!(segment.end_offset, 0);
-        assert_eq!(segment.size_bytes, 0);
-        assert_eq!(segment.log_path, log_path);
-        assert_eq!(segment.index_path, index_path);
+        assert_eq!(segment.start_offset(), start_offset);
+        assert_eq!(segment.end_offset(), 0);
+        assert_eq!(segment.get_messages_size(), 0);
+        assert_eq!(segment.messages_file_path(), messages_file_path);
+        assert_eq!(segment.index_file_path(), index_path);
         assert_eq!(segment.message_expiry, message_expiry);
         assert!(segment.indexes.is_empty());
-        assert!(!segment.is_closed);
+        assert!(!segment.is_closed());
         assert!(!segment.is_full().await);
     }
 

@@ -2,7 +2,7 @@ use crate::{
     error::IggyError,
     prelude::{BytesSerializable, IggyMessage},
 };
-use bytes::{Buf, Bytes, BytesMut};
+use bytes::{Bytes, BytesMut};
 use serde::{Deserialize, Serialize};
 
 /// The wrapper on top of the collection of messages that are polled from the partition.

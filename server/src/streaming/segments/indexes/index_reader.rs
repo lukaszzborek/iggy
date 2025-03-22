@@ -51,17 +51,17 @@ impl IndexReader {
     }
 
     /// Loads all indexes from the index file into the optimized binary format.
-    pub async fn load_all_indexes_impl(&self) -> Result<IggyIndexesMut, IggyError> {
+    pub async fn load_all_indexes_from_disk(&self) -> Result<IggyIndexesMut, IggyError> {
         let file_size = self.file_size();
         if file_size == 0 {
             trace!("Index file {} is empty.", self.file_path);
-            return Ok(IggyIndexesMut::new());
+            return Ok(IggyIndexesMut::empty());
         }
 
         let buf = match self.read_at(0, file_size).await {
             Ok(buf) => buf,
             Err(error) if error.kind() == ErrorKind::UnexpectedEof => {
-                return Ok(IggyIndexesMut::new())
+                return Ok(IggyIndexesMut::empty())
             }
             Err(error) => {
                 error!(
@@ -185,7 +185,10 @@ impl IndexReader {
             return Ok(None);
         }
 
-        let start_index_pos = match self.find_index_pos_by_timestamp(timestamp).await? {
+        let start_index_pos = match self
+            .binary_search_position_for_timestamp_async(timestamp)
+            .await?
+        {
             Some(pos) => pos,
             None => return Ok(None),
         };
@@ -245,7 +248,7 @@ impl IndexReader {
     }
 
     /// Finds the position of the index with timestamp closest to (but not exceeding) the target
-    async fn find_index_pos_by_timestamp(
+    async fn binary_search_position_for_timestamp_async(
         &self,
         target_timestamp: u64,
     ) -> Result<Option<u32>, IggyError> {
@@ -299,8 +302,6 @@ impl IndexReader {
             }
         }
 
-        // At this point, low is the position of the first index with timestamp > target_timestamp
-        // So low-1 is the position of the last index with timestamp <= target_timestamp
         if low > 0 {
             Ok(Some(low - 1))
         } else {

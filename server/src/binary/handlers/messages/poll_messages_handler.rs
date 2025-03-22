@@ -6,7 +6,6 @@ use crate::streaming::session::Session;
 use crate::streaming::systems::messages::PollingArgs;
 use crate::streaming::systems::system::SharedSystem;
 use anyhow::Result;
-use bytes::Bytes;
 use error_set::ErrContext;
 use iggy::prelude::*;
 use std::io::IoSlice;

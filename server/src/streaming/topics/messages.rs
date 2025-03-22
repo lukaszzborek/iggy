@@ -3,7 +3,6 @@ use crate::streaming::polling_consumer::PollingConsumer;
 use crate::streaming::segments::{IggyMessagesBatchMut, IggyMessagesBatchSet};
 use crate::streaming::topics::topic::Topic;
 use crate::streaming::topics::COMPONENT;
-use crate::streaming::utils::file::folder_size;
 use crate::streaming::utils::hash;
 use ahash::AHashMap;
 use error_set::ErrContext;
@@ -130,7 +129,7 @@ impl Topic {
         partition
             .ok_or(IggyError::PartitionNotFound(
                 partition_id,
-                self.stream_id,
+                self.topic_id,
                 self.stream_id,
             ))?
             .write()
@@ -205,146 +204,147 @@ mod tests {
     use std::sync::atomic::AtomicU64;
     use std::sync::Arc;
 
-    // #[tokio::test]
-    // async fn given_partition_id_key_messages_should_be_appended_only_to_the_chosen_partition() {
-    //     let partition_id = 1;
-    //     let partitioning = Partitioning::partition_id(partition_id);
-    //     let partitions_count = 3;
-    //     let messages_count: u32 = 1000;
-    //     let topic = init_topic(partitions_count).await;
+    #[tokio::test]
+    async fn given_partition_id_key_messages_should_be_appended_only_to_the_chosen_partition() {
+        let partition_id = 1;
+        let partitioning = Partitioning::partition_id(partition_id);
+        let partitions_count = 3;
+        let messages_count: u32 = 1000;
+        let topic = init_topic(partitions_count).await;
 
-    //     for entity_id in 1..=messages_count {
-    //         let message = IggyMessage::builder()
-    //             .id(entity_id as u128)
-    //             .payload(Bytes::new())
-    //             .build();
-    //         let messages = IggyMessagesMut::from_messages(&[message], 1);
-    //         topic
-    //             .append_messages(&partitioning, messages, None)
-    //             .await
-    //             .unwrap();
-    //     }
+        for entity_id in 1..=messages_count {
+            let message = IggyMessage::builder()
+                .with_id(entity_id as u128)
+                .with_payload(Bytes::from(entity_id.to_string()))
+                .build();
+            let messages = IggyMessagesBatchMut::from_messages(&[message], 1);
+            topic
+                .append_messages(&partitioning, messages, None)
+                .await
+                .unwrap();
+        }
 
-    //     let partitions = topic.get_partitions();
-    //     assert_eq!(partitions.len(), partitions_count as usize);
-    //     for partition in partitions {
-    //         let partition = partition.read().await;
-    //         let messages = partition.cache.as_ref().unwrap().to_vec();
-    //         if partition.partition_id == partition_id {
-    //             assert_eq!(messages.len() as u32, messages_count);
-    //         } else {
-    //             assert_eq!(messages.len() as u32, 0);
-    //         }
-    //     }
-    // }
+        let partitions = topic.get_partitions();
+        assert_eq!(partitions.len(), partitions_count as usize);
+        for partition in partitions {
+            let partition = partition.read().await;
+            let partition_msgs_count = partition.get_messages_count();
+            if partition.partition_id == partition_id {
+                assert_eq!(partition_msgs_count, messages_count as u64);
+            } else {
+                assert_eq!(partition_msgs_count, 0);
+            }
+        }
+    }
 
-    // #[tokio::test]
-    // async fn given_messages_key_key_messages_should_be_appended_to_the_calculated_partitions() {
-    //     let partitions_count = 3;
-    //     let messages_count = 1000;
-    //     let topic = init_topic(partitions_count).await;
+    #[tokio::test]
+    async fn given_messages_key_key_messages_should_be_appended_to_the_calculated_partitions() {
+        let partitions_count = 3;
+        let messages_count = 1000;
+        let topic = init_topic(partitions_count).await;
 
-    //     for entity_id in 1..=messages_count {
-    //         let partitioning = Partitioning::messages_key_u32(entity_id);
-    //         let message = IggyMessage::builder()
-    //             .id(entity_id as u128)
-    //             .payload(Bytes::new())
-    //             .build();
-    //         let messages = IggyMessagesMut::from_messages(&[message], 1);
-    //         topic
-    //             .append_messages(&partitioning, messages, None)
-    //             .await
-    //             .unwrap();
-    //     }
+        for entity_id in 1..=messages_count {
+            let partitioning = Partitioning::messages_key_u32(entity_id);
+            let message = IggyMessage::builder()
+                .with_id(entity_id as u128)
+                .with_payload(Bytes::new())
+                .build();
+            eprintln!("Message: {:#?}", message);
+            let messages = IggyMessagesBatchMut::from_messages(&[message], 1);
+            topic
+                .append_messages(&partitioning, messages, None)
+                .await
+                .unwrap();
+        }
 
-    //     let mut read_messages_count = 0;
-    //     let partitions = topic.get_partitions();
-    //     assert_eq!(partitions.len(), partitions_count as usize);
-    //     for partition in partitions {
-    //         let partition = partition.read().await;
-    //         let messages = partition.cache.as_ref().unwrap().to_vec();
-    //         read_messages_count += messages.len();
-    //         assert!(messages.len() < messages_count as usize);
-    //     }
+        let mut read_messages_count = 0;
+        let partitions = topic.get_partitions();
+        assert_eq!(partitions.len(), partitions_count as usize);
+        for partition in partitions {
+            let partition = partition.read().await;
+            let partition_msgs_cnt = partition.get_messages_count();
+            read_messages_count += partition_msgs_cnt;
+            assert!(partition_msgs_cnt < messages_count as u64);
+        }
 
-    //     assert_eq!(read_messages_count, messages_count as usize);
-    // }
+        assert_eq!(read_messages_count, messages_count as u64);
+    }
 
-    // #[tokio::test]
-    // async fn given_multiple_partitions_calculate_next_partition_id_should_return_next_partition_id_using_round_robin(
-    // ) {
-    //     let partitions_count = 3;
-    //     let messages_count = 1000;
-    //     let topic = init_topic(partitions_count).await;
+    #[tokio::test]
+    async fn given_multiple_partitions_calculate_next_partition_id_should_return_next_partition_id_using_round_robin(
+    ) {
+        let partitions_count = 3;
+        let messages_count = 1000;
+        let topic = init_topic(partitions_count).await;
 
-    //     let mut expected_partition_id = 0;
-    //     for _ in 1..=messages_count {
-    //         let partition_id = topic.get_next_partition_id();
-    //         expected_partition_id += 1;
-    //         if expected_partition_id > partitions_count {
-    //             expected_partition_id = 1;
-    //         }
+        let mut expected_partition_id = 0;
+        for _ in 1..=messages_count {
+            let partition_id = topic.get_next_partition_id();
+            expected_partition_id += 1;
+            if expected_partition_id > partitions_count {
+                expected_partition_id = 1;
+            }
 
-    //         assert_eq!(partition_id, expected_partition_id);
-    //     }
-    // }
+            assert_eq!(partition_id, expected_partition_id);
+        }
+    }
 
-    // #[tokio::test]
-    // async fn given_multiple_partitions_calculate_partition_id_by_hash_should_return_next_partition_id(
-    // ) {
-    //     let partitions_count = 3;
-    //     let messages_count = 1000;
-    //     let topic = init_topic(partitions_count).await;
+    #[tokio::test]
+    async fn given_multiple_partitions_calculate_partition_id_by_hash_should_return_next_partition_id(
+    ) {
+        let partitions_count = 3;
+        let messages_count = 1000;
+        let topic = init_topic(partitions_count).await;
 
-    //     for entity_id in 1..=messages_count {
-    //         let key = Partitioning::messages_key_u32(entity_id);
-    //         let partition_id = topic.calculate_partition_id_by_messages_key_hash(&key.value);
-    //         let entity_id_hash = hash::calculate_32(&key.value);
-    //         let mut expected_partition_id = entity_id_hash % partitions_count;
-    //         if expected_partition_id == 0 {
-    //             expected_partition_id = partitions_count;
-    //         }
+        for entity_id in 1..=messages_count {
+            let key = Partitioning::messages_key_u32(entity_id);
+            let partition_id = topic.calculate_partition_id_by_messages_key_hash(&key.value);
+            let entity_id_hash = hash::calculate_32(&key.value);
+            let mut expected_partition_id = entity_id_hash % partitions_count;
+            if expected_partition_id == 0 {
+                expected_partition_id = partitions_count;
+            }
 
-    //         assert_eq!(partition_id, expected_partition_id);
-    //     }
-    // }
+            assert_eq!(partition_id, expected_partition_id);
+        }
+    }
 
-    // async fn init_topic(partitions_count: u32) -> Topic {
-    //     let tempdir = tempfile::TempDir::new().unwrap();
-    //     let config = Arc::new(SystemConfig {
-    //         path: tempdir.path().to_str().unwrap().to_string(),
-    //         ..Default::default()
-    //     });
-    //     let storage = Arc::new(SystemStorage::new(
-    //         config.clone(),
-    //         Arc::new(PersisterKind::FileWithSync(FileWithSyncPersister {})),
-    //     ));
-    //     let stream_id = 1;
-    //     let id = 2;
-    //     let name = "test";
-    //     let compression_algorithm = CompressionAlgorithm::None;
-    //     let size_of_parent_stream = Arc::new(AtomicU64::new(0));
-    //     let messages_count_of_parent_stream = Arc::new(AtomicU64::new(0));
-    //     let segments_count_of_parent_stream = Arc::new(AtomicU32::new(0));
+    async fn init_topic(partitions_count: u32) -> Topic {
+        let tempdir = tempfile::TempDir::new().unwrap();
+        let config = Arc::new(SystemConfig {
+            path: tempdir.path().to_str().unwrap().to_string(),
+            ..Default::default()
+        });
+        let storage = Arc::new(SystemStorage::new(
+            config.clone(),
+            Arc::new(PersisterKind::FileWithSync(FileWithSyncPersister {})),
+        ));
+        let stream_id = 1;
+        let id = 2;
+        let name = "test";
+        let compression_algorithm = CompressionAlgorithm::None;
+        let size_of_parent_stream = Arc::new(AtomicU64::new(0));
+        let messages_count_of_parent_stream = Arc::new(AtomicU64::new(0));
+        let segments_count_of_parent_stream = Arc::new(AtomicU32::new(0));
 
-    //     let topic = Topic::create(
-    //         stream_id,
-    //         id,
-    //         name,
-    //         partitions_count,
-    //         config,
-    //         storage,
-    //         size_of_parent_stream,
-    //         messages_count_of_parent_stream,
-    //         segments_count_of_parent_stream,
-    //         IggyExpiry::NeverExpire,
-    //         compression_algorithm,
-    //         MaxTopicSize::ServerDefault,
-    //         1,
-    //     )
-    //     .await
-    //     .unwrap();
-    //     topic.persist().await.unwrap();
-    //     topic
-    // }
+        let topic = Topic::create(
+            stream_id,
+            id,
+            name,
+            partitions_count,
+            config,
+            storage,
+            size_of_parent_stream,
+            messages_count_of_parent_stream,
+            segments_count_of_parent_stream,
+            IggyExpiry::NeverExpire,
+            compression_algorithm,
+            MaxTopicSize::ServerDefault,
+            1,
+        )
+        .await
+        .unwrap();
+        topic.persist().await.unwrap();
+        topic
+    }
 }

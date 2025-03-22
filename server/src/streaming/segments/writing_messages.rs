@@ -1,4 +1,4 @@
-use super::IggyMessagesBatchMut;
+use super::{IggyMessagesBatchMut, IggyMessagesBatchSet};
 use crate::streaming::segments::segment::Segment;
 use error_set::ErrContext;
 use iggy::confirmation::Confirmation;
@@ -32,23 +32,14 @@ impl Segment {
         if self.end_offset == 0 {
             self.start_timestamp = messages_accumulator.base_timestamp();
         }
-        self.end_timestamp = messages_accumulator.max_timestamp();
-        self.end_offset = messages_accumulator.max_offset();
+        self.end_timestamp = messages_accumulator.last_timestamp();
+        self.end_offset = messages_accumulator.last_offset();
 
-        self.size_bytes += IggyByteSize::from(messages_size as u64);
+        // TODO(hubcio): previously, we increase segment size when messages are appended
+        // to accumulator. Now, it is done when messages are persisted. Verify if this is fine.
+        // self.size_bytes += IggyByteSize::from(messages_size as u64);
 
-        self.size_of_parent_stream
-            .fetch_add(messages_size as u64, Ordering::AcqRel);
-        self.size_of_parent_topic
-            .fetch_add(messages_size as u64, Ordering::AcqRel);
-        self.size_of_parent_partition
-            .fetch_add(messages_size as u64, Ordering::AcqRel);
-        self.messages_count_of_parent_stream
-            .fetch_add(messages_count as u64, Ordering::SeqCst);
-        self.messages_count_of_parent_topic
-            .fetch_add(messages_count as u64, Ordering::SeqCst);
-        self.messages_count_of_parent_partition
-            .fetch_add(messages_count as u64, Ordering::SeqCst);
+        self.update_counters(messages_size as u64, messages_count as u64);
 
         Ok(messages_count)
     }
@@ -61,10 +52,10 @@ impl Segment {
             return Ok(0);
         }
 
-        let unsaved_messages_number = self.accumulator.unsaved_messages_count();
+        let unsaved_messages_count = self.accumulator.unsaved_messages_count();
         trace!(
             "Saving {} messages on disk in segment with start offset: {} for partition with ID: {}...",
-            unsaved_messages_number,
+            unsaved_messages_count,
             self.start_offset,
             self.partition_id
         );
@@ -77,24 +68,79 @@ impl Segment {
             None => self.config.segment.server_confirmation,
         };
 
+        let saved_bytes = self.save_message_batches(batches, confirmation).await?;
+
+        self.save_indexes().await?;
+
+        self.check_and_handle_segment_full().await?;
+
+        let saved_messages_count = unsaved_messages_count;
+
+        trace!(
+            "Saved {} messages on disk in segment with start offset: {} for partition with ID: {}, total bytes written: {}.",
+            saved_messages_count,
+            self.start_offset,
+            self.partition_id,
+            saved_bytes
+        );
+
+        Ok(saved_messages_count)
+    }
+
+    fn update_counters(&mut self, messages_size: u64, messages_count: u64) {
+        self.size_of_parent_stream
+            .fetch_add(messages_size, Ordering::AcqRel);
+        self.size_of_parent_topic
+            .fetch_add(messages_size, Ordering::AcqRel);
+        self.size_of_parent_partition
+            .fetch_add(messages_size, Ordering::AcqRel);
+        self.messages_count_of_parent_stream
+            .fetch_add(messages_count, Ordering::SeqCst);
+        self.messages_count_of_parent_topic
+            .fetch_add(messages_count, Ordering::SeqCst);
+        self.messages_count_of_parent_partition
+            .fetch_add(messages_count, Ordering::SeqCst);
+    }
+
+    async fn save_message_batches(
+        &mut self,
+        batches: IggyMessagesBatchSet,
+        confirmation: Confirmation,
+    ) -> Result<IggyByteSize, IggyError> {
+        let batch_size = batches.size();
+        let batch_count = batches.count();
+
         let saved_bytes = self
             .messages_writer
             .as_mut()
-            .unwrap()
-            .save_batches(batches, confirmation)
+            .expect("Messages writer not initialized")
+            .save_batch_set(batches, confirmation)
             .await
-            .with_error_context(|error| format!("Failed to save batch for {self}. {error}",))?;
+            .with_error_context(|error| {
+                format!(
+                    "Failed to save batch of {batch_count} messages ({batch_size} bytes) to {self}. {error}",
+                )
+            })?;
 
         self.last_index_position += saved_bytes.as_bytes_u64() as u32;
 
+        Ok(saved_bytes)
+    }
+
+    async fn save_indexes(&mut self) -> Result<(), IggyError> {
         let unsaved_indexes_slice = self.indexes.get_unsaved_indexes();
 
         self.index_writer
             .as_mut()
-            .unwrap()
+            .expect("Index writer not initialized")
             .save_indexes(unsaved_indexes_slice)
             .await
-            .with_error_context(|error| format!("Failed to save index for {self}. {error}"))?;
+            .with_error_context(|error| {
+                format!(
+                    "Failed to save index of {} indexes to {self}. {error}",
+                    unsaved_indexes_slice.len()
+                )
+            })?;
 
         self.indexes.mark_saved();
 
@@ -102,14 +148,10 @@ impl Segment {
             self.indexes.clear();
         }
 
-        trace!(
-            "Saved {} messages on disk in segment with start offset: {} for partition with ID: {}, total bytes written: {}.",
-            unsaved_messages_number,
-            self.start_offset,
-            self.partition_id,
-            saved_bytes
-        );
+        Ok(())
+    }
 
+    async fn check_and_handle_segment_full(&mut self) -> Result<(), IggyError> {
         if self.is_full().await {
             self.is_closed = true;
             self.shutdown_writing().await;
@@ -118,6 +160,6 @@ impl Segment {
                 self.start_offset, self.end_offset, self.partition_id
             );
         }
-        Ok(unsaved_messages_number)
+        Ok(())
     }
 }

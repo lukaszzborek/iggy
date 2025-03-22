@@ -120,10 +120,11 @@ async fn test_get_messages_by_offset(
             HeaderKey::new("key-3").unwrap(),
             HeaderValue::from_uint64(123456).unwrap(),
         );
+
         let message = IggyMessage::builder()
-            .id(id)
-            .payload(payload)
-            .headers(headers)
+            .with_id(id)
+            .with_payload(payload)
+            .with_user_headers_map(headers)
             .build();
         all_messages.push(message);
     }
@@ -133,15 +134,20 @@ async fn test_get_messages_by_offset(
     let mut current_pos = 0;
 
     // Append all batches
-    for batch_size in batch_sizes {
-        let batch = IggyMessagesBatchMut::from(
-            &all_messages[current_pos..current_pos + batch_size as usize],
-        );
-        assert_eq!(batch.count(), batch_size);
+    for batch_len in batch_sizes {
+        let messages_slice_to_append = &all_messages[current_pos..current_pos + batch_len as usize];
+
+        let messages_size = messages_slice_to_append
+            .iter()
+            .map(|m| m.get_size_bytes().as_bytes_u64() as u32)
+            .sum();
+
+        let batch = IggyMessagesBatchMut::from_messages(messages_slice_to_append, messages_size);
+        assert_eq!(batch.count(), batch_len);
         partition.append_messages(batch, None).await.unwrap();
 
         batch_offsets.push(partition.current_offset);
-        current_pos += batch_size as usize;
+        current_pos += batch_len as usize;
     }
 
     // Test 1: All messages from start
@@ -202,58 +208,68 @@ async fn test_get_messages_by_offset(
     // Test 5: Messages spanning multiple batches
     let span_offset = batch_offsets[1] + 1; // Start from middle of 2nd batch
     let span_size = 8; // Should span across 2nd, 3rd, and into 4th batch
-    let messages = partition
+    let batches = partition
         .get_messages_by_offset(span_offset, span_size)
         .await
         .unwrap();
     assert_eq!(
-        messages.count(),
+        batches.count(),
         span_size,
         "Expected {} messages spanning multiple batches, but got {}",
         span_size,
-        messages.count()
+        batches.count()
     );
 
     // Test 6: Validate message content and ordering
-    // Convert to a Vec of IggyMessage to avoid lifetime issues
-    let messages = messages.into_messages_vec();
+    let mut i = 0;
+    for batch in batches.iter() {
+        for msg in batch.iter() {
+            println!(
+                "Message at position {}, offset: {}",
+                i,
+                msg.header().offset()
+            );
+            let expected_offset = span_offset + i as u64;
+            assert!(
+                msg.header().offset() >= expected_offset,
+                "Message offset {} at position {} should be >= expected offset {}",
+                msg.header().offset(),
+                i,
+                expected_offset
+            );
 
-    for (i, msg) in messages.iter().enumerate() {
-        println!("Message at position {}, offset: {}", i, msg.header.offset);
-        let expected_offset = span_offset + i as u64;
-        assert!(
-            msg.header.offset >= expected_offset,
-            "Message offset {} at position {} should be >= expected offset {}",
-            msg.header.offset,
-            i,
-            expected_offset
-        );
+            let original_offset = msg.header().offset() as usize;
+            let original_message = &all_messages[original_offset];
 
-        // Verify message contents match original
-        let original_idx = msg.header.offset as usize;
+            let loaded_id = msg.header().id();
+            let original_id = original_message.header.id;
+            assert_eq!(
+                loaded_id,
+                original_id,
+                "Message ID mismatch at offset {}",
+                msg.header().offset(),
+            );
 
-        let original_message = &all_messages[original_idx];
-        let original_msg_header = &original_message.header;
-        let original_headers = Some(
-            HashMap::from_bytes(original_message.user_headers.as_ref().unwrap().to_bytes())
-                .unwrap(),
-        );
-        let original_payload = &original_message.payload;
+            let loaded_payload = msg.payload();
+            let original_payload = &original_message.payload;
+            assert_eq!(
+                loaded_payload,
+                original_payload,
+                "Payload mismatch at offset {}",
+                msg.header().offset(),
+            );
 
-        assert_eq!(
-            msg.header.id, original_msg_header.id,
-            "Message ID mismatch at offset {}",
-            msg.header.offset,
-        );
-        assert_eq!(
-            msg.payload, original_payload,
-            "Payload mismatch at offset {}",
-            msg.header.offset,
-        );
-        assert_eq!(
-            &msg.user_headers, &original_headers,
-            "Headers mismatch at offset {}",
-            msg.header.offset,
-        );
+            let loaded_headers = msg.user_headers_map().unwrap().unwrap();
+            let original_headers =
+                HashMap::from_bytes(original_message.user_headers.as_ref().unwrap().clone())
+                    .unwrap();
+            assert_eq!(
+                loaded_headers,
+                original_headers,
+                "Headers mismatch at offset {}",
+                msg.header().offset(),
+            );
+            i += 1;
+        }
     }
 }

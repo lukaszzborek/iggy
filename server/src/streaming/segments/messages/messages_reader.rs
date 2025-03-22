@@ -72,11 +72,40 @@ impl MessagesReader {
     }
 
     /// Loads and returns all message IDs from the log file.
-    pub async fn load_message_ids_impl(&self) -> Result<Vec<u128>, IggyError> {
-        todo!()
+    pub async fn load_all_message_ids_from_disk(
+        &self,
+        indexes: IggyIndexes,
+        messages_count: u32,
+    ) -> Result<Vec<u128>, IggyError> {
+        let file_size = self.file_size();
+        if file_size == 0 {
+            trace!("Messages file {} is empty.", self.file_path);
+            return Ok(vec![]);
+        }
+
+        let messages_bytes = match self.read_bytes_at(0, file_size).await {
+            Ok(buf) => buf,
+            Err(error) if error.kind() == ErrorKind::UnexpectedEof => return Ok(vec![]),
+            Err(error) => {
+                error!(
+                    "Error reading {messages_count} messages at position 0 in file {} of size {}: {error}",
+                    self.file_path, file_size
+                );
+                return Err(IggyError::CannotReadMessage);
+            }
+        };
+
+        let messages = IggyMessagesBatch::new(indexes, messages_bytes, messages_count);
+        let mut ids = Vec::with_capacity(messages_count as usize);
+
+        for message in messages.iter() {
+            ids.push(message.header().id());
+        }
+
+        Ok(ids)
     }
 
-    pub async fn load_messages_impl(
+    pub async fn load_messages_from_disk(
         &self,
         indexes: IggyIndexes,
     ) -> Result<IggyMessagesBatchSet, IggyError> {
@@ -111,13 +140,11 @@ impl MessagesReader {
         // - check checksum(s)
         // - check offset
 
-        let out = IggyMessagesBatchSet::from(IggyMessagesBatch::new(
+        Ok(IggyMessagesBatchSet::from(IggyMessagesBatch::new(
             indexes,
             messages_bytes,
             messages_count,
-        ));
-
-        Ok(out)
+        )))
     }
 
     fn file_size(&self) -> u64 {
