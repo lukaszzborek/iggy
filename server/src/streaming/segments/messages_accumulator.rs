@@ -172,8 +172,6 @@ impl MessagesAccumulator {
         for batch in self.batches.iter() {
             segment_indexes.concatenate(batch.indexes_slice());
         }
-
-        tracing::error!("hubcio after update indexes: {}", segment_indexes.count());
     }
 
     /// Consumes the accumulator and returns the contained message batches.

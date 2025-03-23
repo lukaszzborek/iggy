@@ -37,9 +37,44 @@ impl IggyMessage {
         Self::builder().with_id(id).with_payload(payload).build()
     }
 
+    /// Create a message with ID, payload and user headers
+    pub fn with_id_and_headers(
+        id: u128,
+        payload: Bytes,
+        headers: HashMap<HeaderKey, HeaderValue>,
+    ) -> Self {
+        Self::builder()
+            .with_id(id)
+            .with_payload(payload)
+            .with_user_headers_map(headers)
+            .build()
+    }
+
     /// Start a builder for more complex configuration
     pub fn builder() -> IggyMessageBuilder {
         IggyMessageBuilder::new()
+    }
+
+    /// Return instantiated user headers map
+    pub fn user_headers_map(&self) -> Result<Option<HashMap<HeaderKey, HeaderValue>>, IggyError> {
+        if let Some(headers) = &self.user_headers {
+            let headers_bytes = Bytes::copy_from_slice(headers);
+
+            match HashMap::<HeaderKey, HeaderValue>::from_bytes(headers_bytes) {
+                Ok(h) => Ok(Some(h)),
+                Err(e) => {
+                    tracing::error!(
+                        "Error parsing headers: {}, header_length={}",
+                        e,
+                        self.header.user_headers_length
+                    );
+
+                    Ok(None)
+                }
+            }
+        } else {
+            Ok(None)
+        }
     }
 
     /// Convert Bytes to messages
@@ -209,7 +244,7 @@ impl IggyMessageBuilder {
         self
     }
 
-    pub fn with_user_header_kv(mut self, key: HeaderKey, value: HeaderValue) -> Self {
+    pub fn with_user_key_value_header(mut self, key: HeaderKey, value: HeaderValue) -> Self {
         let headers = self.headers.get_or_insert_with(HashMap::new);
         headers.insert(key, value);
         self

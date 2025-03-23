@@ -42,8 +42,6 @@ impl Segment {
         let accumulator_first_timestamp = self.accumulator.first_timestamp();
         let accumulator_last_timestamp = self.accumulator.last_timestamp();
 
-        tracing::error!("hubcio accumulator first timestamp: {accumulator_first_timestamp}, last timestamp: {accumulator_last_timestamp}");
-
         // Case 1: Requested timestamp is higher than any available timestamp
         if timestamp > accumulator_last_timestamp {
             return Ok(IggyMessagesBatchSet::empty());
@@ -123,19 +121,11 @@ impl Segment {
 
         // Case 1: All messages are in accumulator buffer
         if offset >= accumulator_first_msg_offset && end_offset <= accumulator_last_msg_offset {
-            tracing::error!(
-                "hubcio segment has {} messages, getting all from accumulator",
-                self.get_messages_count()
-            );
             return Ok(self.accumulator.get_messages_by_offset(offset, count));
         }
 
         // Case 2: All messages are on disk
         if end_offset < accumulator_first_msg_offset {
-            tracing::error!(
-                "hubcio segment has {} messages, getting all from disk",
-                self.get_messages_count()
-            );
             return self.load_messages_from_disk_by_offset(offset, count).await;
         }
 
@@ -168,12 +158,6 @@ impl Segment {
 
         // Calculate how many more messages we need from the accumulator
         let remaining_count = count - combined_batch_set.count();
-
-        tracing::error!(
-            "hubcio segment has {} messages, remaining count: {}",
-            self.get_messages_count(),
-            remaining_count
-        );
 
         if remaining_count > 0 {
             let accumulator_start_offset = std::cmp::max(offset, accumulator_first_msg_offset);

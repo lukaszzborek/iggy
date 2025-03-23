@@ -9,15 +9,12 @@ use error_set::ErrContext;
 use iggy::error::IggyError;
 use iggy::locking::IggySharedMutFn;
 use iggy::messages::{PartitioningKind, PollingKind};
-use iggy::prelude::{Partitioning, PolledMessages};
-use iggy::utils::byte_size::IggyByteSize;
+use iggy::prelude::Partitioning;
 use iggy::utils::expiry::IggyExpiry;
-use iggy::utils::sizeable::Sizeable;
 use iggy::utils::timestamp::IggyTimestamp;
 use iggy::{confirmation::Confirmation, prelude::PollingStrategy};
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use tracing::{info, trace, warn};
+use tracing::trace;
 
 impl Topic {
     pub fn get_messages_count(&self) -> u64 {

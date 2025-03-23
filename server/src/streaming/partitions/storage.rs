@@ -99,9 +99,7 @@ impl PartitionStorage for FilePartitionStorage {
             let index_path_exists = tokio::fs::try_exists(&index_path).await.unwrap();
             let time_index_path_exists = tokio::fs::try_exists(&time_index_path).await.unwrap();
 
-            // Rebuild indexes in 2 cases:
-            // 1. Index cache is enabled and index at path does not exists.
-            // 2. Index cache is enabled and time index at path exists.
+            // Rebuild indexes if index cache is enabled and index at path does not exists.
             if index_cache_enabled && (!index_path_exists || time_index_path_exists) {
                 warn!(
                     "Index at path {} does not exist, rebuilding it based on {}...",
@@ -127,7 +125,6 @@ impl PartitionStorage for FilePartitionStorage {
                 );
             }
 
-            // Remove legacy time index if it exists.
             if time_index_path_exists {
                 tokio::fs::remove_file(&time_index_path).await.unwrap();
             }

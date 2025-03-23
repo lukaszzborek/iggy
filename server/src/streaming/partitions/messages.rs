@@ -339,67 +339,54 @@ impl Partition {
 
 #[cfg(test)]
 mod tests {
-    // TODO: Fix me
-    /*
-    use iggy::utils::byte_size::IggyByteSize;
-    use iggy::utils::expiry::IggyExpiry;
-    use iggy::utils::sizeable::Sizeable;
-    use std::sync::atomic::{AtomicU32, AtomicU64};
-    use tempfile::TempDir;
-
     use super::*;
     use crate::configs::system::{MessageDeduplicationConfig, SystemConfig};
-    use crate::streaming::partitions::create_messages;
     use crate::streaming::persistence::persister::{FileWithSyncPersister, PersisterKind};
     use crate::streaming::storage::SystemStorage;
+    use bytes::Bytes;
+    use std::sync::atomic::{AtomicU32, AtomicU64};
+    use std::sync::Arc;
+    use tempfile::TempDir;
 
     #[tokio::test]
     async fn given_disabled_message_deduplication_all_messages_should_be_appended() {
         let (mut partition, _tempdir) = create_partition(false).await;
         let messages = create_messages();
         let messages_count = messages.len() as u32;
-        let appendable_batch_info = AppendableBatchInfo {
-            batch_size: messages
-                .iter()
-                .map(|m| m.get_size_bytes())
-                .sum::<IggyByteSize>(),
-            partition_id: partition.partition_id,
-        };
-        partition
-            .append_messages(appendable_batch_info, messages, None)
-            .await
-            .unwrap();
+        let messages_size = messages
+            .iter()
+            .map(|m| m.get_size_bytes().as_bytes_u32())
+            .sum();
+        let batch = IggyMessagesBatchMut::from_messages(&messages, messages_size);
+
+        partition.append_messages(batch, None).await.unwrap();
 
         let loaded_messages = partition
             .get_messages_by_offset(0, messages_count)
             .await
             .unwrap();
-        assert_eq!(loaded_messages.len(), messages_count as usize);
+        assert_eq!(loaded_messages.count(), messages_count);
     }
 
     #[tokio::test]
     async fn given_enabled_message_deduplication_only_messages_with_unique_id_should_be_appended() {
         let (mut partition, _tempdir) = create_partition(true).await;
         let messages = create_messages();
+        let messages_size = messages
+            .iter()
+            .map(|m| m.get_size_bytes().as_bytes_u32())
+            .sum();
+        let batch = IggyMessagesBatchMut::from_messages(&messages, messages_size);
         let messages_count = messages.len() as u32;
         let unique_messages_count = 3;
-        let appendable_batch_info = AppendableBatchInfo {
-            batch_size: messages
-                .iter()
-                .map(|m| m.get_size_bytes())
-                .sum::<IggyByteSize>(),
-            partition_id: partition.partition_id,
-        };
-        partition
-            .append_messages(appendable_batch_info, messages, None)
-            .await
-            .unwrap();
+
+        partition.append_messages(batch, None).await.unwrap();
 
         let loaded_messages = partition
             .get_messages_by_offset(0, messages_count)
             .await
             .unwrap();
-        assert_eq!(loaded_messages.len(), unique_messages_count);
+        assert_eq!(loaded_messages.count(), unique_messages_count);
     }
 
     async fn create_partition(deduplication_enabled: bool) -> (Partition, TempDir) {
@@ -441,5 +428,19 @@ mod tests {
             temp_dir,
         )
     }
-    */
+
+    fn create_messages() -> Vec<IggyMessage> {
+        vec![
+            create_message(1, "message 1"),
+            create_message(2, "message 2"),
+            create_message(3, "message 3"),
+            create_message(2, "message 3.2"),
+            create_message(1, "message 1.2"),
+            create_message(3, "message 3.3"),
+        ]
+    }
+
+    fn create_message(id: u128, payload: &str) -> IggyMessage {
+        IggyMessage::with_id(id, Bytes::from(payload.to_string()))
+    }
 }

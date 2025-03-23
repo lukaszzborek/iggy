@@ -1,12 +1,11 @@
 use super::{index_view::IggyIndexView, INDEX_SIZE};
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
-use std::fmt;
 use std::ops::{Deref, Index as StdIndex};
 
 /// A container for binary-encoded index data.
 /// Optimized for efficient storage and I/O operations.
-#[derive(Default, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct IggyIndexes {
     base_position: u32,
     buffer: Bytes,
@@ -89,26 +88,6 @@ impl IggyIndexes {
         Some(IggyIndexes::new(slice, base_position))
     }
 
-    /// Gets a first index
-    pub fn first(&self) -> Option<IggyIndexView> {
-        if self.count() == 0 {
-            return None;
-        }
-
-        Some(IggyIndexView::new(&self.buffer[0..INDEX_SIZE]))
-    }
-
-    /// Gets a last index
-    pub fn last(&self) -> Option<IggyIndexView> {
-        if self.count() == 0 {
-            return None;
-        }
-
-        Some(IggyIndexView::new(
-            &self.buffer[(self.count() - 1) as usize * INDEX_SIZE..],
-        ))
-    }
-
     /// Finds an index by timestamp using binary search
     /// If an exact match isn't found, returns the index with the nearest timestamp
     /// that is greater than or equal to the requested timestamp
@@ -162,41 +141,10 @@ impl IggyIndexes {
         self.base_position
     }
 
-    /// Helper method to get the first index offset
-    pub fn first_offset(&self) -> u32 {
-        let offset = self.get(0).map(|idx| idx.offset()).unwrap_or(0);
-        offset
-    }
-
-    /// Helper method to get the first index position
-    pub fn first_position(&self) -> u32 {
-        let position = self.get(0).map(|idx| idx.position()).unwrap_or(0);
-        position
-    }
-
-    /// Helper method to get the first timestamp
-    pub fn first_timestamp(&self) -> u64 {
-        self.get(0).map(|idx| idx.timestamp()).unwrap_or(0)
-    }
-
-    /// Helper method to get the last index offset
-    pub fn last_offset(&self) -> u32 {
-        self.get(self.count() - 1)
-            .map(|idx| idx.offset())
-            .unwrap_or(0)
-    }
-
     /// Helper method to get the last index position
     pub fn last_position(&self) -> u32 {
         self.get(self.count() - 1)
             .map(|idx| idx.position())
-            .unwrap_or(0)
-    }
-
-    /// Helper method to get the last timestamp
-    pub fn last_timestamp(&self) -> u64 {
-        self.get(self.count() - 1)
-            .map(|idx| idx.timestamp())
             .unwrap_or(0)
     }
 }
@@ -216,39 +164,5 @@ impl Deref for IggyIndexes {
 
     fn deref(&self) -> &Self::Target {
         &self.buffer
-    }
-}
-
-impl fmt::Debug for IggyIndexes {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let count = self.count();
-
-        if count == 0 {
-            return write!(
-                f,
-                "IggyIndexes {{ count: 0, base_position: {}, indexes: [] }}",
-                self.base_position
-            );
-        }
-
-        writeln!(f, "IggyIndexes {{")?;
-        writeln!(f, "    count: {},", count)?;
-        writeln!(f, "    base_position: {},", self.base_position)?;
-        writeln!(f, "    indexes: [")?;
-
-        for i in 0..count {
-            if let Some(index) = self.get(i) {
-                writeln!(
-                    f,
-                    "        {{ offset: {}, position: {}, timestamp: {} }},",
-                    index.offset(),
-                    index.position(),
-                    index.timestamp()
-                )?;
-            }
-        }
-
-        writeln!(f, "    ]")?;
-        write!(f, "}}")
     }
 }

@@ -211,13 +211,16 @@ impl Segment {
     }
 
     pub async fn initialize_reading(&mut self) -> Result<(), IggyError> {
-        let log_reader =
-            MessagesReader::new(&self.messages_path, self.messages_size.clone()).await?;
-        // TODO(hubcio): there is no need to store open fd for reader if we have index cache enabled
-        let index_reader = IndexReader::new(&self.index_path, self.indexes_size.clone()).await?;
+        if !self.config.segment.cache_indexes {
+            let index_reader =
+                IndexReader::new(&self.index_path, self.indexes_size.clone()).await?;
+            self.index_reader = Some(index_reader);
+        }
 
-        self.messages_reader = Some(log_reader);
-        self.index_reader = Some(index_reader);
+        let messages_reader =
+            MessagesReader::new(&self.messages_path, self.messages_size.clone()).await?;
+        self.messages_reader = Some(messages_reader);
+
         Ok(())
     }
 

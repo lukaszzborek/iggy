@@ -49,9 +49,9 @@ impl<'a> IggyMessageViewMut<'a> {
 
     /// Convenience to update the checksum field in the header
     pub fn update_checksum(&mut self) {
-        let start = 8; // Skip checksum field for checksum calculation
-        let size = self.size() - 8;
-        let data = &self.buffer[start..start + size];
+        let checksum_field_size = size_of::<u64>(); // Skip checksum field for checksum calculation
+        let size = self.size() - checksum_field_size;
+        let data = &self.buffer[checksum_field_size..checksum_field_size + size];
 
         let checksum = gxhash64(data, 0);
 

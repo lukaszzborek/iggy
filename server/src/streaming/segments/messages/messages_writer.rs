@@ -90,11 +90,6 @@ impl MessagesWriter {
             "Saving batch set of size {messages_size} bytes ({containers_count} containers, {messages_count} messages) to messages file: {}",
             self.file_path
         );
-
-        for container in batch_set.iter() {
-            tracing::error!("Container size: {}", container.size());
-        }
-
         match confirmation {
             Confirmation::Wait => {
                 if let Some(ref mut file) = self.file {

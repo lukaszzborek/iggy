@@ -1,4 +1,4 @@
-use super::{IggyMessagesBatchMut, IggyMessagesBatchSet};
+use super::IggyMessagesBatchMut;
 use crate::streaming::segments::segment::Segment;
 use error_set::ErrContext;
 use iggy::confirmation::Confirmation;
@@ -102,7 +102,6 @@ impl Segment {
         self.indexes.mark_saved();
 
         if !self.config.segment.cache_indexes {
-            tracing::error!("Clearing indexes cache");
             self.indexes.clear();
         }
 

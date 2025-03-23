@@ -5,8 +5,7 @@ use crate::consumer::Consumer;
 use crate::identifier::Identifier;
 use crate::messages::{PollMessages, PollingStrategy};
 use crate::models::messaging::HeaderKind;
-use crate::prelude::{HeaderKey, IggyMessage};
-use crate::utils::sizeable::Sizeable;
+use crate::prelude::{HeaderKey, HeaderValue, IggyMessage};
 use crate::utils::timestamp::IggyTimestamp;
 use crate::utils::{byte_size::IggyByteSize, duration::IggyDuration};
 use anyhow::Context;
@@ -63,22 +62,27 @@ impl PollMessagesCmd {
 
     fn create_message_header_keys(
         &self,
-        polled_messages: &Vec<IggyMessage>,
+        polled_messages: &[IggyMessage],
     ) -> HashSet<(HeaderKey, HeaderKind)> {
-        todo!();
-        // if !self.show_headers {
-        //     return HashSet::new();
-        // }
-        // polled_messages
-        //     .iter()
-        //     .flat_map(|m| match m.user_headers.as_ref() {
-        //         Some(h) => HashMap::from_bytes(h.clone())
-        //             .iter()
-        //             .map(|(k, v)| (k.clone(), v.kind))
-        //             .collect::<Vec<_>>(),
-        //         None => vec![],
-        //     })
-        //     .collect::<HashSet<_>>()
+        if !self.show_headers {
+            return HashSet::new();
+        }
+        polled_messages
+            .iter()
+            .flat_map(|m| match m.user_headers.as_ref() {
+                Some(h) => match HashMap::<HeaderKey, HeaderValue>::from_bytes(h.clone()) {
+                    Ok(headers) => headers
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.kind))
+                        .collect::<Vec<_>>(),
+                    Err(e) => {
+                        tracing::error!("Failed to parse user headers, error: {e}");
+                        vec![]
+                    }
+                },
+                None => vec![],
+            })
+            .collect::<HashSet<_>>()
     }
 
     fn create_table_header(header_key_set: &HashSet<(HeaderKey, HeaderKind)>) -> Row {
@@ -101,42 +105,41 @@ impl PollMessagesCmd {
     }
 
     fn create_table_content(
-        polled_messages: &Vec<IggyMessage>,
+        polled_messages: &[IggyMessage],
         message_header_keys: &HashSet<(HeaderKey, HeaderKind)>,
     ) -> Vec<Row> {
-        todo!();
-        // polled_messages
-        //     .iter()
-        //     .map(|message| {
-        //         let mut row = vec![
-        //             format!("{}", message.header.offset),
-        //             IggyTimestamp::from(message.header.timestamp)
-        //                 .to_local_string("%Y-%m-%d %H:%M:%S%.6f"),
-        //             format!("{}", message.header.id),
-        //             format!("{}", message.payload.len()),
-        //             String::from_utf8_lossy(&message.payload).to_string(),
-        //         ];
+        polled_messages
+            .iter()
+            .map(|message| {
+                let mut row = vec![
+                    format!("{}", message.header.offset),
+                    IggyTimestamp::from(message.header.timestamp)
+                        .to_local_string("%Y-%m-%d %H:%M:%S%.6f"),
+                    format!("{}", message.header.id),
+                    format!("{}", message.payload.len()),
+                    String::from_utf8_lossy(&message.payload).to_string(),
+                ];
 
-        //         let values = message_header_keys
-        //             .iter()
-        //             .map(|(key, kind)| {
-        //                 let user_headers = HashMap::from_bytes(message.user_headers);
-        //                 message
-        //                     .user_headers
-        //                     .as_ref()
-        //                     .map(|h| {
-        //                         h.get(key)
-        //                             .filter(|v| v.kind == *kind)
-        //                             .map(|v| v.value_only_to_string())
-        //                             .unwrap_or_default()
-        //                     })
-        //                     .unwrap_or_default()
-        //             })
-        //             .collect::<Vec<_>>();
-        //         row.extend(values);
-        //         Row::from(row)
-        //     })
-        //     .collect::<_>()
+                let values = message_header_keys
+                    .iter()
+                    .map(|(key, kind)| {
+                        message
+                            .user_headers_map()
+                            .expect("Failed to parse user headers")
+                            .as_ref()
+                            .map(|h| {
+                                h.get(key)
+                                    .filter(|v| v.kind == *kind)
+                                    .map(|v| v.value_only_to_string())
+                                    .unwrap_or_default()
+                            })
+                            .unwrap_or_default()
+                    })
+                    .collect::<Vec<_>>();
+                row.extend(values);
+                Row::from(row)
+            })
+            .collect::<_>()
     }
 }
 
