@@ -302,11 +302,7 @@ impl IndexReader {
             }
         }
 
-        if low > 0 {
-            Ok(Some(low - 1))
-        } else {
-            Ok(Some(0))
-        }
+        Ok(Some(low))
     }
 
     /// Returns the size of the index file in bytes.

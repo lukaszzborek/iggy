@@ -76,6 +76,16 @@ impl IggyMessagesBatchSet {
         self.batches.is_empty() || self.count == 0
     }
 
+    /// Get first timestamp of first batch
+    pub fn first_timestamp(&self) -> Option<u64> {
+        self.batches.first().map(|batch| batch.first_timestamp())
+    }
+
+    /// Get first offset of first batch
+    pub fn first_offset(&self) -> Option<u64> {
+        self.batches.first().map(|batch| batch.first_offset())
+    }
+
     /// Get offset of last message of last batch
     pub fn last_offset(&self) -> Option<u64> {
         self.batches.last().map(|batch| batch.last_offset())
@@ -109,24 +119,43 @@ impl IggyMessagesBatchSet {
         if self.is_empty() || count == 0 {
             return Self::empty();
         }
+        tracing::trace!(
+            "Getting {} messages from batch set, start offset {}, end offset calculated {}, end offset real {}, messages count {}...",
+            count,
+            start_offset,
+            start_offset + count as u64 - 1,
+            self.last_offset().unwrap_or(0),
+            self.count()
+        );
 
         let mut result = Self::with_capacity(self.containers_count());
         let mut remaining_count = count;
 
         for container in self.iter() {
+            tracing::error!(
+                "BATCH_SET container has {} messages, first offset {}, last offset {}",
+                container.count(),
+                container.first_offset(),
+                container.last_offset()
+            );
             if remaining_count == 0 {
                 break;
             }
 
-            let first_offset = container.first_index();
+            let first_offset = container.first_offset();
             if first_offset + container.count() as u64 <= start_offset {
                 continue;
             }
 
             if let Some(sliced) = container.slice_by_offset(start_offset, remaining_count) {
                 if sliced.count() > 0 {
+                    tracing::error!(
+                        "BATCH_SET will get {} messages from container",
+                        sliced.count()
+                    );
                     remaining_count -= sliced.count();
                     result.add_batch(sliced);
+                    tracing::error!("BATCH_SET remaining count {}", remaining_count);
                 }
             }
         }
@@ -149,6 +178,17 @@ impl IggyMessagesBatchSet {
         for container in self.iter() {
             if remaining_count == 0 {
                 break;
+            }
+
+            let first_timestamp = container.first_timestamp();
+            if first_timestamp < timestamp {
+                tracing::error!(
+                    "BATCH_SET container has {} messages, first timestamp {}, requested timestamp {}",
+                    container.count(),
+                    first_timestamp,
+                    timestamp
+                );
+                continue;
             }
 
             if let Some(sliced) = container.slice_by_timestamp(timestamp, remaining_count) {

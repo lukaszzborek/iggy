@@ -168,7 +168,7 @@ impl System {
                     }
                 }
             }
-            let indexes = indexes.make_immutable();
+            let indexes = indexes.make_immutable(0);
             let decrypted_messages = decrypted_messages.freeze();
             let decrypted_batch = IggyMessagesBatch::new(indexes, decrypted_messages, count);
             decrypted_batches.push(decrypted_batch);

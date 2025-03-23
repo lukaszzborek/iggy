@@ -21,16 +21,21 @@ async fn write_batch(
     let mut slices: Vec<IoSlice> = batches.iter().map(|b| IoSlice::new(b)).collect();
 
     let slices = &mut slices.as_mut_slice();
-    let mut written = 0;
+    let mut total_written = 0;
+
     while !slices.is_empty() {
-        written += file
+        let bytes_written = file
             .write_vectored(slices)
             .await
             .with_error_context(|error| {
                 format!("Failed to write messages to file: {file_path}, error: {error}",)
             })
             .map_err(|_| IggyError::CannotWriteToFile)?;
-        IoSlice::advance_slices(slices, written);
+
+        total_written += bytes_written;
+
+        IoSlice::advance_slices(slices, bytes_written);
     }
-    Ok(written)
+
+    Ok(total_written)
 }

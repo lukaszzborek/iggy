@@ -28,18 +28,9 @@ impl IggyIndexes {
         }
     }
 
-    pub fn into_inner(self) -> Bytes {
-        self.buffer
-    }
-
     /// Gets the number of indexes in the container
     pub fn count(&self) -> u32 {
         self.buffer.len() as u32 / INDEX_SIZE as u32
-    }
-
-    /// Checks if the container is empty
-    pub fn is_empty(&self) -> bool {
-        self.count() == 0
     }
 
     /// Gets the size of all indexes messages
@@ -63,30 +54,48 @@ impl IggyIndexes {
         }
     }
 
+    /// Gets a slice of the container
     pub fn slice_by_offset(&self, relative_start_offset: u32, count: u32) -> Option<IggyIndexes> {
+        if self.count() == 0 || relative_start_offset >= self.count() {
+            return None;
+        }
+
         let available_count = self.count().saturating_sub(relative_start_offset);
+        let actual_count = std::cmp::min(count, available_count);
 
-        let required_count = count;
-        let actual_count = std::cmp::min(required_count, available_count);
-
-        if actual_count == 0 || relative_start_offset >= self.count() {
+        if actual_count == 0 {
             return None;
         }
 
         let end_pos = relative_start_offset + actual_count;
         let start_byte = relative_start_offset as usize * INDEX_SIZE;
         let end_byte = end_pos as usize * INDEX_SIZE;
+
+        if end_byte > self.buffer.len() {
+            return None;
+        }
+
         let slice = self.buffer.slice(start_byte..end_byte);
 
-        let i = relative_start_offset.saturating_sub(1);
-        if i == 0 {
-            tracing::error!("IDX 0 base_position: 0");
-            Some(IggyIndexes::new(slice, 0))
+        let base_position = if relative_start_offset > 0 {
+            match self.get(relative_start_offset - 1) {
+                Some(index) => index.position(),
+                None => self.base_position,
+            }
         } else {
-            let base_position = self.get(relative_start_offset - 1).unwrap().position();
-            tracing::error!("base_position: {base_position}");
-            Some(IggyIndexes::new(slice, base_position))
+            self.base_position
+        };
+
+        Some(IggyIndexes::new(slice, base_position))
+    }
+
+    /// Gets a first index
+    pub fn first(&self) -> Option<IggyIndexView> {
+        if self.count() == 0 {
+            return None;
         }
+
+        Some(IggyIndexView::new(&self.buffer[0..INDEX_SIZE]))
     }
 
     /// Gets a last index
@@ -148,136 +157,6 @@ impl IggyIndexes {
 
         result
     }
-
-    // /// Calculate boundary information for reading messages from disk based on cached indexes.
-    // ///
-    // /// This computes the exact file position, bytes to read, and expected message count
-    // /// based on the provided relative offsets using in-memory index data.
-    // ///
-    // /// Returns None if the requested offset is out of bounds.
-    // pub fn calculate_cached_read_boundary_by_offset(
-    //     &self,
-    //     relative_start_offset: u32,
-    //     relative_end_offset: u32,
-    // ) -> Option<ReadBoundary> {
-    //     if self.count() == 0 {
-    //         trace!("No indexes available in memory");
-    //         return None;
-    //     }
-
-    //     if relative_start_offset >= self.count() {
-    //         trace!(
-    //             "Start offset {} is out of bounds. Total cached indexes: {}",
-    //             relative_start_offset,
-    //             self.count(),
-    //         );
-    //         return None;
-    //     }
-
-    //     let effective_end_offset = relative_end_offset.min(self.count() - 1);
-
-    //     tracing::error!(
-    //         "start offset: {}, end offset: {}",
-    //         relative_start_offset,
-    //         effective_end_offset
-    //     );
-
-    //     // With our new index interpretation:
-    //     // - For messages after the first one, the start position comes from the PREVIOUS index
-    //     // - For the first message (offset 0), the start position is implicitly 0
-    //     // - The end position always comes from the current index
-
-    //     let start_position = if relative_start_offset > 0 {
-    //         // For non-first messages, get start position from previous index
-    //         let prev_index = self.get(relative_start_offset - 1)?;
-    //         prev_index.position()
-    //     } else {
-    //         // For the first message, start position is 0
-    //         0
-    //     };
-
-    //     // The end position comes from the last index we want to read
-    //     let last_index = self.get(effective_end_offset)?;
-    //     let end_position = last_index.position();
-
-    //     let bytes = end_position - start_position;
-    //     let messages_count = effective_end_offset - relative_start_offset + 1;
-
-    //     trace!(
-    //         "Calculated read boundary from cached indexes: start_pos={}, bytes={}, count={}",
-    //         start_position,
-    //         bytes,
-    //         messages_count
-    //     );
-
-    //     Some(ReadBoundary::new(start_position, bytes, messages_count))
-    // }
-
-    // /// Calculate boundary information for reading messages from disk based on a timestamp.
-    // ///
-    // /// This finds the index with timestamp closest to the requested timestamp and returns
-    // /// the boundary information to read the messages from that point forward.
-    // ///
-    // /// Returns None if the timestamp is not found or there are no indexes.
-    // pub fn calculate_cached_read_boundary_by_timestamp(
-    //     &self,
-    //     timestamp: u64,
-    //     messages_count: u32,
-    // ) -> Option<ReadBoundary> {
-    //     let start_index = self.find_by_timestamp(timestamp)?;
-
-    //     tracing::trace!("Found start_index: {}", start_index);
-
-    //     let start_position_in_array = start_index.offset() - self.first_offset();
-    //     let end_position_in_array =
-    //         (start_position_in_array + messages_count - 1).min(self.count() - 1);
-
-    //     tracing::trace!(
-    //         "Calculated end_position_in_array: {}",
-    //         end_position_in_array
-    //     );
-    //     let end_index = self.get(end_position_in_array)?;
-
-    //     tracing::trace!("Found end_index: {:?}", end_index);
-
-    //     let start_position = start_index.position();
-    //     // Check to prevent overflow in case end_index.position() < start_position
-    //     let bytes = if end_index.position() >= start_position {
-    //         end_index.position() - start_position
-    //     } else {
-    //         tracing::warn!(
-    //             "End index position {} is less than start position {}. Using 0 bytes.",
-    //             end_index.position(),
-    //             start_position
-    //         );
-    //         0
-    //     };
-
-    //     // Ensure we don't have underflow when calculating messages count
-    //     let actual_messages_count = if end_position_in_array >= start_position_in_array {
-    //         end_position_in_array - start_position_in_array + 1
-    //     } else {
-    //         tracing::warn!(
-    //             "End position {} is less than start position {}. Using 1 message.",
-    //             end_position_in_array,
-    //             start_position_in_array
-    //         );
-    //         1
-    //     };
-
-    //     trace!(
-    //         "Calculated read boundary by timestamp: start_pos={}, bytes={}, count={}",
-    //         start_position,
-    //         bytes,
-    //         actual_messages_count
-    //     );
-
-    //     Some(ReadBoundary::new(
-    //         start_position,
-    //         bytes,
-    //         actual_messages_count,
-    //     ))
-    // }
 
     pub fn base_position(&self) -> u32 {
         self.base_position

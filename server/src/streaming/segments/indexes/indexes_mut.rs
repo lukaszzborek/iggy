@@ -8,7 +8,7 @@ use std::ops::{Deref, Index as StdIndex};
 #[derive(Default, Clone)]
 pub struct IggyIndexesMut {
     buffer: BytesMut,
-    unsaved_count: u32,
+    saved_count: u32,
 }
 
 impl IggyIndexesMut {
@@ -16,7 +16,7 @@ impl IggyIndexesMut {
     pub fn empty() -> Self {
         Self {
             buffer: BytesMut::new(),
-            unsaved_count: 0,
+            saved_count: 0,
         }
     }
 
@@ -24,7 +24,7 @@ impl IggyIndexesMut {
     pub fn from_bytes(indexes: BytesMut) -> Self {
         Self {
             buffer: indexes,
-            unsaved_count: 0,
+            saved_count: 0,
         }
     }
 
@@ -32,18 +32,13 @@ impl IggyIndexesMut {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             buffer: BytesMut::with_capacity(capacity * INDEX_SIZE),
-            unsaved_count: 0,
+            saved_count: 0,
         }
     }
 
     /// Makes the indexes immutable
-    pub fn make_immutable(self) -> IggyIndexes {
-        IggyIndexes::new(self.buffer.freeze(), self.unsaved_count)
-    }
-
-    /// Sets the number of unsaved messages
-    pub fn set_unsaved_messages_count(&mut self, count: u32) {
-        self.unsaved_count = count;
+    pub fn make_immutable(self, base_position: u32) -> IggyIndexes {
+        IggyIndexes::new(self.buffer.freeze(), base_position)
     }
 
     /// Inserts a new index at the end of buffer
@@ -53,10 +48,9 @@ impl IggyIndexesMut {
         self.buffer.put_u64_le(timestamp);
     }
 
-    /// Appends another IggyIndexesMut instance to this one. Other indexes buffer is consumed.
-    pub fn concatenate(&mut self, other: IggyIndexesMut) {
-        self.buffer.put_slice(&other.buffer);
-        self.unsaved_count += other.unsaved_count;
+    /// Appends another slice of indexes to this one.
+    pub fn concatenate(&mut self, other: &[u8]) {
+        self.buffer.put_slice(other);
     }
 
     /// Gets the number of indexes in the container
@@ -168,27 +162,26 @@ impl IggyIndexesMut {
         result
     }
 
-    /// Gets a slice of the buffer containing the last N unsaved indexes.
-    pub fn get_unsaved_indexes(&self) -> &[u8] {
-        if self.count() == 0 || self.unsaved_count == 0 {
-            tracing::error!("No unsaved indexes");
-            return &[];
-        }
-
-        let start_idx = (self.count() - self.unsaved_count) as usize * 16;
-
-        &self.buffer[start_idx..]
-    }
-
-    /// Mark all unsaved indexes as saved
-    pub fn mark_saved(&mut self) {
-        self.unsaved_count = 0;
-    }
-
     /// Clears the container, removing all indexes
     pub fn clear(&mut self) {
+        self.saved_count = 0;
         self.buffer.clear();
-        self.unsaved_count = 0;
+    }
+
+    /// Gets the number of unsaved indexes
+    pub fn unsaved_count(&self) -> u32 {
+        self.count().saturating_sub(self.saved_count)
+    }
+
+    /// Gets the unsaved part of the index buffer
+    pub fn unsaved_slice(&self) -> &[u8] {
+        let start_pos = self.saved_count as usize * INDEX_SIZE;
+        &self.buffer[start_pos..]
+    }
+
+    /// Mark all indexes as saved to disk
+    pub fn mark_saved(&mut self) {
+        self.saved_count = self.count();
     }
 
     /// Slices the container to return a view of a specific range of indexes
@@ -281,11 +274,7 @@ impl IggyIndexesMut {
             }
         }
 
-        if low > 0 {
-            Some(low - 1)
-        } else {
-            Some(0)
-        }
+        Some(low)
     }
 }
 
@@ -317,7 +306,6 @@ impl fmt::Debug for IggyIndexesMut {
 
         writeln!(f, "IggyIndexesMut {{")?;
         writeln!(f, "    count: {},", count)?;
-        writeln!(f, "    unsaved_count: {},", self.unsaved_count)?;
         writeln!(f, "    indexes: [")?;
 
         for i in 0..count {

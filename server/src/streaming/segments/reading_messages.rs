@@ -15,10 +15,6 @@ impl Segment {
     }
 
     pub fn get_messages_count(&self) -> u32 {
-        if self.get_messages_size() == 0 {
-            return 0;
-        }
-
         (self.end_offset - self.start_offset + 1) as u32
     }
 
@@ -43,8 +39,10 @@ impl Segment {
                 .await;
         }
 
-        let accumulator_first_timestamp = self.accumulator.base_timestamp();
+        let accumulator_first_timestamp = self.accumulator.first_timestamp();
         let accumulator_last_timestamp = self.accumulator.last_timestamp();
+
+        tracing::error!("hubcio accumulator first timestamp: {accumulator_first_timestamp}, last timestamp: {accumulator_last_timestamp}");
 
         // Case 1: Requested timestamp is higher than any available timestamp
         if timestamp > accumulator_last_timestamp {
@@ -107,44 +105,89 @@ impl Segment {
             end_offset = self.end_offset;
         }
 
+        trace!(
+            "Getting messages by offset: {}, count: {}, segment start_offset: {}, segment end_offset: {}",
+            offset,
+            count,
+            self.start_offset,
+            self.end_offset
+        );
+
         // Case 0: Accumulator is empty, so all messages have to be on disk
         if self.accumulator.is_empty() {
             return self.load_messages_from_disk_by_offset(offset, count).await;
         }
 
-        let accumulator_first_msg_offset = self.accumulator.base_offset();
+        let accumulator_first_msg_offset = self.accumulator.first_offset();
         let accumulator_last_msg_offset = self.accumulator.last_offset();
 
         // Case 1: All messages are in accumulator buffer
         if offset >= accumulator_first_msg_offset && end_offset <= accumulator_last_msg_offset {
+            tracing::error!(
+                "hubcio segment has {} messages, getting all from accumulator",
+                self.get_messages_count()
+            );
             return Ok(self.accumulator.get_messages_by_offset(offset, count));
         }
 
         // Case 2: All messages are on disk
         if end_offset < accumulator_first_msg_offset {
+            tracing::error!(
+                "hubcio segment has {} messages, getting all from disk",
+                self.get_messages_count()
+            );
             return self.load_messages_from_disk_by_offset(offset, count).await;
         }
 
         // Case 3: Messages span disk and accumulator buffer boundary
+        // Calculate how many messages we need from disk
+        let disk_count = if offset < accumulator_first_msg_offset {
+            ((accumulator_first_msg_offset - offset) as u32).min(count)
+        } else {
+            0
+        };
 
-        // Load messages from disk up to the accumulator buffer boundary
-        let mut messages = self
-                .load_messages_from_disk_by_offset(offset, (accumulator_first_msg_offset - offset) as u32)
-                .await.with_error_context(|error| format!(
-            "{COMPONENT} (error: {error}) - failed to load messages from disk, stream ID: {}, topic ID: {}, partition ID: {}, start offset: {offset}, end offset :{}",
-            self.stream_id, self.topic_id, self.partition_id, accumulator_first_msg_offset - 1
-        ))?;
+        let mut combined_batch_set = IggyMessagesBatchSet::empty();
 
-        // Load remaining messages from accumulator buffer
-        let buffer_start = std::cmp::max(offset, accumulator_first_msg_offset);
-        let buffer_count = (end_offset - buffer_start + 1) as u32;
-        let buffer_messages = self
-            .accumulator
-            .get_messages_by_offset(buffer_start, buffer_count);
+        // Load messages from disk if needed
+        if disk_count > 0 {
+            let disk_messages = self
+            .load_messages_from_disk_by_offset(offset, disk_count)
+            .await
+            .with_error_context(|error| {
+                format!(
+                    "STREAMING_SEGMENT (error: {error}) - failed to load messages from disk, stream ID: {}, topic ID: {}, partition ID: {}, start offset: {offset}, count: {disk_count}",
+                    self.stream_id, self.topic_id, self.partition_id
+                )
+            })?;
 
-        messages.add_batch_set(buffer_messages);
+            if !disk_messages.is_empty() {
+                combined_batch_set.add_batch_set(disk_messages);
+            }
+        }
 
-        Ok(messages)
+        // Calculate how many more messages we need from the accumulator
+        let remaining_count = count - combined_batch_set.count();
+
+        tracing::error!(
+            "hubcio segment has {} messages, remaining count: {}",
+            self.get_messages_count(),
+            remaining_count
+        );
+
+        if remaining_count > 0 {
+            let accumulator_start_offset = std::cmp::max(offset, accumulator_first_msg_offset);
+
+            let accumulator_messages = self
+                .accumulator
+                .get_messages_by_offset(accumulator_start_offset, remaining_count);
+
+            if !accumulator_messages.is_empty() {
+                combined_batch_set.add_batch_set(accumulator_messages);
+            }
+        }
+
+        Ok(combined_batch_set)
     }
 
     /// Loads and returns all message IDs from the log file.

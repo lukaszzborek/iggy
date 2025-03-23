@@ -16,11 +16,6 @@ pub struct IggyMessageViewMut<'a> {
 impl<'a> IggyMessageViewMut<'a> {
     /// Create a new mutable message view from a buffer
     pub fn new(buffer: &'a mut [u8]) -> Self {
-        // let (payload_len, headers_len) = {
-        //     let hdr_slice = &buffer[0..IGGY_MESSAGE_HEADER_SIZE as usize];
-        //     let hdr_view = IggyMessageHeaderView::new(hdr_slice);
-        //     (hdr_view.payload_length(), hdr_view.headers_length())
-        // };
         Self {
             buffer,
             payload_offset: IGGY_MESSAGE_HEADER_SIZE as usize,
@@ -89,7 +84,6 @@ impl LendingIterator for IggyMessageViewMutIterator<'_> {
             return None;
         }
 
-        // Make sure we have enough bytes for at least a header
         if self.position + IGGY_MESSAGE_HEADER_SIZE as usize > self.buffer.len() {
             tracing::error!(
                 "Buffer too small for message header at position {}, buffer len: {}",
@@ -103,7 +97,6 @@ impl LendingIterator for IggyMessageViewMutIterator<'_> {
         let buffer_slice = &mut self.buffer[self.position..];
         let view = IggyMessageViewMut::new(buffer_slice);
 
-        // Safety check: Make sure we're advancing
         let message_size = view.size();
         if message_size == 0 {
             tracing::error!(

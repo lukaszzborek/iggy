@@ -42,50 +42,6 @@ impl IggyMessage {
         IggyMessageBuilder::new()
     }
 
-    // /// Convert Bytes to messages
-    // pub(crate) fn from_raw_bytes(buffer: Bytes, count: u32) -> Result<Vec<IggyMessage>, IggyError> {
-    //     let mut messages = Vec::with_capacity(count as usize);
-    //     let mut position = 0;
-    //     let buf_len = buffer.len();
-
-    //     while position < buf_len {
-    //         if position + IGGY_MESSAGE_HEADER_SIZE as usize > buf_len {
-    //             break;
-    //         }
-    //         let header_bytes = buffer.slice(position..position + IGGY_MESSAGE_HEADER_SIZE as usize);
-    //         let header = match IggyMessageHeader::from_bytes(header_bytes) {
-    //             Ok(h) => h,
-    //             Err(e) => {
-    //                 error!("Failed to parse message header: {}", e);
-    //                 return Err(e);
-    //             }
-    //         };
-    //         position += IGGY_MESSAGE_HEADER_SIZE as usize;
-
-    //         let payload_end = position + header.payload_length as usize;
-    //         if payload_end > buf_len {
-    //             break;
-    //         }
-    //         let payload = buffer.slice(position..payload_end);
-    //         position = payload_end;
-
-    //         let headers: Option<Bytes> = if header.user_headers_length > 0 {
-    //             Some(buffer.slice(position..position + header.user_headers_length as usize))
-    //         } else {
-    //             None
-    //         };
-    //         position += header.user_headers_length as usize;
-
-    //         messages.push(IggyMessage {
-    //             header,
-    //             payload,
-    //             user_headers: headers,
-    //         });
-    //     }
-
-    //     Ok(messages)
-    // }
-
     /// Convert Bytes to messages
     pub(crate) fn from_raw_bytes(buffer: Bytes, count: u32) -> Result<Vec<IggyMessage>, IggyError> {
         let mut messages = Vec::with_capacity(count as usize);
@@ -184,7 +140,7 @@ impl BytesSerializable for IggyMessage {
         bytes.put_slice(&message_header);
         bytes.put_slice(&self.payload);
         if let Some(headers) = &self.user_headers {
-            bytes.put_slice(&headers);
+            bytes.put_slice(headers);
         }
         bytes.freeze()
     }

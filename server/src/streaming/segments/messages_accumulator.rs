@@ -2,44 +2,54 @@ use super::{
     indexes::IggyIndexesMut,
     types::{IggyMessagesBatchMut, IggyMessagesBatchSet},
 };
-use iggy::utils::timestamp::IggyTimestamp;
+use tracing::trace;
 
-/// A container that accumulates messages before they are written to disk
+/// A container that accumulates messages in memory before they are written to disk.
+///
+/// The accumulator serves as a staging area for messages, allowing them to be
+/// collected and prepared for persistence. It maintains metadata like offsets,
+/// timestamps, and positions to ensure correct ordering and indexing.
 #[derive(Debug, Default)]
 pub struct MessagesAccumulator {
-    /// Base offset of the first message
+    /// Base offset of the first message in the accumulator
     base_offset: u64,
 
-    /// Base timestamp of the first message
-    base_timestamp: u64,
-
-    /// Current offset
+    /// Current (latest) offset in the accumulator
     current_offset: u64,
 
-    /// Current position
+    /// Current byte position for the next message in the segment
     current_position: u32,
 
-    /// Current timestamp
-    current_timestamp: u64,
-
-    /// A buffer containing all accumulated messages
+    /// Collection of all message batches in the accumulator
     batches: IggyMessagesBatchSet,
 
-    /// Number of messages in the accumulator
+    /// Total number of messages in the accumulator
     messages_count: u32,
 }
 
 impl MessagesAccumulator {
-    /// Coalesces a batch of messages into the accumulator
-    /// This method also prepares the messages for persistence by setting
-    /// their offset, timestamp, record size, and checksum fields
-    /// Returns the number of messages in the batch
+    /// Adds a batch of messages to the accumulator and prepares them for persistence.
+    ///
+    /// This method assigns offsets, timestamps, and positions to the messages
+    /// and updates the indexes accordingly. It ensures message continuity by
+    /// managing offsets to prevent gaps or overlaps.
+    ///
+    /// # Arguments
+    ///
+    /// * `start_offset` - The segment's starting offset
+    /// * `current_offset` - The suggested starting offset for this batch
+    /// * `current_position` - The current byte position in the segment
+    /// * `indexes` - The segment's index data to update
+    /// * `batch` - The batch of messages to add
+    ///
+    /// # Returns
+    ///
+    /// The number of messages successfully added to the accumulator
     pub fn coalesce_batch(
         &mut self,
-        start_offset: u64,
-        current_offset: u64,
-        current_position: u32,
-        indexes: &mut IggyIndexesMut,
+        segment_start_offset: u64,
+        segment_current_offset: u64,
+        segment_current_position: u32,
         batch: IggyMessagesBatchMut,
     ) -> u32 {
         let batch_messages_count = batch.count();
@@ -48,68 +58,69 @@ impl MessagesAccumulator {
             return 0;
         }
 
-        println!("Coalescing batch: base_offset={}, current_offset={}, messages_count={}, batch_count={}",
-                 self.base_offset, current_offset, self.messages_count, batch_messages_count);
+        trace!(
+            "Coalescing batch base_offset={}, segment_current_offset={}, messages_count={}, batch_count={}",
+            self.base_offset,
+            segment_current_offset,
+            self.messages_count,
+            batch_messages_count
+        );
 
-        if self.batches.is_empty() {
-            self.base_offset = current_offset;
-            self.base_timestamp = IggyTimestamp::now().as_micros();
-            self.current_offset = current_offset;
-            self.current_timestamp = self.base_timestamp;
-            self.current_position = current_position;
-        } else {
-            // Important: If we already have messages, the current_offset should be the correct
-            // starting point for this batch.
-            // If current_offset is greater than our current highest offset + 1, use it as is.
-            // Otherwise, use our highest offset + 1 to ensure no overlap.
-            let next_expected_offset = self.current_offset + 1;
-            if current_offset > next_expected_offset {
-                self.current_offset = current_offset;
-            } else {
-                self.current_offset = next_expected_offset;
-            }
-        }
+        self.initialize_or_update_offsets(segment_current_offset, segment_current_position);
 
-        let batch = batch.prepare_for_persistence(
-            start_offset,
+        let prepared_batch = batch.prepare_for_persistence(
+            segment_start_offset,
             self.current_offset,
             self.current_position,
-            indexes,
         );
-        let batch_size = batch.size();
 
-        self.batches.add_batch(batch);
+        let batch_size = prepared_batch.size();
+
+        self.batches.add_batch(prepared_batch);
 
         self.messages_count += batch_messages_count;
-        // Update current_offset to be the last offset in this batch
         self.current_offset = self.base_offset + self.messages_count as u64 - 1;
-
-        println!(
-            "After coalescing: base_offset={}, current_offset={}, messages_count={}",
-            self.base_offset, self.current_offset, self.messages_count
-        );
-
-        self.current_timestamp = self
-            .batches
-            .iter()
-            .last()
-            .unwrap()
-            .iter()
-            .last()
-            .unwrap()
-            .header()
-            .timestamp();
         self.current_position += batch_size;
 
         batch_messages_count
     }
 
-    /// Gets messages from the accumulator based on start offset and count
+    /// Initialize accumulator state for the first batch or update offsets for subsequent batches
+    fn initialize_or_update_offsets(&mut self, current_offset: u64, current_position: u32) {
+        if self.batches.is_empty() {
+            self.base_offset = current_offset;
+            self.current_offset = current_offset;
+            self.current_position = current_position;
+        } else {
+            let next_expected_offset = self.current_offset + 1;
+            self.current_offset = current_offset.max(next_expected_offset);
+        }
+    }
+
+    /// Retrieves messages from the accumulator based on start offset and count.
+    ///
+    /// # Arguments
+    ///
+    /// * `start_offset` - The starting offset to retrieve messages from
+    /// * `count` - Maximum number of messages to retrieve
+    ///
+    /// # Returns
+    ///
+    /// A batch set containing the requested messages
     pub fn get_messages_by_offset(&self, start_offset: u64, count: u32) -> IggyMessagesBatchSet {
         self.batches.get_by_offset(start_offset, count)
     }
 
-    /// Gets messages from the accumulator based on start timestamp and count
+    /// Retrieves messages from the accumulator based on start timestamp and count.
+    ///
+    /// # Arguments
+    ///
+    /// * `start_timestamp` - The earliest timestamp to retrieve messages from
+    /// * `count` - Maximum number of messages to retrieve
+    ///
+    /// # Returns
+    ///
+    /// A batch set containing the requested messages
     pub fn get_messages_by_timestamp(
         &self,
         start_timestamp: u64,
@@ -118,38 +129,57 @@ impl MessagesAccumulator {
         self.batches.get_by_timestamp(start_timestamp, count)
     }
 
-    /// Checks if the accumulator is empty
+    /// Checks if the accumulator is empty (has no messages).
     pub fn is_empty(&self) -> bool {
         self.batches.is_empty() || self.messages_count == 0
     }
 
-    /// Returns the number of unsaved messages
+    /// Returns the number of messages in the accumulator that have not been persisted.
     pub fn unsaved_messages_count(&self) -> usize {
         self.messages_count as usize
     }
 
-    /// Returns the maximum offset in the accumulator
+    /// Returns the highest offset in the accumulator.
     pub fn last_offset(&self) -> u64 {
         self.current_offset
     }
 
-    /// Returns the maximum timestamp in the accumulator
+    /// Returns the timestamp of the last message in the accumulator.
     pub fn last_timestamp(&self) -> u64 {
-        self.current_timestamp
+        self.batches.last_timestamp().unwrap_or(0)
     }
 
-    /// Returns the base offset of the accumulator
-    pub fn base_offset(&self) -> u64 {
+    /// Returns the starting offset of the first message in the accumulator.
+    pub fn first_offset(&self) -> u64 {
         self.base_offset
     }
 
-    /// Returns the base timestamp of the accumulator
-    pub fn base_timestamp(&self) -> u64 {
-        self.base_timestamp
+    /// Returns the timestamp of the first message in the accumulator.
+    pub fn first_timestamp(&self) -> u64 {
+        self.batches.first_timestamp().unwrap_or(0)
     }
 
-    /// Takes ownership of the accumulator and returns the messages and indexes
-    pub fn materialize(self) -> IggyMessagesBatchSet {
+    /// Updates the segment's indexes with index information from all batches in this accumulator.
+    ///
+    /// This method transfers all the index information from the accumulator's batches to the
+    /// provided segment indexes object, ensuring that message positions, offsets, and timestamps
+    /// are properly recorded for later retrieval.
+    ///
+    /// # Arguments
+    ///
+    /// * `segment_indexes` - The segment's mutable indexes to update
+    pub fn update_indexes(&self, segment_indexes: &mut IggyIndexesMut) {
+        for batch in self.batches.iter() {
+            segment_indexes.concatenate(batch.indexes_slice());
+        }
+
+        tracing::error!("hubcio after update indexes: {}", segment_indexes.count());
+    }
+
+    /// Consumes the accumulator and returns the contained message batches.
+    ///
+    /// This is typically called when it's time to persist the accumulated messages to disk.
+    pub fn into_batch_set(self) -> IggyMessagesBatchSet {
         self.batches
     }
 }

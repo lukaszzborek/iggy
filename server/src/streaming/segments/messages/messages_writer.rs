@@ -84,10 +84,17 @@ impl MessagesWriter {
         confirmation: Confirmation,
     ) -> Result<IggyByteSize, IggyError> {
         let messages_size = batch_set.size();
+        let messages_count = batch_set.count();
+        let containers_count = batch_set.containers_count();
         trace!(
-            "Saving batch of size {messages_size} bytes to messages file: {}",
+            "Saving batch set of size {messages_size} bytes ({containers_count} containers, {messages_count} messages) to messages file: {}",
             self.file_path
         );
+
+        for container in batch_set.iter() {
+            tracing::error!("Container size: {}", container.size());
+        }
+
         match confirmation {
             Confirmation::Wait => {
                 if let Some(ref mut file) = self.file {
@@ -108,7 +115,7 @@ impl MessagesWriter {
                 self.messages_size_bytes
                     .fetch_add(messages_size as u64, Ordering::AcqRel);
                 trace!(
-                    "Written batch of size {messages_size} bytes to messages file: {}",
+                    "Written batch of size {messages_size} bytes ({containers_count} containers, {messages_count} messages) to messages file: {}",
                     self.file_path
                 );
                 if self.fsync {

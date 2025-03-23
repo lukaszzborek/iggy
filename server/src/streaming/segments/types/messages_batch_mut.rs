@@ -3,16 +3,21 @@ use crate::streaming::segments::indexes::IggyIndexesMut;
 use bytes::{BufMut, BytesMut};
 use iggy::models::messaging::{IggyMessagesBatch, INDEX_SIZE};
 use iggy::prelude::*;
+use iggy::utils::timestamp::IggyTimestamp;
 use lending_iterator::prelude::*;
 use std::ops::Deref;
+use tracing::trace;
 
-/// A container for mutable messages
+/// A container for mutable messages that are being prepared for persistence.
+///
+/// `IggyMessagesBatchMut` holds both the raw message data in a `BytesMut` buffer
+/// and the corresponding index data that allows for efficient message lookup.
 #[derive(Debug, Default)]
 pub struct IggyMessagesBatchMut {
-    /// The byte-indexes of messages in the buffer, represented as array of u32's
-    /// Each index points to the END position of a message (start of next message)
+    /// The index data for all messages in the buffer
     indexes: IggyIndexesMut,
-    /// The buffer containing the messages
+
+    /// The buffer containing the serialized message data
     messages: BytesMut,
 }
 
@@ -23,20 +28,35 @@ impl Sizeable for IggyMessagesBatchMut {
 }
 
 impl IggyMessagesBatchMut {
-    /// Create an empty messages container with bytes capacity to prevent realloc()
+    /// Creates an empty messages container with the specified capacity to avoid reallocations.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes_capacity` - The expected total size of all messages in bytes
     pub fn with_capacity(bytes_capacity: usize) -> Self {
+        let index_capacity = bytes_capacity / INDEX_SIZE + 1; // Add 1 to avoid rounding down to 0
         Self {
-            indexes: IggyIndexesMut::with_capacity(bytes_capacity / INDEX_SIZE),
+            indexes: IggyIndexesMut::with_capacity(index_capacity),
             messages: BytesMut::with_capacity(bytes_capacity),
         }
     }
 
-    /// Create a new messages container from a existing buffer of bytes
+    /// Creates a new messages container from existing index and message buffers.
+    ///
+    /// # Arguments
+    ///
+    /// * `indexes` - Preprocessed index data
+    /// * `messages` - Serialized message data
     pub fn from_indexes_and_messages(indexes: IggyIndexesMut, messages: BytesMut) -> Self {
         Self { indexes, messages }
     }
 
-    /// Create a new messages container from a slice of messages
+    /// Creates a new messages container from a slice of IggyMessage objects.
+    ///
+    /// # Arguments
+    ///
+    /// * `messages` - Slice of message objects to store
+    /// * `messages_size` - Total size of all messages in bytes
     pub fn from_messages(messages: &[IggyMessage], messages_size: u32) -> Self {
         let mut messages_buffer = BytesMut::with_capacity(messages_size as usize);
         let mut indexes_buffer = IggyIndexesMut::with_capacity(messages.len());
@@ -52,92 +72,109 @@ impl IggyMessagesBatchMut {
         Self::from_indexes_and_messages(indexes_buffer, messages_buffer)
     }
 
-    /// Create a lending iterator over mutable messages
+    /// Creates a lending iterator that yields mutable views of messages.
     pub fn iter_mut(&mut self) -> IggyMessageViewMutIterator {
         IggyMessageViewMutIterator::new(&mut self.messages)
     }
 
-    /// Create a lending iterator over immutable messages
+    /// Creates an iterator that yields immutable views of messages.
     pub fn iter(&self) -> IggyMessageViewIterator {
         IggyMessageViewIterator::new(&self.messages)
     }
 
-    /// Get the number of messages
+    /// Returns the number of messages in the batch.
     pub fn count(&self) -> u32 {
-        debug_assert_eq!(self.indexes.len() % INDEX_SIZE, 0);
-        self.indexes.len() as u32 / INDEX_SIZE as u32
+        let index_count = self.indexes.len() as u32 / INDEX_SIZE as u32;
+        debug_assert_eq!(
+            self.indexes.len() % INDEX_SIZE,
+            0,
+            "Index buffer length must be a multiple of INDEX_SIZE"
+        );
+        index_count
     }
 
-    /// Get the total size of all messages in bytes
+    /// Returns the total size of all messages in bytes.
     pub fn size(&self) -> u32 {
         self.messages.len() as u32
     }
 
-    /// Makes the messages batch immutable
-    pub fn make_immutable(self) -> IggyMessagesBatch {
-        let messages_count = self.count();
-        let indexes = self.indexes.make_immutable();
-        let messages = self.messages.freeze();
-        IggyMessagesBatch::new(indexes, messages, messages_count)
-    }
-
-    /// Prepares all messages in the batch for persistence by setting their offsets, timestamps,
-    /// and other necessary fields. Returns the prepared, immutable messages.
+    /// Prepares all messages in the batch for persistence by setting their offsets,
+    /// timestamps, and other necessary fields.
+    ///
+    /// # Arguments
+    ///
+    /// * `start_offset` - The starting offset of the segment
+    /// * `base_offset` - The base offset for this batch of messages
+    /// * `current_position` - The current position in the segment
+    /// * `segment_indexes` - The segment's index data, which will be updated
+    ///
+    /// # Returns
+    ///
+    /// An immutable `IggyMessagesBatch` ready for persistence
     pub fn prepare_for_persistence(
         self,
         start_offset: u64,
         base_offset: u64,
         current_position: u32,
-        segment_indexes: &mut IggyIndexesMut,
     ) -> IggyMessagesBatch {
         let messages_count = self.count();
+        if messages_count == 0 {
+            return IggyMessagesBatch::empty();
+        }
+
         let timestamp = IggyTimestamp::now().as_micros();
 
-        let mut curr_abs_offset = base_offset;
-        let mut current_position = current_position;
         let (mut indexes, mut messages) = self.decompose();
+
+        let mut curr_abs_offset = base_offset;
+        let mut curr_position = current_position;
+
         let mut iter = IggyMessageViewMutIterator::new(&mut messages);
         let mut curr_rel_offset: u32 = 0;
 
-        // TODO: fix crash when idx cache is disabled
         while let Some(mut message) = iter.next() {
             message.header_mut().set_offset(curr_abs_offset);
             message.header_mut().set_timestamp(timestamp);
             message.update_checksum();
 
-            current_position += message.size() as u32;
+            let message_size = message.size() as u32;
+            curr_position += message_size;
 
-            indexes.set_offset_at(curr_rel_offset, curr_abs_offset as u32);
-            indexes.set_position_at(curr_rel_offset, current_position);
+            let relative_offset = (curr_abs_offset - start_offset) as u32;
+            indexes.set_offset_at(curr_rel_offset, relative_offset);
+            indexes.set_position_at(curr_rel_offset, curr_position);
             indexes.set_timestamp_at(curr_rel_offset, timestamp);
-
-            println!(
-                "Message {} offset: {}, position: {}, timestamp: {}",
-                curr_rel_offset, curr_abs_offset, current_position, timestamp
-            );
 
             curr_abs_offset += 1;
             curr_rel_offset += 1;
         }
-        indexes.set_unsaved_messages_count(messages_count);
 
-        segment_indexes.concatenate(indexes);
-
-        let relative_offset = base_offset - start_offset;
-        let indexes = segment_indexes
-            .slice_by_offset(
-                relative_offset as u32,
-                relative_offset as u32 + messages_count,
-            )
-            .unwrap();
-
-        IggyMessagesBatch::new(indexes, messages.freeze(), messages_count)
+        IggyMessagesBatch::new(
+            indexes.make_immutable(current_position),
+            messages.freeze(),
+            messages_count,
+        )
     }
 
+    /// Returns the first timestamp in the batch
+    pub fn first_timestamp(&self) -> u64 {
+        IggyMessageView::new(&self.messages).header().timestamp()
+    }
+
+    /// Returns the last timestamp in the batch
+    pub fn last_timestamp(&self) -> u64 {
+        let last_message_offset = self.indexes.get(self.count() - 1).unwrap().offset();
+        IggyMessageView::new(&self.messages[last_message_offset as usize..])
+            .header()
+            .timestamp()
+    }
+
+    /// Checks if the batch is empty.
     pub fn is_empty(&self) -> bool {
         self.count() == 0
     }
 
+    /// Decomposes the batch into its constituent parts.
     pub fn decompose(self) -> (IggyIndexesMut, BytesMut) {
         (self.indexes, self.messages)
     }
@@ -176,6 +213,11 @@ impl<'a> Iterator for IggyMessageViewIterator<'a> {
 
         let remaining = &self.buffer[self.position..];
         if remaining.len() < IGGY_MESSAGE_HEADER_SIZE as usize {
+            trace!(
+                "Buffer too small for message header at position {}, buffer len: {}",
+                self.position,
+                self.buffer.len()
+            );
             return None;
         }
 
@@ -185,6 +227,12 @@ impl<'a> Iterator for IggyMessageViewIterator<'a> {
             + IGGY_MESSAGE_HEADER_SIZE as usize;
 
         if message_size > remaining.len() {
+            trace!(
+                "Message size {} exceeds remaining buffer size {} at position {}",
+                message_size,
+                remaining.len(),
+                self.position
+            );
             return None;
         }
 

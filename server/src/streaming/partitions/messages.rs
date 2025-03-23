@@ -27,14 +27,12 @@ impl Partition {
 
         let query_ts = timestamp.as_micros();
 
-        // Filter segments that may contain messages with timestamp >= query_ts
         let filtered_segments: Vec<&Segment> = self
             .segments
             .iter()
             .filter(|segment| segment.end_timestamp() >= query_ts)
             .collect();
 
-        // Use a dedicated method to retrieve messages across segments by timestamp
         Self::get_messages_from_segments_by_timestamp(filtered_segments, query_ts, count).await
     }
 
@@ -50,23 +48,22 @@ impl Partition {
             self.current_offset
         );
 
-        if self.segments.is_empty() || start_offset > self.current_offset {
+        if self.segments.is_empty() || start_offset > self.current_offset || count == 0 {
             return Ok(IggyMessagesBatchSet::empty());
         }
 
-        let end_offset = self.get_end_offset(start_offset, count);
+        let start_segment_idx = match self
+            .segments
+            .iter()
+            .rposition(|segment| segment.start_offset() <= start_offset)
+        {
+            Some(idx) => idx,
+            None => return Ok(IggyMessagesBatchSet::empty()),
+        };
 
-        // TODO: Most likely don't need to find the specific range of segments, just find the first segment containing the first offset
-        // and during reads roll to the next one, when the first is exhausted.
-        let segments = self.filter_segments_by_offsets(start_offset, end_offset);
-        let out = match segments.len() {
-            0 => panic!("TODO"),
-            1 => Ok(segments[0]
-                .get_messages_by_offset(start_offset, count)
-                .await?),
-            _ => Ok(Self::get_messages_from_segments(segments, start_offset, count).await?),
-        }?;
-        Ok(out)
+        let relevant_segments: Vec<&Segment> = self.segments[start_segment_idx..].iter().collect();
+
+        Self::get_messages_from_segments(relevant_segments, start_offset, count).await
     }
 
     // Retrieves the first messages (up to a specified count).
@@ -128,30 +125,6 @@ impl Partition {
         self.get_messages_by_offset(offset, count).await
     }
 
-    fn get_end_offset(&self, offset: u64, count: u32) -> u64 {
-        let mut end_offset = offset + (count - 1) as u64;
-        let segment = self.segments.last().unwrap();
-        let max_offset = segment.end_offset();
-        if end_offset > max_offset {
-            end_offset = max_offset;
-        }
-
-        end_offset
-    }
-
-    fn filter_segments_by_offsets(&self, start_offset: u64, end_offset: u64) -> Vec<&Segment> {
-        let slice_start = self
-            .segments
-            .iter()
-            .rposition(|segment| segment.start_offset() <= start_offset)
-            .unwrap_or(0);
-
-        self.segments[slice_start..]
-            .iter()
-            .filter(|segment| segment.start_offset() <= end_offset)
-            .collect()
-    }
-
     /// Retrieves messages from multiple segments.
     async fn get_messages_from_segments(
         segments: Vec<&Segment>,
@@ -161,21 +134,22 @@ impl Partition {
         let mut remaining_count = count;
         let mut current_offset = offset;
         let mut batches = IggyMessagesBatchSet::empty();
+
         for segment in segments {
             if remaining_count == 0 {
                 break;
             }
 
             let messages = segment
-                .get_messages_by_offset(current_offset, remaining_count)
-                .await
-                .with_error_context(|error| {
-                    format!(
-                        "{COMPONENT} (error: {error}) - failed to get messages from segment, segment: {}, \
-                         offset: {}, count: {}",
-                        segment, current_offset, remaining_count
-                    )
-                })?;
+            .get_messages_by_offset(current_offset, remaining_count)
+            .await
+            .with_error_context(|error| {
+                format!(
+                    "{COMPONENT} (error: {error}) - failed to get messages from segment, segment: {}, \
+                     offset: {}, count: {}",
+                    segment, current_offset, remaining_count
+                )
+            })?;
 
             let messages_count = messages.count();
             if messages_count == 0 {
@@ -184,37 +158,16 @@ impl Partition {
 
             remaining_count = remaining_count.saturating_sub(messages_count);
 
-            if messages_count > 0 {
+            if let Some(last_offset) = messages.last_offset() {
+                current_offset = last_offset + 1;
+            } else if messages_count > 0 {
                 current_offset += messages_count as u64;
             }
+
             batches.add_batch_set(messages);
         }
 
         Ok(batches)
-        // let mut results = Vec::new();
-        // let mut remaining_count = count;
-        // for segment in segments {
-        //     if remaining_count == 0 {
-        //         break;
-        //     }
-        //     let slices = segment
-        //         .get_messages_by_offset(offset, remaining_count)
-        //         .await
-        //         .with_error_context(|error| {
-        //             format!(
-        //                 "{COMPONENT} (error: {error}) - failed to get messages from segment, segment: {}, \
-        //                  offset: {}, count: {}",
-        //                 segment, offset, remaining_count
-        //             )
-        //         })?;
-        //     let messages_count = slices
-        //         .iter()
-        //         .map(|slice| slice.header.last_offset_delta)
-        //         .sum();
-        //     remaining_count = remaining_count.saturating_sub(messages_count);
-        //     results.extend(slices);
-        // }
-        // Ok(results)
     }
 
     /// Retrieves messages from multiple segments by timestamp.
@@ -242,7 +195,6 @@ impl Partition {
                     )
                 })?;
 
-            // Update remaining count for the next segment
             let messages_count = messages.count();
             remaining_count = remaining_count.saturating_sub(messages_count);
 
@@ -263,19 +215,18 @@ impl Partition {
             messages.size(),
             self.partition_id
         );
-        {
-            let last_segment = self.segments.last_mut().ok_or(IggyError::SegmentNotFound)?;
-            if last_segment.is_closed() {
-                let start_offset = last_segment.end_offset() + 1;
-                trace!(
+
+        let last_segment = self.segments.last_mut().ok_or(IggyError::SegmentNotFound)?;
+        if last_segment.is_closed() {
+            let start_offset = last_segment.end_offset() + 1;
+            trace!(
                     "Current segment is closed, creating new segment with start offset: {} for partition with ID: {}...",
                     start_offset, self.partition_id
                 );
-                self.add_persisted_segment(start_offset).await.with_error_context(|error| format!(
+            self.add_persisted_segment(start_offset).await.with_error_context(|error| format!(
                     "{COMPONENT} (error: {error}) - failed to add persisted segment, partition: {}, start offset: {}",
                     self, start_offset,
                 ))?
-            }
         }
 
         let current_offset = if !self.should_increment_offset {
@@ -317,8 +268,6 @@ impl Partition {
         }
         */
 
-        println!("Current offset before appending batch: {}", current_offset);
-
         let messages_count = {
             let last_segment = self.segments.last_mut().ok_or(IggyError::SegmentNotFound)?;
             last_segment
@@ -338,8 +287,6 @@ impl Partition {
             current_offset + messages_count as u64 - 1
         };
 
-        println!("Last offset after appending batch: {}", last_offset);
-
         if self.should_increment_offset {
             self.current_offset = last_offset;
         } else {
@@ -348,20 +295,19 @@ impl Partition {
         }
 
         self.unsaved_messages_count += messages_count;
+
+        let last_segment = self.segments.last_mut().ok_or(IggyError::SegmentNotFound)?;
+        if self.unsaved_messages_count >= self.config.partition.messages_required_to_save
+            || last_segment.is_full().await
         {
-            let last_segment = self.segments.last_mut().ok_or(IggyError::SegmentNotFound)?;
-            if self.unsaved_messages_count >= self.config.partition.messages_required_to_save
-                || last_segment.is_full().await
-            {
-                trace!(
+            trace!(
                     "Segment with start offset: {} for partition with ID: {} will be persisted on disk...",
                     last_segment.start_offset(),
                     self.partition_id
                 );
 
-                last_segment.persist_messages(confirmation).await.unwrap();
-                self.unsaved_messages_count = 0;
-            }
+            last_segment.persist_messages(confirmation).await.unwrap();
+            self.unsaved_messages_count = 0;
         }
 
         Ok(())

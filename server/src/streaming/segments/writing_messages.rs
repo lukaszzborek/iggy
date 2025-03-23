@@ -25,12 +25,11 @@ impl Segment {
             self.start_offset,
             current_offset,
             self.last_index_position,
-            &mut self.indexes,
             messages,
         );
 
         if self.end_offset == 0 {
-            self.start_timestamp = messages_accumulator.base_timestamp();
+            self.start_timestamp = messages_accumulator.first_timestamp();
         }
         self.end_timestamp = messages_accumulator.last_timestamp();
         self.end_offset = messages_accumulator.last_offset();
@@ -62,15 +61,50 @@ impl Segment {
 
         let accumulator = std::mem::take(&mut self.accumulator);
 
-        let batches = accumulator.materialize();
+        accumulator.update_indexes(&mut self.indexes);
+
+        let batches = accumulator.into_batch_set();
         let confirmation = match confirmation {
             Some(val) => val,
             None => self.config.segment.server_confirmation,
         };
 
-        let saved_bytes = self.save_message_batches(batches, confirmation).await?;
+        let batch_size = batches.size();
+        let batch_count = batches.count();
 
-        self.save_indexes().await?;
+        let saved_bytes = self
+            .messages_writer
+            .as_mut()
+            .expect("Messages writer not initialized")
+            .save_batch_set(batches, confirmation)
+            .await
+            .with_error_context(|error| {
+                format!(
+                    "Failed to save batch of {batch_count} messages ({batch_size} bytes) to {self}. {error}",
+                )
+            })?;
+
+        self.last_index_position += saved_bytes.as_bytes_u64() as u32;
+
+        let unsaved_indexes_slice = self.indexes.unsaved_slice();
+        self.index_writer
+            .as_mut()
+            .expect("Index writer not initialized")
+            .save_indexes(unsaved_indexes_slice)
+            .await
+            .with_error_context(|error| {
+                format!(
+                    "Failed to save index of {} indexes to {self}. {error}",
+                    unsaved_indexes_slice.len()
+                )
+            })?;
+
+        self.indexes.mark_saved();
+
+        if !self.config.segment.cache_indexes {
+            tracing::error!("Clearing indexes cache");
+            self.indexes.clear();
+        }
 
         self.check_and_handle_segment_full().await?;
 
@@ -100,55 +134,6 @@ impl Segment {
             .fetch_add(messages_count, Ordering::SeqCst);
         self.messages_count_of_parent_partition
             .fetch_add(messages_count, Ordering::SeqCst);
-    }
-
-    async fn save_message_batches(
-        &mut self,
-        batches: IggyMessagesBatchSet,
-        confirmation: Confirmation,
-    ) -> Result<IggyByteSize, IggyError> {
-        let batch_size = batches.size();
-        let batch_count = batches.count();
-
-        let saved_bytes = self
-            .messages_writer
-            .as_mut()
-            .expect("Messages writer not initialized")
-            .save_batch_set(batches, confirmation)
-            .await
-            .with_error_context(|error| {
-                format!(
-                    "Failed to save batch of {batch_count} messages ({batch_size} bytes) to {self}. {error}",
-                )
-            })?;
-
-        self.last_index_position += saved_bytes.as_bytes_u64() as u32;
-
-        Ok(saved_bytes)
-    }
-
-    async fn save_indexes(&mut self) -> Result<(), IggyError> {
-        let unsaved_indexes_slice = self.indexes.get_unsaved_indexes();
-
-        self.index_writer
-            .as_mut()
-            .expect("Index writer not initialized")
-            .save_indexes(unsaved_indexes_slice)
-            .await
-            .with_error_context(|error| {
-                format!(
-                    "Failed to save index of {} indexes to {self}. {error}",
-                    unsaved_indexes_slice.len()
-                )
-            })?;
-
-        self.indexes.mark_saved();
-
-        if !self.config.segment.cache_indexes {
-            self.indexes.clear();
-        }
-
-        Ok(())
     }
 
     async fn check_and_handle_segment_full(&mut self) -> Result<(), IggyError> {
