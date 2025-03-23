@@ -1,10 +1,9 @@
-use std::io::IoSlice;
-
 use crate::quic::COMPONENT;
 use crate::{binary::sender::Sender, server_error::ServerError};
 use error_set::ErrContext;
 use iggy::error::IggyError;
 use quinn::{RecvStream, SendStream};
+use std::io::IoSlice;
 use tracing::{debug, error};
 
 const STATUS_OK: &[u8] = &[0; 4];
@@ -47,8 +46,48 @@ impl Sender for QuicSender {
         length: &[u8],
         slices: Vec<IoSlice<'_>>,
     ) -> Result<(), IggyError> {
-        //TODO: Fix me, quinn seems to have support for write vectored.
-        todo!()
+        debug!("Sending vectored response with status: {:?}...", STATUS_OK);
+
+        let headers = [STATUS_OK, length].concat();
+        self.send
+            .write_all(&headers)
+            .await
+            .with_error_context(|error| {
+                format!("{COMPONENT} (error: {error}) - failed to write headers to stream")
+            })
+            .map_err(|_| IggyError::QuicError)?;
+
+        let mut total_bytes_written = 0;
+
+        for slice in slices {
+            let slice_data = &*slice;
+            if !slice_data.is_empty() {
+                self.send
+                    .write_all(slice_data)
+                    .await
+                    .with_error_context(|error| {
+                        format!("{COMPONENT} (error: {error}) - failed to write slice to stream")
+                    })
+                    .map_err(|_| IggyError::QuicError)?;
+
+                total_bytes_written += slice_data.len();
+            }
+        }
+
+        debug!(
+            "Sent vectored response: {} bytes of payload",
+            total_bytes_written
+        );
+
+        self.send
+            .finish()
+            .with_error_context(|error| {
+                format!("{COMPONENT} (error: {error}) - failed to finish send stream")
+            })
+            .map_err(|_| IggyError::QuicError)?;
+
+        debug!("Sent vectored response with status: {:?}", STATUS_OK);
+        Ok(())
     }
 }
 

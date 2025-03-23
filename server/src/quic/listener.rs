@@ -1,13 +1,10 @@
-use crate::binary::command;
+use crate::binary::command::{ServerCommand, ServerCommandHandler};
 use crate::binary::sender::SenderKind;
 use crate::server_error::ConnectionError;
 use crate::streaming::clients::client_manager::Transport;
 use crate::streaming::session::Session;
 use crate::streaming::systems::system::SharedSystem;
-use anyhow::{anyhow, Context};
-use bytes::Bytes;
-use iggy::validatable::Validatable;
-use iggy::{bytes_serializable::BytesSerializable, messages::MAX_PAYLOAD_SIZE};
+use anyhow::anyhow;
 use quinn::{Connection, Endpoint, RecvStream, SendStream};
 use tracing::{debug, error, info};
 
@@ -99,40 +96,60 @@ async fn handle_stream(
     system: SharedSystem,
     session: impl AsRef<Session>,
 ) -> anyhow::Result<()> {
-    // TODO: Fix me
-    /*
     let (send_stream, mut recv_stream) = stream;
-    // TODO: read to BytesMut instead of Vec<u8>
-    let request = recv_stream
-        .read_to_end(MAX_PAYLOAD_SIZE as usize)
-        .await
-        .with_context(|| "Error when reading the QUIC request.")?;
 
-    if request.len() < INITIAL_BYTES_LENGTH {
+    let mut length_buffer = [0u8; INITIAL_BYTES_LENGTH];
+    let mut code_buffer = [0u8; INITIAL_BYTES_LENGTH];
+
+    let length_len = match recv_stream.read(&mut length_buffer).await? {
+        Some(read_length) => read_length,
+        None => return Ok(()),
+    };
+
+    if length_len != INITIAL_BYTES_LENGTH {
         return Err(anyhow!(
-            "Unable to read the QUIC request length, expected: {INITIAL_BYTES_LENGTH} bytes, received: {} bytes.",
-            request.len()
+            "Unable to read the QUIC request length, expected: {INITIAL_BYTES_LENGTH} bytes, received: {length_len} bytes.",
         ));
     }
 
-    debug!("Trying to read command...");
-    let length = request[..INITIAL_BYTES_LENGTH]
-        .try_into()
-        .map(u32::from_le_bytes)
-        .unwrap_or_default();
-    let command =
-        ServerCommand::from_bytes(Bytes::copy_from_slice(&request[INITIAL_BYTES_LENGTH..]))
-            .with_context(|| "Error when reading the QUIC request command.")?;
-    command
-        .validate()
-        .with_context(|| "Error when validating the QUIC command.")?;
+    let code_len = match recv_stream.read(&mut code_buffer).await? {
+        Some(read_length) => read_length,
+        None => return Err(anyhow!("Connection closed before reading command code")),
+    };
+
+    if code_len != INITIAL_BYTES_LENGTH {
+        return Err(anyhow!(
+            "Unable to read the QUIC request code, expected: {INITIAL_BYTES_LENGTH} bytes, received: {code_len} bytes.",
+        ));
+    }
+
+    let length = u32::from_le_bytes(length_buffer);
+    let code = u32::from_le_bytes(code_buffer);
+
+    debug!("Received a QUIC request, length: {length}, code: {code}");
+
+    let mut sender = SenderKind::get_quic_sender(send_stream, recv_stream);
+
+    let command = match ServerCommand::from_code_and_reader(code, &mut sender, length - 4).await {
+        Ok(cmd) => cmd,
+        Err(e) => {
+            sender.send_error_response(e.clone()).await?;
+            return Err(anyhow!("Failed to parse command: {e}"));
+        }
+    };
+
+    if let Err(e) = command.validate() {
+        sender.send_error_response(e.clone()).await?;
+        return Err(anyhow!("Command validation failed: {e}"));
+    }
 
     debug!("Received a QUIC command: {command}, payload size: {length}");
 
-    let mut sender = SenderKind::get_quic_sender(send_stream, recv_stream);
-    command::handle(command, &mut sender, session.as_ref(), system.clone())
+    match command
+        .handle(&mut sender, length, session.as_ref(), &system)
         .await
-        .with_context(|| "Error when handling the QUIC request.")
-        */
-    todo!()
+    {
+        Ok(_) => Ok(()),
+        Err(e) => Err(anyhow!("Error handling command: {e}")),
+    }
 }

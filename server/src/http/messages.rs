@@ -5,7 +5,6 @@ use crate::http::COMPONENT;
 use crate::streaming::segments::{IggyIndexesMut, IggyMessagesBatchMut};
 use crate::streaming::session::Session;
 use crate::streaming::systems::messages::PollingArgs;
-use crate::streaming::utils::random_id;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing::get;

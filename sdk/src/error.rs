@@ -3,7 +3,7 @@ use crate::utils::topic_size::MaxTopicSize;
 use strum::{EnumDiscriminants, FromRepr, IntoStaticStr};
 use thiserror::Error;
 
-#[derive(Debug, Error, EnumDiscriminants, IntoStaticStr, FromRepr)]
+#[derive(Clone, Debug, Error, EnumDiscriminants, IntoStaticStr, FromRepr)]
 #[repr(u32)]
 #[strum(serialize_all = "snake_case")]
 #[strum_discriminants(
