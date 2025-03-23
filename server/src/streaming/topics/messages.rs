@@ -211,9 +211,10 @@ mod tests {
 
         for entity_id in 1..=messages_count {
             let message = IggyMessage::builder()
-                .with_id(entity_id as u128)
-                .with_payload(Bytes::from(entity_id.to_string()))
-                .build();
+                .id(entity_id as u128)
+                .payload(Bytes::from(entity_id.to_string()))
+                .build()
+                .expect("Failed to create message with valid payload and headers");
             let messages = IggyMessagesBatchMut::from_messages(&[message], 1);
             topic
                 .append_messages(&partitioning, messages, None)
@@ -243,10 +244,10 @@ mod tests {
         for entity_id in 1..=messages_count {
             let partitioning = Partitioning::messages_key_u32(entity_id);
             let message = IggyMessage::builder()
-                .with_id(entity_id as u128)
-                .with_payload(Bytes::new())
-                .build();
-            eprintln!("Message: {:#?}", message);
+                .id(entity_id as u128)
+                .payload(Bytes::new())
+                .build()
+                .expect("Failed to create message with valid payload and headers");
             let messages = IggyMessagesBatchMut::from_messages(&[message], 1);
             topic
                 .append_messages(&partitioning, messages, None)

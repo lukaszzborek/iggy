@@ -122,16 +122,18 @@ impl CliCommand for SendMessagesCmd {
 
             messages
         } else {
+            let headers = self.get_headers();
             match &self.messages {
                 Some(messages) => messages
                     .iter()
                     .map(|s| {
                         IggyMessage::builder()
-                            .with_payload(Bytes::from(s.clone()))
-                            .with_user_headers_map(self.get_headers().clone())
+                            .payload(Bytes::from(s.clone()))
+                            .headers(headers.clone().unwrap_or_default())
                             .build()
                     })
-                    .collect::<Vec<_>>(),
+                    .collect::<Result<Vec<_>, _>>()
+                    .with_context(|| "Failed to create messages from provided strings")?,
                 None => {
                     let input = self.read_message_from_stdin()?;
 
@@ -139,11 +141,12 @@ impl CliCommand for SendMessagesCmd {
                         .lines()
                         .map(|m| {
                             IggyMessage::builder()
-                                .with_payload(String::from(m).into())
-                                .with_user_headers_map(self.get_headers().clone())
+                                .payload(m.to_owned())
+                                .headers(headers.clone().unwrap_or_default())
                                 .build()
                         })
-                        .collect()
+                        .collect::<Result<Vec<_>, _>>()
+                        .with_context(|| "Failed to create messages from stdin")?
                 }
             }
         };

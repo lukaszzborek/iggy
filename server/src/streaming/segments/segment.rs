@@ -174,6 +174,10 @@ impl Segment {
         self.messages_count_of_parent_partition
             .fetch_add(messages_count, Ordering::SeqCst);
 
+        if !self.config.segment.cache_indexes {
+            self.indexes = IggyIndexesMut::empty();
+        }
+
         Ok(())
     }
 
@@ -211,16 +215,15 @@ impl Segment {
     }
 
     pub async fn initialize_reading(&mut self) -> Result<(), IggyError> {
+        let messages_reader =
+            MessagesReader::new(&self.messages_path, self.messages_size.clone()).await?;
+        self.messages_reader = Some(messages_reader);
+
         if !self.config.segment.cache_indexes {
             let index_reader =
                 IndexReader::new(&self.index_path, self.indexes_size.clone()).await?;
             self.index_reader = Some(index_reader);
         }
-
-        let messages_reader =
-            MessagesReader::new(&self.messages_path, self.messages_size.clone()).await?;
-        self.messages_reader = Some(messages_reader);
-
         Ok(())
     }
 
@@ -371,6 +374,10 @@ impl Segment {
 
     pub fn messages_file_path(&self) -> &str {
         &self.messages_path
+    }
+
+    pub fn set_end_offset(&mut self, end_offset: u64) {
+        self.end_offset = end_offset;
     }
 }
 

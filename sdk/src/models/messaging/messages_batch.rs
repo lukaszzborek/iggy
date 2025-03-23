@@ -22,7 +22,7 @@ pub struct IggyMessagesBatch {
 }
 
 impl IggyMessagesBatch {
-    /// Create a new messages container from a buffer
+    /// Create a batch from indexes buffer and messages buffer
     pub fn new(indexes: IggyIndexes, messages: Bytes, count: u32) -> Self {
         #[cfg(debug_assertions)]
         {
@@ -57,7 +57,7 @@ impl IggyMessagesBatch {
         }
     }
 
-    /// Creates a empty messages container
+    /// Creates a empty messages batch
     pub fn empty() -> Self {
         Self::new(IggyIndexes::empty(), BytesMut::new().freeze(), 0)
     }
@@ -104,8 +104,8 @@ impl IggyMessagesBatch {
     }
 
     /// Decompose the batch into its components
-    pub fn decompose(self) -> (IggyIndexes, Bytes, u32) {
-        (self.indexes, self.messages, self.count)
+    pub fn decompose(self) -> (u32, IggyIndexes, Bytes) {
+        (self.count, self.indexes, self.messages)
     }
 
     /// Get index of first message
@@ -138,16 +138,6 @@ impl IggyMessagesBatch {
             .last()
             .map(|msg| msg.header().timestamp())
             .unwrap_or(0)
-    }
-
-    /// Helper method to read a base position (u32) from the byte array at the given index
-    fn base_position_at(&self, position_index: u32) -> u32 {
-        tracing::error!("base_position = {}", self.indexes.base_position());
-        if let Some(index) = self.indexes.get(position_index) {
-            index.position() - self.indexes.base_position()
-        } else {
-            0
-        }
     }
 
     /// Helper method to read a position (u32) from the byte array at the given index
@@ -305,6 +295,60 @@ impl IggyMessagesBatch {
         Some(IggyMessageView::new(
             &self.messages[start_position..end_position],
         ))
+    }
+
+    /// Creates a batch from a vector of messages. Note that this implementation is:
+    /// - Inefficient with multiple buffer allocations and copies
+    /// - Serializes each message individually rather than in batches
+    /// - Designed for testing purposes only, not optimized for production
+    /// - May cause performance issues with large message collections
+    ///
+    /// This should be used only for testing purposes!
+    /// TODO(hubcio): maybe it can be removed
+    #[cfg(test)]
+    pub fn from_messages_vec(messages: &[crate::prelude::IggyMessage]) -> Self {
+        use crate::prelude::BytesSerializable;
+        use bytes::{BufMut, BytesMut};
+
+        if messages.is_empty() {
+            return Self::empty();
+        }
+
+        let messages_count = messages.len() as u32;
+        let mut total_size = 0;
+        for msg in messages.iter() {
+            total_size += msg.get_size_bytes().as_bytes_usize();
+        }
+
+        let mut messages_buffer = BytesMut::with_capacity(total_size);
+        let mut indexes_buffer = BytesMut::new();
+        let mut current_position = 0;
+
+        for (i, message) in messages.iter().enumerate() {
+            message.write_to_buffer(&mut messages_buffer);
+
+            let msg_size = message.get_size_bytes().as_bytes_u32();
+            current_position += msg_size;
+
+            let offset = i as u32;
+
+            indexes_buffer.put_u32_le(offset);
+            indexes_buffer.put_u32_le(current_position);
+            indexes_buffer.put_u64_le(0); // timestamps from indexes are not used
+        }
+
+        let indexes = crate::models::messaging::IggyIndexes::new(indexes_buffer.freeze(), 0);
+
+        Self {
+            count: messages_count,
+            indexes,
+            messages: messages_buffer.freeze(),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn get_indexes(&self) -> &crate::models::messaging::IggyIndexes {
+        &self.indexes
     }
 }
 

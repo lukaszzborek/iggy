@@ -13,8 +13,8 @@ use tracing::debug;
 
 #[derive(Debug)]
 pub struct IggyPollMetadata {
-    partition_id: u32,
-    current_offset: u64,
+    pub partition_id: u32,
+    pub current_offset: u64,
 }
 
 impl IggyPollMetadata {

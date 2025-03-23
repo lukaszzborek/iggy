@@ -141,10 +141,11 @@ async fn test_get_messages_by_offset(
         );
 
         let message = IggyMessage::builder()
-            .with_id(id)
-            .with_payload(payload)
-            .with_user_headers_map(headers)
-            .build();
+            .id(id)
+            .payload(payload)
+            .headers(headers)
+            .build()
+            .expect("Failed to create message with valid payload and headers");
         all_messages.push(message);
     }
 

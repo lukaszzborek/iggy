@@ -5,7 +5,7 @@ use crate::http::client::HttpClient;
 use crate::http::HttpTransport;
 use crate::identifier::Identifier;
 use crate::messages::{Partitioning, PollingStrategy};
-use crate::prelude::{IggyMessage, PolledMessages};
+use crate::prelude::{FlushUnsavedBuffer, IggyMessage, PollMessages, PolledMessages, SendMessages};
 use async_trait::async_trait;
 
 #[async_trait]
@@ -20,7 +20,6 @@ impl MessageClient for HttpClient {
         count: u32,
         auto_commit: bool,
     ) -> Result<PolledMessages, IggyError> {
-        /*
         let response = self
             .get_with_query(
                 &get_path(&stream_id.as_cow_str(), &topic_id.as_cow_str()),
@@ -40,8 +39,6 @@ impl MessageClient for HttpClient {
             .await
             .map_err(|_| IggyError::InvalidJsonResponse)?;
         Ok(messages)
-        */
-        todo!()
     }
 
     async fn send_messages(
@@ -51,20 +48,12 @@ impl MessageClient for HttpClient {
         partitioning: &Partitioning,
         messages: &mut [IggyMessage],
     ) -> Result<(), IggyError> {
-        /*
         self.post(
             &get_path(&stream_id.as_cow_str(), &topic_id.as_cow_str()),
-            &SendMessages {
-                stream_id: stream_id.clone(),
-                topic_id: topic_id.clone(),
-                partitioning: partitioning.clone(),
-                messages: messages.to_vec(),
-            },
+            &SendMessages::as_bytes(stream_id, topic_id, partitioning, messages),
         )
         .await?;
         Ok(())
-        */
-        todo!()
     }
 
     async fn flush_unsaved_buffer(
@@ -74,7 +63,6 @@ impl MessageClient for HttpClient {
         partition_id: u32,
         fsync: bool,
     ) -> Result<(), IggyError> {
-        /*
         let _ = self
             .get_with_query(
                 &get_path_flush_unsaved_buffer(
@@ -92,8 +80,6 @@ impl MessageClient for HttpClient {
             )
             .await?;
         Ok(())
-        */
-        todo!()
     }
 }
 

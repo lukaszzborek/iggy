@@ -42,12 +42,6 @@ impl PartitionStorage for FilePartitionStorage {
         let dir_entries = fs::read_dir(&partition.partition_path).await;
         if fs::read_dir(&partition.partition_path)
                 .await
-                .inspect_err(|err| {
-                    error!(
-                            "Failed to read partition with ID: {} for stream with ID: {} and topic with ID: {} and path: {}. Error: {}",
-                            partition.partition_id, partition.stream_id, partition.topic_id, partition.partition_path, err
-                        );
-                })
                 .with_error_context(|error| format!(
                     "{COMPONENT} (error: {error}) - failed to read partition with ID: {} for stream with ID: {} and topic with ID: {} and path: {}.",
                     partition.partition_id, partition.stream_id, partition.topic_id, partition.partition_path,
@@ -132,11 +126,6 @@ impl PartitionStorage for FilePartitionStorage {
             segment.load_from_disk().await.with_error_context(|error| {
                 format!("{COMPONENT} (error: {error}) - failed to load segment: {segment}",)
             })?;
-            let capacity = partition.config.partition.messages_required_to_save;
-            // TODO(hubcio)
-            // if !segment.is_closed() {
-            //     segment.unsaved_messages = Some(Default::default());
-            // }
 
             // If the first segment has at least a single message, we should increment the offset.
             if !partition.should_increment_offset {
@@ -187,9 +176,7 @@ impl PartitionStorage for FilePartitionStorage {
             if end_offset_index == segments_count - 1 {
                 break;
             }
-
-            // TODO(hubcio): fix this
-            // segment.end_offset() = end_offsets[end_offset_index];
+            segment.set_end_offset(end_offsets[end_offset_index]);
         }
 
         if !partition.segments.is_empty() {

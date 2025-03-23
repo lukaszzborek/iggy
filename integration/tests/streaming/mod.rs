@@ -28,7 +28,8 @@ fn create_messages() -> Vec<IggyMessage> {
 fn create_message(id: u128, payload: &str) -> IggyMessage {
     let payload = Bytes::from(payload.to_string());
     IggyMessage::builder()
-        .with_id(id)
-        .with_payload(payload)
+        .id(id)
+        .payload(payload)
         .build()
+        .expect("Failed to create message with valid payload and headers")
 }

@@ -1,9 +1,10 @@
 use crate::{
     error::IggyError,
-    prelude::{BytesSerializable, IggyMessage},
+    prelude::{BytesSerializable, IggyMessage, IggyMessageHeader, IGGY_MESSAGE_HEADER_SIZE},
 };
-use bytes::{Bytes, BytesMut};
+use bytes::Bytes;
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 /// The wrapper on top of the collection of messages that are polled from the partition.
 /// It consists of the following fields:
@@ -58,7 +59,9 @@ impl BytesSerializable for PolledMessages {
                 .try_into()
                 .map_err(|_| IggyError::InvalidNumberEncoding)?,
         );
-        let messages = IggyMessage::from_raw_bytes(bytes.slice(16..), count)?;
+
+        let messages = messages_vec(bytes.slice(16..), count)?;
+
         Ok(Self {
             partition_id,
             current_offset,
@@ -66,12 +69,48 @@ impl BytesSerializable for PolledMessages {
             messages,
         })
     }
+}
 
-    fn write_to_buffer(&self, buf: &mut BytesMut) {
-        todo!()
+/// Convert Bytes to messages
+fn messages_vec(buffer: Bytes, count: u32) -> Result<Vec<IggyMessage>, IggyError> {
+    let mut messages = Vec::with_capacity(count as usize);
+    let mut position = 0;
+    let buf_len = buffer.len();
+
+    while position < buf_len {
+        if position + IGGY_MESSAGE_HEADER_SIZE as usize > buf_len {
+            break;
+        }
+        let header_bytes = buffer.slice(position..position + IGGY_MESSAGE_HEADER_SIZE as usize);
+        let header = match IggyMessageHeader::from_bytes(header_bytes) {
+            Ok(h) => h,
+            Err(e) => {
+                error!("Failed to deserialize message header: {}", e);
+                return Err(e);
+            }
+        };
+        position += IGGY_MESSAGE_HEADER_SIZE as usize;
+
+        let payload_end = position + header.payload_length as usize;
+        if payload_end > buf_len {
+            break;
+        }
+        let payload = buffer.slice(position..payload_end);
+        position = payload_end;
+
+        let headers: Option<Bytes> = if header.user_headers_length > 0 {
+            Some(buffer.slice(position..position + header.user_headers_length as usize))
+        } else {
+            None
+        };
+        position += header.user_headers_length as usize;
+
+        messages.push(IggyMessage {
+            header,
+            payload,
+            user_headers: headers,
+        });
     }
 
-    fn get_buffer_size(&self) -> u32 {
-        unimplemented!();
-    }
+    Ok(messages)
 }

@@ -133,16 +133,6 @@ impl Validatable<IggyError> for SendMessages {
         for message in IggyMessageViewIterator::new(&self.batch) {
             message_count += 1;
 
-            // TODO(hubcio): IMHO validation of headers should be purely on SDK side
-            // if let Some(headers) = message.headers() {
-            //     for value in headers.values() {
-            //         headers_size += value.value.len() as u32;
-            //         if headers_size > MAX_HEADERS_SIZE {
-            //             return Err(IggyError::TooBigHeadersPayload);
-            //         }
-            //     }
-            // }
-
             let message_payload = message.payload();
             payload_size += message_payload.len() as u32;
             if payload_size > MAX_PAYLOAD_SIZE {
@@ -171,7 +161,7 @@ impl BytesSerializable for SendMessages {
         panic!("should not be used")
     }
 
-    fn from_bytes(bytes: Bytes) -> Result<SendMessages, IggyError> {
+    fn from_bytes(_bytes: Bytes) -> Result<SendMessages, IggyError> {
         panic!("should not be used")
     }
 }
@@ -190,98 +180,7 @@ impl Display for SendMessages {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
     use super::*;
-
-    #[test]
-    fn should_be_serialized_as_bytes() {
-        let message_1 = IggyMessage::from_str("hello 1").unwrap();
-        let message_2 = IggyMessage::new(Some(2), "hello 2".into(), None);
-        let message_3 = IggyMessage::new(Some(3), "hello 3".into(), None);
-        let messages = vec![message_1, message_2, message_3];
-        let command = SendMessages {
-            stream_id: Identifier::numeric(1).unwrap(),
-            topic_id: Identifier::numeric(2).unwrap(),
-            partitioning: Partitioning::partition_id(4),
-            messages,
-        };
-
-        let bytes = command.to_bytes();
-
-        let mut position = 0;
-        let stream_id = Identifier::from_bytes(bytes.clone()).unwrap();
-        position += stream_id.get_size_bytes().as_bytes_usize();
-        let topic_id = Identifier::from_bytes(bytes.slice(position..)).unwrap();
-        position += topic_id.get_size_bytes().as_bytes_usize();
-        let key = Partitioning::from_bytes(bytes.slice(position..)).unwrap();
-        position += key.get_size_bytes().as_bytes_usize();
-        let messages = bytes.slice(position..);
-        let command_messages = command
-            .messages
-            .iter()
-            .fold(BytesMut::new(), |mut bytes_mut, message| {
-                bytes_mut.put(message.to_bytes());
-                bytes_mut
-            })
-            .freeze();
-
-        assert!(!bytes.is_empty());
-        assert_eq!(stream_id, command.stream_id);
-        assert_eq!(topic_id, command.topic_id);
-        assert_eq!(key, command.partitioning);
-        assert_eq!(messages, command_messages);
-    }
-
-    #[test]
-    fn should_be_deserialized_from_bytes() {
-        let stream_id = Identifier::numeric(1).unwrap();
-        let topic_id = Identifier::numeric(2).unwrap();
-        let key = Partitioning::partition_id(4);
-
-        let message_1 = IggyMessage::from_str("hello 1").unwrap();
-        let message_2 = IggyMessage::new(Some(2), "hello 2".into(), None);
-        let message_3 = IggyMessage::new(Some(3), "hello 3".into(), None);
-        let messages = [
-            message_1.to_bytes(),
-            message_2.to_bytes(),
-            message_3.to_bytes(),
-        ]
-        .concat();
-
-        let key_bytes = key.to_bytes();
-        let stream_id_bytes = stream_id.to_bytes();
-        let topic_id_bytes = topic_id.to_bytes();
-        let current_position = stream_id_bytes.len() + topic_id_bytes.len() + key_bytes.len();
-        let mut bytes = BytesMut::with_capacity(current_position);
-        bytes.put_slice(&stream_id_bytes);
-        bytes.put_slice(&topic_id_bytes);
-        bytes.put_slice(&key_bytes);
-        bytes.put_slice(&messages);
-        let bytes = bytes.freeze();
-        let command = SendMessages::from_bytes(bytes.clone());
-        assert!(command.is_ok());
-
-        let messages_payloads = bytes.slice(current_position..);
-        let mut position = 0;
-        let mut messages = Vec::new();
-        while position < messages_payloads.len() {
-            let message = IggyMessage::from_bytes(messages_payloads.slice(position..)).unwrap();
-            position += message.get_size_bytes().as_bytes_usize();
-            messages.push(message);
-        }
-
-        let command = command.unwrap();
-        assert_eq!(command.stream_id, stream_id);
-        assert_eq!(command.topic_id, topic_id);
-        assert_eq!(command.partitioning, key);
-        for (index, message) in command.messages.iter().enumerate() {
-            let command_message = &command.messages[index];
-            assert_eq!(command_message.id, message.id);
-            assert_eq!(command_message.length, message.length);
-            assert_eq!(command_message.payload, message.payload);
-        }
-    }
 
     #[test]
     fn key_of_type_balanced_should_have_empty_value() {

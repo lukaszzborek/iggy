@@ -2,6 +2,7 @@ use crate::http::error::CustomError;
 use crate::http::jwt::json_web_token::Identity;
 use crate::http::shared::AppState;
 use crate::http::COMPONENT;
+use crate::streaming::segments::{IggyIndexesMut, IggyMessagesBatchMut};
 use crate::streaming::session::Session;
 use crate::streaming::systems::messages::PollingArgs;
 use crate::streaming::utils::random_id;
@@ -9,9 +10,11 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing::get;
 use axum::{Extension, Json, Router};
+use bytes::BytesMut;
 use error_set::ErrContext;
 use iggy::consumer::Consumer;
 use iggy::identifier::Identifier;
+use iggy::models::messaging::IggyMessagesBatch;
 use iggy::prelude::*;
 use iggy::validatable::Validatable;
 use std::sync::Arc;
@@ -35,31 +38,31 @@ async fn poll_messages(
     Extension(identity): Extension<Identity>,
     Path((stream_id, topic_id)): Path<(String, String)>,
     mut query: Query<PollMessages>,
-) -> Result<Json<Vec<IggyMessage>>, CustomError> {
-    // query.stream_id = Identifier::from_str_value(&stream_id)?;
-    // query.topic_id = Identifier::from_str_value(&topic_id)?;
-    // query.validate()?;
+) -> Result<Json<PolledMessages>, CustomError> {
+    query.stream_id = Identifier::from_str_value(&stream_id)?;
+    query.topic_id = Identifier::from_str_value(&topic_id)?;
+    query.validate()?;
 
-    // let consumer = Consumer::new(query.0.consumer.id);
-    // let system = state.system.read().await;
-    // let polled_messages = system
-    //     .poll_messages(
-    //         &Session::stateless(identity.user_id, identity.ip_address),
-    //         &consumer,
-    //         &query.0.stream_id,
-    //         &query.0.topic_id,
-    //         query.0.partition_id,
-    //         PollingArgs::new(query.0.strategy, query.0.count, query.0.auto_commit),
-    //     )
-    //     .await
-    //     .with_error_context(|error| {
-    //         format!(
-    //             "{COMPONENT} (error: {error}) - failed to poll messages, stream ID: {}, topic ID: {}, partition ID: {:?}",
-    //             stream_id, topic_id, query.0.partition_id
-    //         )
-    //     })?;
-    // Ok(Json(polled_messages))
-    todo!()
+    let consumer = Consumer::new(query.0.consumer.id);
+    let system = state.system.read().await;
+    let (metadata, messages) = system
+        .poll_messages(
+            &Session::stateless(identity.user_id, identity.ip_address),
+            &consumer,
+            &query.0.stream_id,
+            &query.0.topic_id,
+            query.0.partition_id,
+            PollingArgs::new(query.0.strategy, query.0.count, query.0.auto_commit),
+        )
+        .await
+        .with_error_context(|error| {
+            format!(
+                "{COMPONENT} (error: {error}) - failed to poll messages, stream ID: {}, topic ID: {}, partition ID: {:?}",
+                stream_id, topic_id, query.0.partition_id
+            )
+        })?;
+    let polled_messages = messages.into_polled_messages(metadata);
+    Ok(Json(polled_messages))
 }
 
 async fn send_messages(
@@ -68,31 +71,30 @@ async fn send_messages(
     Path((stream_id, topic_id)): Path<(String, String)>,
     Json(mut command): Json<SendMessages>,
 ) -> Result<StatusCode, CustomError> {
-    //TODO: Fix me
-    /*
     command.stream_id = Identifier::from_str_value(&stream_id)?;
     command.topic_id = Identifier::from_str_value(&topic_id)?;
     command.partitioning.length = command.partitioning.value.len() as u8;
-    command.messages.iter_mut().for_each(|msg| {
-        if msg.id == 0 {
-            msg.id = random_id::get_uuid();
-        }
-    });
+    // TODO(hubcio): Add message ID generation?
+    // command.messages.iter_mut().for_each(|msg| {
+    //     if msg.id == 0 {
+    //         msg.id = random_id::get_uuid();
+    //     }
+    // });
     command.validate()?;
 
-    let messages = command.messages;
+    let batch = make_mutable(command.batch);
     let command_stream_id = command.stream_id;
     let command_topic_id = command.topic_id;
     let partitioning = command.partitioning;
     let system = state.system.read().await;
-    // TODO(haze): Add confirmation level after testing is complete
+
     system
         .append_messages(
             &Session::stateless(identity.user_id, identity.ip_address),
-            command_stream_id,
-            command_topic_id,
-            partitioning,
-            messages,
+            &command_stream_id,
+            &command_topic_id,
+            &partitioning,
+            batch,
             None,
         )
         .await
@@ -103,8 +105,6 @@ async fn send_messages(
             )
         })?;
     Ok(StatusCode::CREATED)
-    */
-    todo!()
 }
 
 #[instrument(skip_all, name = "trace_flush_unsaved_buffer", fields(iggy_user_id = identity.user_id, iggy_stream_id = stream_id, iggy_topic_id = topic_id, iggy_partition_id = partition_id, iggy_fsync = fsync))]
@@ -126,4 +126,12 @@ async fn flush_unsaved_buffer(
         )
         .await?;
     Ok(StatusCode::OK)
+}
+
+fn make_mutable(batch: IggyMessagesBatch) -> IggyMessagesBatchMut {
+    let (_, indexes, messages) = batch.decompose();
+    let (_, indexes_buffer) = indexes.decompose();
+    let indexes_buffer_mut = BytesMut::from(indexes_buffer);
+    let indexes_mut = IggyIndexesMut::from_bytes(indexes_buffer_mut);
+    IggyMessagesBatchMut::from_indexes_and_messages(indexes_mut, messages.into())
 }

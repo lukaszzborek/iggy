@@ -85,7 +85,7 @@ impl BytesSerializable for IggyMessageHeaderView<'_> {
         panic!("should not be used")
     }
 
-    fn from_bytes(bytes: Bytes) -> Result<Self, IggyError> {
+    fn from_bytes(_bytes: Bytes) -> Result<Self, IggyError> {
         panic!("should not be used")
     }
 

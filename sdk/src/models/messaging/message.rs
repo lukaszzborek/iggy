@@ -11,114 +11,262 @@ use serde::{Deserialize, Serialize};
 use serde_with::base64::Base64;
 use serde_with::serde_as;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::str::FromStr;
-use tracing::error;
+use tracing::warn;
 
-/// The single message. It is exact format in which message is saved to / retrieved from the disk.
+/// A message stored in the Iggy messaging system.
+///
+/// `IggyMessage` represents a single message that can be sent to or received from
+/// a stream. Each message consists of:
+/// * A header with message metadata
+/// * A payload (the actual content)
+/// * Optional user-defined headers for additional context
+///
+/// # Examples
+///
+/// ```
+/// // Create a simple text message
+/// let message = IggyMessage::create("Hello world!");
+///
+/// // Create a message with custom ID
+/// let message = IggyMessage::with_id(42, "Custom message".into());
+///
+/// // Create a message with headers
+/// let mut headers = HashMap::new();
+/// headers.insert(HeaderKey::new("content-type")?, HeaderValue::from_str("text/plain")?);
+/// let message = IggyMessage::with_headers("Message with metadata".into(), headers);
+/// ```
 #[serde_as]
-#[derive(Default, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct IggyMessage {
-    /// Message header
+    /// Message metadata
     pub header: IggyMessageHeader,
-    /// Message payload
+
+    /// Message content
     #[serde_as(as = "Base64")]
     pub payload: Bytes,
+
+    /// Optional user-defined headers
     pub user_headers: Option<Bytes>,
 }
 
 impl IggyMessage {
-    /// Create a message with payload
-    pub fn new(payload: Bytes) -> Self {
-        Self::builder().with_payload(payload).build()
+    /// Creates a new message with the given payload.
+    ///
+    /// This is the simplest way to create a message when you don't need
+    /// custom IDs or headers.
+    ///
+    /// # Arguments
+    ///
+    /// * `payload` - The message content
+    ///
+    /// # Returns
+    ///
+    /// A new `IggyMessage` with the provided payload
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let message = IggyMessage::create("Hello world!");
+    /// ```
+    pub fn create<T: Into<Bytes>>(payload: T) -> Self {
+        Self::builder()
+            .payload(payload)
+            .build()
+            .expect("Failed to create message with valid payload")
     }
 
-    /// Create a message with ID and payload
-    pub fn with_id(id: u128, payload: Bytes) -> Self {
-        Self::builder().with_id(id).with_payload(payload).build()
+    /// Creates a new message with a specific ID and payload.
+    ///
+    /// Use this when you need to control the message ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - Custom message ID
+    /// * `payload` - The message content
+    ///
+    /// # Returns
+    ///
+    /// A new `IggyMessage` with the provided ID and payload
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let message = IggyMessage::with_id(42, "My message".into());
+    /// ```
+    pub fn with_id<T: Into<Bytes>>(id: u128, payload: T) -> Self {
+        Self::builder()
+            .id(id)
+            .payload(payload)
+            .build()
+            .expect("Failed to create message with valid payload")
     }
 
-    /// Create a message with ID, payload and user headers
-    pub fn with_id_and_headers(
-        id: u128,
-        payload: Bytes,
+    /// Creates a new message with payload and user-defined headers.
+    ///
+    /// # Arguments
+    ///
+    /// * `payload` - The message content
+    /// * `headers` - Key-value headers to attach to the message
+    ///
+    /// # Returns
+    ///
+    /// A new `IggyMessage` with the provided payload and headers
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut headers = HashMap::new();
+    /// headers.insert(HeaderKey::new("content-type")?, HeaderValue::from_str("text/plain")?);
+    ///
+    /// let message = IggyMessage::with_headers("My message".into(), headers);
+    /// ```
+    pub fn with_headers<T: Into<Bytes>>(
+        payload: T,
         headers: HashMap<HeaderKey, HeaderValue>,
     ) -> Self {
         Self::builder()
-            .with_id(id)
-            .with_payload(payload)
-            .with_user_headers_map(headers)
+            .payload(payload)
+            .headers(headers)
             .build()
+            .expect("Failed to create message with valid payload and headers")
     }
 
-    /// Start a builder for more complex configuration
+    /// Creates a new message with a specific ID, payload, and user-defined headers.
+    ///
+    /// This is the most flexible way to create a message with full control.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - Custom message ID
+    /// * `payload` - The message content
+    /// * `headers` - Key-value headers to attach to the message
+    ///
+    /// # Returns
+    ///
+    /// A new `IggyMessage` with all provided parameters
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut headers = HashMap::new();
+    /// headers.insert(HeaderKey::new("content-type")?, HeaderValue::from_str("text/plain")?);
+    ///
+    /// let message = IggyMessage::with_id_and_headers(42, "My message".into(), headers);
+    /// ```
+    pub fn with_id_and_headers<T: Into<Bytes>>(
+        id: u128,
+        payload: T,
+        headers: HashMap<HeaderKey, HeaderValue>,
+    ) -> Self {
+        Self::builder()
+            .id(id)
+            .payload(payload)
+            .headers(headers)
+            .build()
+            .expect("Failed to create message with valid payload and headers")
+    }
+
+    /// Creates a message builder for advanced configuration.
+    ///
+    /// Use the builder when you need fine-grained control over message creation.
+    ///
+    /// # Returns
+    ///
+    /// A new `IggyMessageBuilder` instance
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let message = IggyMessage::builder()
+    ///     .id(123)
+    ///     .payload("Hello")
+    ///     .header("content-type", "text/plain")
+    ///     .build()?;
+    /// ```
     pub fn builder() -> IggyMessageBuilder {
         IggyMessageBuilder::new()
     }
 
-    /// Return instantiated user headers map
+    /// Gets the user headers as a typed HashMap.
+    ///
+    /// This method parses the binary header data into a typed HashMap for easy access.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Some(HashMap))` - Successfully parsed headers
+    /// * `Ok(None)` - No headers present
+    /// * `Err(IggyError)` - Error parsing headers
     pub fn user_headers_map(&self) -> Result<Option<HashMap<HeaderKey, HeaderValue>>, IggyError> {
-        if let Some(headers) = &self.user_headers {
-            let headers_bytes = Bytes::copy_from_slice(headers);
-
-            match HashMap::<HeaderKey, HeaderValue>::from_bytes(headers_bytes) {
-                Ok(h) => Ok(Some(h)),
-                Err(e) => {
-                    tracing::error!(
-                        "Error parsing headers: {}, header_length={}",
-                        e,
-                        self.header.user_headers_length
-                    );
-
-                    Ok(None)
+        match &self.user_headers {
+            Some(headers) => {
+                let headers_bytes = Bytes::copy_from_slice(headers);
+                match HashMap::<HeaderKey, HeaderValue>::from_bytes(headers_bytes) {
+                    Ok(h) => Ok(Some(h)),
+                    Err(e) => {
+                        warn!(
+                            "Failed to deserialize user headers: {e}, user_headers_length: {}, skipping field...",
+                            self.header.user_headers_length
+                        );
+                        Ok(None)
+                    }
                 }
             }
-        } else {
-            Ok(None)
+            None => Ok(None),
         }
     }
 
-    /// Convert Bytes to messages
-    pub(crate) fn from_raw_bytes(buffer: Bytes, count: u32) -> Result<Vec<IggyMessage>, IggyError> {
-        let mut messages = Vec::with_capacity(count as usize);
-        let mut position = 0;
-        let buf_len = buffer.len();
+    /// Retrieves a specific user header value by key.
+    ///
+    /// This is a convenience method to get a specific header without handling the full map.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The header key to look up
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Some(HeaderValue))` - Header found with its value
+    /// * `Ok(None)` - Header not found or headers couldn't be parsed
+    /// * `Err(IggyError)` - Error accessing headers
+    pub fn get_header(&self, key: &HeaderKey) -> Result<Option<HeaderValue>, IggyError> {
+        Ok(self
+            .user_headers_map()?
+            .and_then(|map| map.get(key).cloned()))
+    }
 
-        while position < buf_len {
-            if position + IGGY_MESSAGE_HEADER_SIZE as usize > buf_len {
-                break;
-            }
-            let header_bytes = buffer.slice(position..position + IGGY_MESSAGE_HEADER_SIZE as usize);
-            let header = match IggyMessageHeader::from_bytes(header_bytes) {
-                Ok(h) => h,
-                Err(e) => {
-                    error!("Failed to parse message header: {}", e);
-                    return Err(e);
-                }
-            };
-            position += IGGY_MESSAGE_HEADER_SIZE as usize;
+    /// Checks if this message contains a specific header key.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The header key to check for
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(true)` - Header exists
+    /// * `Ok(false)` - Header doesn't exist or headers couldn't be parsed
+    /// * `Err(IggyError)` - Error accessing headers
+    pub fn has_header(&self, key: &HeaderKey) -> Result<bool, IggyError> {
+        Ok(self
+            .user_headers_map()?
+            .is_some_and(|map| map.contains_key(key)))
+    }
 
-            let payload_end = position + header.payload_length as usize;
-            if payload_end > buf_len {
-                break;
-            }
-            let payload = buffer.slice(position..payload_end);
-            position = payload_end;
+    /// Gets the payload as a UTF-8 string, if valid.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(String)` - Successfully converted payload to string
+    /// * `Err(IggyError)` - Payload is not valid UTF-8
+    pub fn payload_as_string(&self) -> Result<String, IggyError> {
+        String::from_utf8(self.payload.to_vec()).map_err(|_| IggyError::InvalidUtf8)
+    }
+}
 
-            let headers: Option<Bytes> = if header.user_headers_length > 0 {
-                Some(buffer.slice(position..position + header.user_headers_length as usize))
-            } else {
-                None
-            };
-            position += header.user_headers_length as usize;
-
-            messages.push(IggyMessage {
-                header,
-                payload,
-                user_headers: headers,
-            });
-        }
-
-        Ok(messages)
+impl Default for IggyMessage {
+    fn default() -> Self {
+        Self::create("hello world")
     }
 }
 
@@ -126,45 +274,45 @@ impl FromStr for IggyMessage {
     type Err = IggyError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let payload = Bytes::from(s.as_bytes().to_vec());
-        Ok(IggyMessage::new(payload))
+        Ok(Self::create(Bytes::from(s.to_owned())))
     }
 }
 
 impl std::fmt::Display for IggyMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let len = self.payload.len();
-
-        if len > 40 {
-            write!(
-                f,
-                "{}|{}...{}",
-                self.header.id,
-                String::from_utf8_lossy(&self.payload[..20]),
-                String::from_utf8_lossy(&self.payload[len - 20..])
-            )
-        } else {
-            write!(
-                f,
-                "{}|{}",
-                self.header.id,
-                String::from_utf8_lossy(&self.payload)
-            )
+        match String::from_utf8(self.payload.to_vec()) {
+            Ok(payload) => {
+                let preview = if payload.len() > 50 {
+                    format!("{}... ({}B)", &payload[..47], self.payload.len())
+                } else {
+                    payload
+                };
+                write!(
+                    f,
+                    "[{}] ID:{} '{}'",
+                    self.header.offset, self.header.id, preview
+                )
+            }
+            Err(_) => {
+                write!(
+                    f,
+                    "[{}] ID:{} <binary {}B>",
+                    self.header.offset,
+                    self.header.id,
+                    self.payload.len()
+                )
+            }
         }
     }
 }
 
 impl Sizeable for IggyMessage {
     fn get_size_bytes(&self) -> IggyByteSize {
-        let payload_len = IggyByteSize::from(self.payload.len() as u64);
-        let headers_len = if let Some(headers) = &self.user_headers {
-            IggyByteSize::from(headers.len() as u64)
-        } else {
-            IggyByteSize::from(0)
-        };
-        let message_header_len = IggyByteSize::from(IGGY_MESSAGE_HEADER_SIZE as u64);
+        let payload_len = self.payload.len() as u64;
+        let headers_len = self.user_headers.as_ref().map_or(0, |h| h.len() as u64);
+        let message_header_len = IGGY_MESSAGE_HEADER_SIZE as u64;
 
-        payload_len + headers_len + message_header_len
+        IggyByteSize::from(payload_len + headers_len + message_header_len)
     }
 }
 
@@ -184,19 +332,27 @@ impl BytesSerializable for IggyMessage {
         if bytes.len() < IGGY_MESSAGE_HEADER_SIZE as usize {
             return Err(IggyError::InvalidCommand);
         }
+
         let mut position = 0;
         let header =
             IggyMessageHeader::from_bytes(bytes.slice(0..IGGY_MESSAGE_HEADER_SIZE as usize))?;
 
         position += IGGY_MESSAGE_HEADER_SIZE as usize;
-        let payload = bytes.slice(position..position + header.payload_length as usize);
-        if payload.len() != header.payload_length as usize {
+        let payload_end = position + header.payload_length as usize;
+
+        if payload_end > bytes.len() {
             return Err(IggyError::InvalidMessagePayloadLength);
         }
 
-        position += header.payload_length as usize;
+        let payload = bytes.slice(position..payload_end);
+        position = payload_end;
+
         let user_headers = if header.user_headers_length > 0 {
-            Some(bytes.slice(position..position + header.user_headers_length as usize))
+            let headers_end = position + header.user_headers_length as usize;
+            if headers_end > bytes.len() {
+                return Err(IggyError::InvalidHeaderValue);
+            }
+            Some(bytes.slice(position..headers_end))
         } else {
             None
         };
@@ -208,7 +364,6 @@ impl BytesSerializable for IggyMessage {
         })
     }
 
-    /// Write message to bytes mut
     fn write_to_buffer(&self, buf: &mut BytesMut) {
         buf.put_slice(&self.header.to_bytes());
         buf.put_slice(&self.payload);
@@ -218,6 +373,10 @@ impl BytesSerializable for IggyMessage {
     }
 }
 
+/// Builder for creating `IggyMessage` instances with flexible configuration.
+///
+/// The builder pattern allows for clear, step-by-step construction of complex
+/// message configurations, with better error handling than chained constructors.
 #[derive(Debug, Default)]
 pub struct IggyMessageBuilder {
     id: Option<u128>,
@@ -226,39 +385,64 @@ pub struct IggyMessageBuilder {
 }
 
 impl IggyMessageBuilder {
+    /// Creates a new empty message builder.
     pub fn new() -> Self {
-        Self {
-            id: None,
-            payload: None,
-            headers: None,
-        }
+        Self::default()
     }
 
-    pub fn with_id(mut self, id: u128) -> Self {
+    /// Sets the message ID.
+    ///
+    /// If not specified, a default ID (0) will be used.
+    pub fn id(mut self, id: u128) -> Self {
         self.id = Some(id);
         self
     }
 
-    pub fn with_payload(mut self, payload: Bytes) -> Self {
-        self.payload = Some(payload);
+    /// Sets the message payload.
+    ///
+    /// This method accepts any type that can be converted into `Bytes`,
+    /// including strings, byte slices, and vectors.
+    pub fn payload<T: Into<Bytes>>(mut self, payload: T) -> Self {
+        self.payload = Some(payload.into());
         self
     }
 
-    pub fn with_user_key_value_header(mut self, key: HeaderKey, value: HeaderValue) -> Self {
+    /// Adds a single header key-value pair to the message.
+    ///
+    /// Multiple calls will add multiple headers.
+    pub fn header(mut self, key: HeaderKey, value: HeaderValue) -> Self {
         let headers = self.headers.get_or_insert_with(HashMap::new);
         headers.insert(key, value);
         self
     }
 
-    pub fn with_user_headers_map(
-        mut self,
-        headers: impl Into<Option<HashMap<HeaderKey, HeaderValue>>>,
-    ) -> Self {
-        self.headers = headers.into();
+    /// Adds a string header with the given key and value.
+    ///
+    /// This is a convenience method for adding string headers without
+    /// manually creating HeaderValue objects.
+    pub fn string_header(mut self, key: &str, value: &str) -> Result<Self, IggyError> {
+        let key = HeaderKey::new(key)?;
+        let value = HeaderValue::from_str(value)?;
+        let headers = self.headers.get_or_insert_with(HashMap::new);
+        headers.insert(key, value);
+        Ok(self)
+    }
+
+    /// Sets all headers at once from a HashMap.
+    ///
+    /// This replaces any headers previously added.
+    pub fn headers(mut self, headers: HashMap<HeaderKey, HeaderValue>) -> Self {
+        self.headers = Some(headers);
         self
     }
 
-    pub fn build(self) -> IggyMessage {
+    /// Builds the final IggyMessage from the configured parameters.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(IggyMessage)` - Successfully built message
+    /// * `Err(IggyError)` - Error during message construction
+    pub fn build(self) -> Result<IggyMessage, IggyError> {
         let payload = self.payload.unwrap_or_default();
         let id = self.id.unwrap_or(0);
         let headers_length = get_headers_size_bytes(&self.headers).as_bytes_u64() as u32;
@@ -275,28 +459,116 @@ impl IggyMessageBuilder {
 
         let user_headers = self.headers.map(|headers| headers.to_bytes());
 
-        IggyMessage {
+        Ok(IggyMessage {
             header,
             payload,
             user_headers,
-        }
+        })
+    }
+}
+
+// Clean implementations of conversion traits
+
+impl From<IggyMessage> for Bytes {
+    fn from(message: IggyMessage) -> Self {
+        message.to_bytes()
     }
 }
 
 impl From<String> for IggyMessage {
     fn from(s: String) -> Self {
-        Self::new(Bytes::from(s))
+        Self::create(s)
     }
 }
 
 impl From<&str> for IggyMessage {
     fn from(s: &str) -> Self {
-        Self::new(Bytes::from(s.to_owned()))
+        Self::create(Bytes::from(s.to_owned()))
     }
 }
 
 impl From<Vec<u8>> for IggyMessage {
     fn from(v: Vec<u8>) -> Self {
-        Self::new(Bytes::from(v))
+        Self::create(v)
+    }
+}
+
+impl From<&[u8]> for IggyMessage {
+    fn from(bytes: &[u8]) -> Self {
+        Self::create(Bytes::copy_from_slice(bytes))
+    }
+}
+
+impl TryFrom<Bytes> for IggyMessage {
+    type Error = IggyError;
+
+    fn try_from(bytes: Bytes) -> Result<Self, Self::Error> {
+        Self::from_bytes(bytes)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_simple_message() {
+        let message = IggyMessage::create("test message");
+        assert_eq!(message.payload, Bytes::from("test message"));
+        assert_eq!(message.header.id, 0);
+        assert!(message.user_headers.is_none());
+    }
+
+    #[test]
+    fn test_create_with_id() {
+        let message = IggyMessage::with_id(42, "test with id");
+        assert_eq!(message.payload, Bytes::from("test with id"));
+        assert_eq!(message.header.id, 42);
+    }
+
+    #[test]
+    fn test_create_with_headers() {
+        let mut headers = HashMap::new();
+        headers.insert(
+            HeaderKey::new("content-type").unwrap(),
+            HeaderValue::from_str("text/plain").unwrap(),
+        );
+
+        let message = IggyMessage::with_headers("test with headers", headers);
+        assert_eq!(message.payload, Bytes::from("test with headers"));
+        assert!(message.user_headers.is_some());
+
+        let headers_map = message.user_headers_map().unwrap().unwrap();
+        assert_eq!(headers_map.len(), 1);
+        assert!(headers_map.contains_key(&HeaderKey::new("content-type").unwrap()));
+    }
+
+    #[test]
+    fn test_empty_payload() {
+        let message = IggyMessage::create(Bytes::new());
+        assert_eq!(message.payload.len(), 0);
+        assert_eq!(message.header.payload_length, 0);
+    }
+
+    #[test]
+    fn test_from_string() {
+        let message: IggyMessage = "simple message".into();
+        assert_eq!(message.payload, Bytes::from("simple message"));
+    }
+
+    #[test]
+    fn test_payload_as_string() {
+        let message = IggyMessage::create("test message");
+        assert_eq!(message.payload_as_string().unwrap(), "test message");
+    }
+
+    #[test]
+    fn test_serialization_roundtrip() {
+        let original = IggyMessage::with_id(123, "serialization test");
+        let bytes = original.to_bytes();
+        let decoded = IggyMessage::from_bytes(bytes).unwrap();
+
+        assert_eq!(original.header.id, decoded.header.id);
+        assert_eq!(original.payload, decoded.payload);
     }
 }

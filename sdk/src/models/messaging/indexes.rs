@@ -20,6 +20,7 @@ impl IggyIndexes {
         }
     }
 
+    /// Creates a new empty container
     pub fn empty() -> Self {
         Self {
             buffer: Bytes::new(),
@@ -137,6 +138,7 @@ impl IggyIndexes {
         result
     }
 
+    /// Gets the base position of the container
     pub fn base_position(&self) -> u32 {
         self.base_position
     }
@@ -146,6 +148,11 @@ impl IggyIndexes {
         self.get(self.count() - 1)
             .map(|idx| idx.position())
             .unwrap_or(0)
+    }
+
+    /// Decompose the container into its components
+    pub fn decompose(self) -> (u32, Bytes) {
+        (self.base_position, self.buffer)
     }
 }
 

@@ -1,7 +1,10 @@
+use crate::binary::handlers::messages::poll_messages_handler::IggyPollMetadata;
+use bytes::Bytes;
 use iggy::models::messaging::IggyMessageView;
 use iggy::models::messaging::IggyMessagesBatch;
 use iggy::prelude::*;
 use std::ops::Index;
+use tracing::trace;
 
 /// A container for multiple IggyMessagesBatch objects
 #[derive(Debug, Clone, Default)]
@@ -109,6 +112,60 @@ impl IggyMessagesBatchSet {
     /// Iterate over all message containers in the batch
     pub fn iter(&self) -> impl Iterator<Item = &IggyMessagesBatch> {
         self.batches.iter()
+    }
+
+    /// Convert this batch and poll metadata into a vector of fully-formed IggyMessage objects
+    ///
+    /// This method transforms the internal message views into complete IggyMessage objects
+    /// that can be returned to clients.
+    ///
+    /// # Arguments
+    ///
+    /// * `poll_metadata` - Metadata about the partition and current offset
+    ///
+    /// # Returns
+    ///
+    /// A vector of IggyMessage objects with proper metadata
+    pub fn into_polled_messages(&self, poll_metadata: IggyPollMetadata) -> PolledMessages {
+        if self.is_empty() {
+            return PolledMessages {
+                messages: vec![],
+                partition_id: 0,
+                current_offset: 0,
+                count: 0,
+            };
+        }
+
+        let mut messages = Vec::with_capacity(self.count() as usize);
+
+        // TODO(hubcio): this can be also optimized for zero copy, but it's http...
+        for batch in self.iter() {
+            for message in batch.iter() {
+                let header = message.header().to_header();
+                let payload = Bytes::copy_from_slice(message.payload());
+                let user_headers = message.user_headers().map(Bytes::copy_from_slice);
+                let message = IggyMessage {
+                    header,
+                    payload,
+                    user_headers,
+                };
+                messages.push(message);
+            }
+        }
+
+        trace!(
+            "Converted batch of {} messages from partition {} with current offset {}",
+            messages.len(),
+            poll_metadata.partition_id,
+            poll_metadata.current_offset
+        );
+
+        PolledMessages {
+            partition_id: poll_metadata.partition_id,
+            current_offset: poll_metadata.current_offset,
+            count: messages.len() as u32,
+            messages,
+        }
     }
 
     /// Returns a new IggyMessagesBatch containing only messages with offsets greater than or equal to the specified offset,

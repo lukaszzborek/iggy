@@ -162,7 +162,7 @@ impl IggyIndexesMut {
         result
     }
 
-    /// Clears the container, removing all indexes
+    /// Clears the container, removing all indexes but preserving already allocated buffer capacity
     pub fn clear(&mut self) {
         self.saved_count = 0;
         self.buffer.clear();
