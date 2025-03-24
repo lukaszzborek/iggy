@@ -68,10 +68,10 @@ impl SendMessages {
         bytes.put_bytes(0, indexes_size as usize);
 
         let mut msgs_size: u32 = 0;
-        for (cnt, message) in messages.iter().enumerate() {
+        for message in messages.iter() {
             message.write_to_buffer(&mut bytes);
             msgs_size += message.get_size_bytes().as_bytes_u64() as u32;
-            write_value_at(&mut bytes, (cnt as u32).to_le_bytes(), current_position);
+            write_value_at(&mut bytes, 0u64.to_le_bytes(), current_position);
             write_value_at(&mut bytes, msgs_size.to_le_bytes(), current_position + 4);
             write_value_at(&mut bytes, 0u64.to_le_bytes(), current_position + 8);
             current_position += INDEX_SIZE;
@@ -116,10 +116,6 @@ impl Command for SendMessages {
 
 impl Validatable<IggyError> for SendMessages {
     fn validate(&self) -> Result<(), IggyError> {
-        if self.batch.is_empty() {
-            return Err(IggyError::InvalidMessagesCount);
-        }
-
         if self.partitioning.value.len() > 255
             || (self.partitioning.kind != PartitioningKind::Balanced
                 && self.partitioning.value.is_empty())
@@ -127,30 +123,7 @@ impl Validatable<IggyError> for SendMessages {
             return Err(IggyError::InvalidKeyValueLength);
         }
 
-        let mut payload_size = 0;
-        let mut message_count = 0;
-
-        for message in IggyMessageViewIterator::new(&self.batch) {
-            message_count += 1;
-
-            let message_payload = message.payload();
-            payload_size += message_payload.len() as u32;
-            if payload_size > MAX_PAYLOAD_SIZE {
-                return Err(IggyError::TooBigMessagePayload);
-            }
-
-            if message_payload.len() < IGGY_MESSAGE_HEADER_SIZE as usize {
-                return Err(IggyError::InvalidMessagePayloadLength);
-            }
-        }
-
-        if message_count == 0 {
-            return Err(IggyError::InvalidMessagesCount);
-        }
-
-        if payload_size == 0 {
-            return Err(IggyError::EmptyMessagePayload);
-        }
+        self.batch.validate()?;
 
         Ok(())
     }

@@ -41,7 +41,7 @@ pub(crate) async fn handle_connection(
         let length = u32::from_le_bytes(length_buffer);
         sender.read(&mut code_buffer).await?;
         let code = u32::from_le_bytes(code_buffer);
-        tracing::error!("Received a TCP request, length: {length}, code: {code}");
+        debug!("Received a TCP request, length: {length}, code: {code}");
         let command = ServerCommand::from_code_and_reader(code, sender, length - 4).await?;
         debug!("Received a TCP command: {command}, payload size: {length}");
         command.handle(sender, length, &session, &system).await?;

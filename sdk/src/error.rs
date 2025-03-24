@@ -328,6 +328,12 @@ pub enum IggyError {
     InvalidKeyValueLength = 4028,
     #[error("Command length error: {0}")]
     CommandLengthError(String) = 4029,
+    #[error("Non-zero offset: {0} at index: {1}")]
+    NonZeroOffset(u64, u32) = 4030,
+    #[error("Non-zero timestamp: {0} at index: {1}")]
+    NonZeroTimestamp(u64, u32) = 4031,
+    #[error("Missing index: {0}")]
+    MissingIndex(u32) = 4032,
     #[error("Cannot sed messages due to client disconnection")]
     CannotSendMessagesDueToClientDisconnection = 4050,
     #[error("Invalid offset: {0}")]

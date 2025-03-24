@@ -79,7 +79,7 @@ async fn send_messages(
     //         msg.id = random_id::get_uuid();
     //     }
     // });
-    // command.validate()?;
+    command.validate()?;
 
     let batch = make_mutable(command.batch);
     let command_stream_id = command.stream_id;

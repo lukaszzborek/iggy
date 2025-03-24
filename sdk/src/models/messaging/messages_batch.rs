@@ -1,8 +1,8 @@
-use super::{IggyIndexes, IggyMessageView, IggyMessageViewIterator};
+use super::{IggyIndexes, IggyMessageView, IggyMessageViewIterator, IGGY_MESSAGE_HEADER_SIZE};
 use crate::{
     error::IggyError,
     models::messaging::INDEX_SIZE,
-    prelude::{BytesSerializable, IggyByteSize, Sizeable},
+    prelude::{BytesSerializable, IggyByteSize, Sizeable, Validatable},
 };
 use bytes::{BufMut, Bytes, BytesMut};
 use serde::{Deserialize, Serialize};
@@ -15,7 +15,6 @@ use std::ops::{Deref, Index};
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct IggyMessagesBatch {
     /// The number of messages in the batch
-    #[serde(skip)]
     count: u32,
     /// The byte-indexes of messages in the buffer, represented as array of u32's
     /// Offsets are relative
@@ -349,11 +348,6 @@ impl IggyMessagesBatch {
             messages: messages_buffer.freeze(),
         }
     }
-
-    #[cfg(test)]
-    pub fn get_indexes(&self) -> &crate::models::messaging::IggyIndexes {
-        &self.indexes
-    }
 }
 
 impl Index<usize> for IggyMessagesBatch {
@@ -405,6 +399,51 @@ impl BytesSerializable for IggyMessagesBatch {
 
     fn get_buffer_size(&self) -> u32 {
         4 + self.indexes.len() as u32 + self.messages.len() as u32
+    }
+}
+
+impl Validatable<IggyError> for IggyMessagesBatch {
+    fn validate(&self) -> Result<(), IggyError> {
+        // TODO(hubcio): fix validation
+        if self.is_empty() {
+            return Err(IggyError::InvalidMessagesCount);
+        }
+
+        let mut payload_size = 0;
+
+        for i in 0..self.count() {
+            if let Some(index_view) = self.indexes.get(i) {
+                if index_view.offset() != 0 {
+                    tracing::error!("Non-zero offset {} at index: {}", index_view.offset(), i);
+                    return Err(IggyError::NonZeroOffset(index_view.offset() as u64, i));
+                }
+                if index_view.timestamp() != 0 {
+                    tracing::error!(
+                        "Non-zero timestamp {} at index: {}",
+                        index_view.timestamp(),
+                        i
+                    );
+                    return Err(IggyError::NonZeroTimestamp(index_view.timestamp(), i));
+                }
+            } else {
+                tracing::error!("Index {} is missing", i);
+                return Err(IggyError::MissingIndex(i));
+            }
+
+            if let Some(message) = self.get(i as usize) {
+                let message_payload = message.payload();
+                payload_size += message_payload.len() as u32;
+            } else {
+                tracing::error!("Missing index {}", i);
+                return Err(IggyError::MissingIndex(i));
+            }
+        }
+
+        if payload_size == 0 {
+            return Err(IggyError::EmptyMessagePayload);
+        }
+
+        Ok(())
     }
 }
 
