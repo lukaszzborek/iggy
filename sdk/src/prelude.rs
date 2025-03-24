@@ -12,7 +12,6 @@
 // TODO(hubcio): finish this
 
 pub use crate::bytes_serializable::BytesSerializable;
-pub use crate::client::Client;
 pub use crate::error::IggyError;
 pub use crate::identifier::Identifier;
 pub use crate::messages::{
@@ -39,3 +38,8 @@ pub use crate::utils::sizeable::Sizeable;
 pub use crate::utils::timestamp::IggyTimestamp;
 
 pub use crate::validatable::Validatable;
+
+pub use crate::client::{Client, MessageClient, StreamClient, TopicClient};
+pub use crate::clients::client::IggyClient;
+pub use crate::utils::topic_size::MaxTopicSize;
+

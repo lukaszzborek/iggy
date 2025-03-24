@@ -2,24 +2,18 @@ use super::IggyMessageHeaderViewMut;
 use gxhash::gxhash64;
 use iggy::prelude::*;
 use lending_iterator::prelude::*;
-use std::ops::Range;
 
 /// A mutable view of a message for in-place modifications
 #[derive(Debug)]
 pub struct IggyMessageViewMut<'a> {
     /// The buffer containing the message
     buffer: &'a mut [u8],
-    /// Payload offset
-    payload_offset: usize,
 }
 
 impl<'a> IggyMessageViewMut<'a> {
     /// Create a new mutable message view from a buffer
     pub fn new(buffer: &'a mut [u8]) -> Self {
-        Self {
-            buffer,
-            payload_offset: IGGY_MESSAGE_HEADER_SIZE as usize,
-        }
+        Self { buffer }
     }
 
     /// Get an immutable header view
@@ -39,12 +33,6 @@ impl<'a> IggyMessageViewMut<'a> {
         let hdr_view = self.header();
         (IGGY_MESSAGE_HEADER_SIZE + hdr_view.payload_length() + hdr_view.user_headers_length())
             as usize
-    }
-
-    /// Get the byte range this message occupies in the buffer
-    pub fn range(&self) -> Range<usize> {
-        let end = self.payload_offset + self.size();
-        self.payload_offset..end
     }
 
     /// Convenience to update the checksum field in the header

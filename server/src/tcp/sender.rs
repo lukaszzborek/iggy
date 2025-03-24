@@ -1,6 +1,5 @@
-use std::io::IoSlice;
-
 use iggy::error::IggyError;
+use std::io::IoSlice;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tracing::debug;
 

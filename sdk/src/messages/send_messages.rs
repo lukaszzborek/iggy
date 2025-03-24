@@ -17,7 +17,7 @@ use std::fmt::Display;
 /// - `stream_id` - unique stream ID (numeric or name).
 /// - `topic_id` - unique topic ID (numeric or name).
 /// - `partitioning` - to which partition the messages should be sent - either provided by the client or calculated by the server.
-/// - `messages` - collection of messages to be sent using zero-copy message views.
+/// - `batch` - collection of messages to be sent.
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct SendMessages {
     /// Unique stream ID (numeric or name).

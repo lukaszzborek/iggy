@@ -5,6 +5,7 @@ use crate::http::client::HttpClient;
 use crate::http::HttpTransport;
 use crate::identifier::Identifier;
 use crate::messages::{Partitioning, PollingStrategy};
+use crate::models::messaging::IggyMessagesBatch;
 use crate::prelude::{FlushUnsavedBuffer, IggyMessage, PollMessages, PolledMessages, SendMessages};
 use async_trait::async_trait;
 
@@ -48,9 +49,15 @@ impl MessageClient for HttpClient {
         partitioning: &Partitioning,
         messages: &mut [IggyMessage],
     ) -> Result<(), IggyError> {
+        let batch = IggyMessagesBatch::from_messages_vec(messages);
         self.post(
             &get_path(&stream_id.as_cow_str(), &topic_id.as_cow_str()),
-            &SendMessages::as_bytes(stream_id, topic_id, partitioning, messages),
+            &SendMessages {
+                stream_id: stream_id.clone(),
+                topic_id: topic_id.clone(),
+                partitioning: partitioning.clone(),
+                batch,
+            },
         )
         .await?;
         Ok(())

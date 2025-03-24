@@ -6,18 +6,23 @@ use crate::{
 };
 use bytes::{BufMut, Bytes, BytesMut};
 use serde::{Deserialize, Serialize};
+use serde_with::base64::Base64;
+use serde_with::serde_as;
 use std::ops::{Deref, Index};
 
 /// An immutable messages container that holds a buffer of messages
+#[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct IggyMessagesBatch {
     /// The number of messages in the batch
+    #[serde(skip)]
     count: u32,
     /// The byte-indexes of messages in the buffer, represented as array of u32's
     /// Offsets are relative
     /// Each index position points to the END position of a message (start of next message)
     indexes: IggyIndexes,
     /// The buffer containing the messages
+    #[serde_as(as = "Base64")]
     messages: Bytes,
 }
 
@@ -305,7 +310,6 @@ impl IggyMessagesBatch {
     ///
     /// This should be used only for testing purposes!
     /// TODO(hubcio): maybe it can be removed
-    #[cfg(test)]
     pub fn from_messages_vec(messages: &[crate::prelude::IggyMessage]) -> Self {
         use crate::prelude::BytesSerializable;
         use bytes::{BufMut, BytesMut};

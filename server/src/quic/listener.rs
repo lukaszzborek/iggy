@@ -6,7 +6,7 @@ use crate::streaming::session::Session;
 use crate::streaming::systems::system::SharedSystem;
 use anyhow::anyhow;
 use quinn::{Connection, Endpoint, RecvStream, SendStream};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace};
 
 const LISTENERS_COUNT: u32 = 10;
 const INITIAL_BYTES_LENGTH: usize = 4;
@@ -101,32 +101,13 @@ async fn handle_stream(
     let mut length_buffer = [0u8; INITIAL_BYTES_LENGTH];
     let mut code_buffer = [0u8; INITIAL_BYTES_LENGTH];
 
-    let length_len = match recv_stream.read(&mut length_buffer).await? {
-        Some(read_length) => read_length,
-        None => return Ok(()),
-    };
-
-    if length_len != INITIAL_BYTES_LENGTH {
-        return Err(anyhow!(
-            "Unable to read the QUIC request length, expected: {INITIAL_BYTES_LENGTH} bytes, received: {length_len} bytes.",
-        ));
-    }
-
-    let code_len = match recv_stream.read(&mut code_buffer).await? {
-        Some(read_length) => read_length,
-        None => return Err(anyhow!("Connection closed before reading command code")),
-    };
-
-    if code_len != INITIAL_BYTES_LENGTH {
-        return Err(anyhow!(
-            "Unable to read the QUIC request code, expected: {INITIAL_BYTES_LENGTH} bytes, received: {code_len} bytes.",
-        ));
-    }
+    recv_stream.read_exact(&mut length_buffer).await?;
+    recv_stream.read_exact(&mut code_buffer).await?;
 
     let length = u32::from_le_bytes(length_buffer);
     let code = u32::from_le_bytes(code_buffer);
 
-    debug!("Received a QUIC request, length: {length}, code: {code}");
+    trace!("Received a QUIC request, length: {length}, code: {code}");
 
     let mut sender = SenderKind::get_quic_sender(send_stream, recv_stream);
 
@@ -138,12 +119,12 @@ async fn handle_stream(
         }
     };
 
-    if let Err(e) = command.validate() {
-        sender.send_error_response(e.clone()).await?;
-        return Err(anyhow!("Command validation failed: {e}"));
-    }
+    // if let Err(e) = command.validate() {
+    //     sender.send_error_response(e.clone()).await?;
+    //     return Err(anyhow!("Command validation failed: {e}"));
+    // }
 
-    debug!("Received a QUIC command: {command}, payload size: {length}");
+    trace!("Received a QUIC command: {command}, payload size: {length}");
 
     match command
         .handle(&mut sender, length, session.as_ref(), &system)

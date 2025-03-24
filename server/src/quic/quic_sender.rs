@@ -16,12 +16,14 @@ pub struct QuicSender {
 
 impl Sender for QuicSender {
     async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, IggyError> {
-        let read_bytes = self.recv.read(buffer).await.map_err(|error| {
+        // Not-so-nice code because quinn recv stream has different API for read_exact
+        let read_bytes = buffer.len();
+        self.recv.read_exact(buffer).await.map_err(|error| {
             error!("Failed to read from the stream: {:?}", error);
             IggyError::QuicError
         })?;
 
-        read_bytes.ok_or(IggyError::QuicError)
+        Ok(read_bytes)
     }
 
     async fn send_empty_ok_response(&mut self) -> Result<(), IggyError> {

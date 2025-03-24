@@ -444,14 +444,14 @@ enforce_fsync = false
 # `false` skips these checks for faster loading at the risk of undetected corruption.
 validate_checksum = false
 
-# The threshold of buffered messages before triggering a save to disk (integer).
+# The count threshold of buffered messages before triggering a save to disk (integer).
 # Specifies how many messages accumulate before persisting to storage.
 # Adjusting this can balance between write performance and data durability.
 # This is soft limit, actual number of messages may be higher, depending on last batch size.
 # Together with `size_of_messages_required_to_save` it defines the threshold of buffered messages.
-messages_required_to_save = 10000
+messages_required_to_save = 1000
 
-# The threshold of buffered messages size before triggering a save to disk (string).
+# The size threshold of buffered messages before triggering a save to disk (string).
 # Specifies how much size of messages accumulate before persisting to storage.
 # Adjusting this can balance between write performance and data durability.
 # This is soft limit, actual number of messages may be higher, depending on last batch size.

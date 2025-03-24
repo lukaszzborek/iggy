@@ -24,10 +24,6 @@ pub struct PolledMessages {
 }
 
 impl PolledMessages {
-    pub fn as_bytes(self) -> Bytes {
-        todo!()
-    }
-
     pub fn empty() -> Self {
         Self {
             partition_id: 0,

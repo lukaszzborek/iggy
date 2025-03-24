@@ -1,13 +1,18 @@
 use super::{index_view::IggyIndexView, INDEX_SIZE};
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
+use serde_with::base64::Base64;
+use serde_with::serde_as;
 use std::ops::{Deref, Index as StdIndex};
 
 /// A container for binary-encoded index data.
 /// Optimized for efficient storage and I/O operations.
+#[serde_as]
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct IggyIndexes {
+    #[serde(skip)]
     base_position: u32,
+    #[serde_as(as = "Base64")]
     buffer: Bytes,
 }
 
