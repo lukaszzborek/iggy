@@ -312,8 +312,8 @@ pub enum IggyError {
     CannotReadMessageLength = 4020,
     #[error("Cannot save messages to segment")]
     CannotReadMessagePayload = 4021,
-    #[error("Too big message payload")]
-    TooBigMessagePayload = 4022,
+    #[error("Too big message payload: {0}, must be <= {1}")]
+    TooBigMessagePayload(u32, u32) = 4022,
     #[error("Too many messages")]
     TooManyMessages = 4023,
     #[error("Empty message payload")]
@@ -334,6 +334,12 @@ pub enum IggyError {
     NonZeroTimestamp(u64, u32) = 4031,
     #[error("Missing index: {0}")]
     MissingIndex(u32) = 4032,
+    #[error("Invalid indexes byte size: {0}B, should be divisible by 16")]
+    InvalidIndexesByteSize(u32) = 4034,
+    #[error("Invalid indexes count: {0}, expected: {1}")]
+    InvalidIndexesCount(u32, u32) = 4035,
+    #[error("Invalid messages byte size: {0}B, expected: {1}B")]
+    InvalidMessagesSize(u32, u32) = 4036,
     #[error("Cannot sed messages due to client disconnection")]
     CannotSendMessagesDueToClientDisconnection = 4050,
     #[error("Invalid offset: {0}")]

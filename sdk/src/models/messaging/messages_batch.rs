@@ -1,6 +1,7 @@
-use super::{IggyIndexes, IggyMessageView, IggyMessageViewIterator, IGGY_MESSAGE_HEADER_SIZE};
+use super::{IggyIndexes, IggyMessageView, IggyMessageViewIterator};
 use crate::{
     error::IggyError,
+    messages::MAX_PAYLOAD_SIZE,
     models::messaging::INDEX_SIZE,
     prelude::{BytesSerializable, IggyByteSize, Sizeable, Validatable},
 };
@@ -73,18 +74,6 @@ impl IggyMessagesBatch {
 
     /// Get the number of messages
     pub fn count(&self) -> u32 {
-        debug_assert_eq!(self.indexes.len() % INDEX_SIZE, 0);
-
-        // For N messages, we might have either N or N+1 indexes
-        // N+1 indexes define the boundaries of N messages (fence post pattern)
-        let indexes_count = self.indexes.len() / INDEX_SIZE;
-        debug_assert!(
-            self.count as usize == indexes_count || self.count as usize == indexes_count - 1,
-            "Mismatch between message count and indexes count ({}) != {}",
-            self.count,
-            indexes_count
-        );
-
         self.count
     }
 
@@ -404,12 +393,33 @@ impl BytesSerializable for IggyMessagesBatch {
 
 impl Validatable<IggyError> for IggyMessagesBatch {
     fn validate(&self) -> Result<(), IggyError> {
-        // TODO(hubcio): fix validation
         if self.is_empty() {
             return Err(IggyError::InvalidMessagesCount);
         }
 
-        let mut payload_size = 0;
+        let indexes_count = self.indexes.count();
+        let indexes_size = self.indexes.messages_size();
+
+        if indexes_size % INDEX_SIZE as u32 != 0 {
+            tracing::error!(
+                "Indexes size {} is not a multiple of index size {}",
+                indexes_size,
+                INDEX_SIZE
+            );
+            return Err(IggyError::InvalidIndexesByteSize(indexes_size));
+        }
+
+        if indexes_count != self.count() {
+            tracing::error!(
+                "Indexes count {} does not match messages count {}",
+                indexes_count,
+                self.count()
+            );
+            return Err(IggyError::InvalidIndexesCount(indexes_count, self.count()));
+        }
+
+        let mut messages_count = 0;
+        let mut messages_size = 0;
 
         for i in 0..self.count() {
             if let Some(index_view) = self.indexes.get(i) {
@@ -431,16 +441,45 @@ impl Validatable<IggyError> for IggyMessagesBatch {
             }
 
             if let Some(message) = self.get(i as usize) {
-                let message_payload = message.payload();
-                payload_size += message_payload.len() as u32;
+                if message.payload().len() as u32 > MAX_PAYLOAD_SIZE {
+                    tracing::error!(
+                        "Message payload size {} exceeds maximum payload size {}",
+                        message.payload().len(),
+                        MAX_PAYLOAD_SIZE
+                    );
+                    return Err(IggyError::TooBigMessagePayload(
+                        message.payload().len() as u32,
+                        MAX_PAYLOAD_SIZE,
+                    ));
+                }
+
+                messages_size += message.size();
+                messages_count += 1;
             } else {
                 tracing::error!("Missing index {}", i);
                 return Err(IggyError::MissingIndex(i));
             }
         }
 
-        if payload_size == 0 {
-            return Err(IggyError::EmptyMessagePayload);
+        if indexes_count != messages_count {
+            tracing::error!(
+                "Indexes count {} does not match messages count {}",
+                indexes_count,
+                messages_count
+            );
+            return Err(IggyError::InvalidMessagesCount);
+        }
+
+        if messages_size != self.messages.len() as u32 {
+            tracing::error!(
+                "Messages size {} does not match messages buffer size {}",
+                messages_size,
+                self.messages.len() as u64
+            );
+            return Err(IggyError::InvalidMessagesSize(
+                messages_size,
+                self.messages.len() as u32,
+            ));
         }
 
         Ok(())

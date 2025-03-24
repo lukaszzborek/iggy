@@ -6,7 +6,7 @@ use crate::streaming::session::Session;
 use crate::streaming::systems::system::SharedSystem;
 use anyhow::anyhow;
 use quinn::{Connection, Endpoint, RecvStream, SendStream};
-use tracing::{debug, error, info, trace};
+use tracing::{error, info, trace};
 
 const LISTENERS_COUNT: u32 = 10;
 const INITIAL_BYTES_LENGTH: usize = 4;

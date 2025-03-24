@@ -2,7 +2,7 @@ use bytes::Bytes;
 use iggy::prelude::IggyMessage;
 
 mod common;
-// mod consumer_offset;
+mod consumer_offset;
 mod get_by_offset;
 mod get_by_timestamp;
 // mod messages;

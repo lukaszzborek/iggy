@@ -34,10 +34,6 @@ impl Segment {
         self.end_timestamp = messages_accumulator.last_timestamp();
         self.end_offset = messages_accumulator.last_offset();
 
-        // TODO(hubcio): previously, we increase segment size when messages are appended
-        // to accumulator. Now, it is done when messages are persisted. Verify if this is fine.
-        // self.size_bytes += IggyByteSize::from(messages_size as u64);
-
         self.update_counters(messages_size as u64, messages_count as u64);
 
         Ok(messages_count)
