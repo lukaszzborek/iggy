@@ -8,12 +8,12 @@ members = [
     "bench",
     "bench/report",
     "cli",
-    #TODO: Fix me add those back to workspace.
-    #"examples",
+    "examples",
+    # todo
     #"integration",
     "sdk",
     "server",
-    "tools"
+    "tools",
 ]
 
 [workspace.metadata.cargo-machete]
