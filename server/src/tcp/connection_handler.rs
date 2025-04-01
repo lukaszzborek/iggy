@@ -44,7 +44,27 @@ pub(crate) async fn handle_connection(
         debug!("Received a TCP request, length: {length}, code: {code}");
         let command = ServerCommand::from_code_and_reader(code, sender, length - 4).await?;
         debug!("Received a TCP command: {command}, payload size: {length}");
-        command.handle(sender, length, &session, &system).await?;
+        match command.handle(sender, length, &session, &system).await {
+            Ok(_) => {
+                debug!(
+                    "Command was handled successfully, session: {session}. TCP response was sent."
+                );
+            }
+            Err(error) => {
+                error!("Command was not handled successfully, session: {session}, error: {error}.");
+                if let IggyError::ClientNotFound(_) = error {
+                    sender.send_error_response(error).await?;
+                    debug!("TCP error response was sent to: {session}.");
+                    error!("Session: {session} will be deleted.");
+                    return Err(ConnectionError::from(IggyError::ClientNotFound(
+                        session.client_id,
+                    )));
+                } else {
+                    sender.send_error_response(error).await?;
+                    debug!("TCP error response was sent to: {session}.");
+                }
+            }
+        }
     }
 }
 

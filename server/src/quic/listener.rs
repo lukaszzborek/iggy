@@ -5,6 +5,7 @@ use crate::streaming::clients::client_manager::Transport;
 use crate::streaming::session::Session;
 use crate::streaming::systems::system::SharedSystem;
 use anyhow::anyhow;
+use iggy::error::IggyError;
 use quinn::{Connection, Endpoint, RecvStream, SendStream};
 use tracing::{error, info, trace};
 
@@ -94,7 +95,7 @@ async fn accept_stream(
 async fn handle_stream(
     stream: BiStream,
     system: SharedSystem,
-    session: impl AsRef<Session>,
+    session: impl AsRef<Session> + std::fmt::Debug,
 ) -> anyhow::Result<()> {
     let (send_stream, mut recv_stream) = stream;
 
@@ -130,7 +131,30 @@ async fn handle_stream(
         .handle(&mut sender, length, session.as_ref(), &system)
         .await
     {
-        Ok(_) => Ok(()),
-        Err(e) => Err(anyhow!("Error handling command: {e}")),
+        Ok(_) => {
+            trace!(
+                "Command was handled successfully, session: {:?}. QUIC response was sent.",
+                session
+            );
+            Ok(())
+        }
+        Err(e) => {
+            error!(
+                "Command was not handled successfully, session: {:?}, error: {e}.",
+                session
+            );
+            // Only return a connection-terminating error for client not found
+            if let IggyError::ClientNotFound(_) = e {
+                sender.send_error_response(e.clone()).await?;
+                trace!("QUIC error response was sent.");
+                error!("Session will be deleted.");
+                Err(anyhow!("Client not found: {e}"))
+            } else {
+                // For all other errors, send response and continue the connection
+                sender.send_error_response(e).await?;
+                trace!("QUIC error response was sent.");
+                Ok(())
+            }
+        }
     }
 }

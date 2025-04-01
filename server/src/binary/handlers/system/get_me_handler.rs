@@ -23,8 +23,6 @@ impl ServerCommandHandler for GetMe {
         session: &Session,
         system: &SharedSystem,
     ) -> Result<(), IggyError> {
-        debug!("session: {session}, command: {self}");
-
         let system = system.read().await;
         let Some(client) = system
             .get_client(session, session.client_id)
@@ -45,7 +43,7 @@ impl ServerCommandHandler for GetMe {
 }
 
 impl BinaryServerCommand for GetMe {
-    async fn from_sender(sender: &mut SenderKind, length: u32, code: u32) -> Result<Self, IggyError>
+    async fn from_sender(sender: &mut SenderKind, code: u32, length: u32) -> Result<Self, IggyError>
     where
         Self: Sized,
     {
