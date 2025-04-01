@@ -1,13 +1,5 @@
 use bytes::Bytes;
-use iggy::client::{MessageClient, StreamClient, TopicClient};
-use iggy::clients::client::IggyClient;
-use iggy::consumer::Consumer;
-use iggy::error::IggyError;
-use iggy::messages::poll_messages::PollingStrategy;
-use iggy::messages::send_messages::{Message, Partitioning};
-use iggy::models::header::{HeaderKey, HeaderValue};
-use iggy::utils::expiry::IggyExpiry;
-use iggy::utils::topic_size::MaxTopicSize;
+use iggy::prelude::*;
 use integration::test_server::{assert_clean_system, login_root, ClientFactory};
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -70,7 +62,7 @@ pub async fn run(client_factory: &dyn ClientFactory) {
     send_message_and_check_result(
         &client,
         MessageToSend::OfSizeWithHeaders(100_000, 10_000_001),
-        Err(IggyError::TooBigMessagePayload),
+        Err(IggyError::TooBigMessagePayload(100_000, 10_000_001)),
     )
     .await;
 
@@ -194,7 +186,7 @@ fn create_message_header_of_size(size: usize) -> HashMap<HeaderKey, HeaderValue>
     headers
 }
 
-fn create_message(header_size: Option<usize>, payload_size: usize) -> Message {
+fn create_message(header_size: Option<usize>, payload_size: usize) -> IggyMessage {
     let headers = match header_size {
         Some(header_size) => {
             if header_size > 0 {
@@ -207,10 +199,10 @@ fn create_message(header_size: Option<usize>, payload_size: usize) -> Message {
     };
 
     let payload = create_string_of_size(payload_size);
-    Message {
-        id: 1u128,
-        length: payload.len() as u32,
-        payload: Bytes::from(payload),
-        headers,
+
+    if let Some(headers) = headers {
+        IggyMessage::with_id_and_headers(1u128, Bytes::from(payload), headers)
+    } else {
+        IggyMessage::with_id(1u128, Bytes::from(payload))
     }
 }

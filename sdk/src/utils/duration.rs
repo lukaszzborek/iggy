@@ -81,8 +81,8 @@ impl FromStr for IggyDuration {
 }
 
 impl From<Option<u64>> for IggyDuration {
-    fn from(byte_size: Option<u64>) -> Self {
-        match byte_size {
+    fn from(duration_us: Option<u64>) -> Self {
+        match duration_us {
             Some(value) => IggyDuration {
                 duration: Duration::from_micros(value),
             },

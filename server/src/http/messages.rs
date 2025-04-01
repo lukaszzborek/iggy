@@ -73,12 +73,6 @@ async fn send_messages(
     command.stream_id = Identifier::from_str_value(&stream_id)?;
     command.topic_id = Identifier::from_str_value(&topic_id)?;
     command.partitioning.length = command.partitioning.value.len() as u8;
-    // TODO(hubcio): Add message ID generation?
-    // command.messages.iter_mut().for_each(|msg| {
-    //     if msg.id == 0 {
-    //         msg.id = random_id::get_uuid();
-    //     }
-    // });
     command.validate()?;
 
     let batch = make_mutable(command.batch);

@@ -110,7 +110,7 @@ impl MessagesWriter {
                 self.messages_size_bytes
                     .fetch_add(messages_size as u64, Ordering::AcqRel);
                 trace!(
-                    "Written batch of size {messages_size} bytes ({containers_count} containers, {messages_count} messages) to messages file: {}",
+                    "Written batch set of size {messages_size} bytes ({containers_count} containers, {messages_count} messages) to disk messages file: {}",
                     self.file_path
                 );
                 if self.fsync {

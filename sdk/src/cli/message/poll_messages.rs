@@ -5,14 +5,13 @@ use crate::consumer::Consumer;
 use crate::identifier::Identifier;
 use crate::messages::{PollMessages, PollingStrategy};
 use crate::models::messaging::HeaderKind;
-use crate::prelude::{HeaderKey, HeaderValue, IggyMessage};
+use crate::prelude::{HeaderKey, HeaderValue, IggyMessage, Sizeable};
 use crate::utils::timestamp::IggyTimestamp;
 use crate::utils::{byte_size::IggyByteSize, duration::IggyDuration};
 use anyhow::Context;
 use async_trait::async_trait;
 use comfy_table::{Cell, CellAlignment, Row, Table};
 use std::collections::{HashMap, HashSet};
-use std::mem::size_of_val;
 use tokio::io::AsyncWriteExt;
 use tracing::{event, Level};
 
@@ -184,7 +183,7 @@ impl CliCommand for PollMessagesCmd {
             polled_messages
                 .messages
                 .iter()
-                .map(|m| size_of_val(m) as u64)
+                .map(|m| m.get_size_bytes().as_bytes_u64())
                 .sum::<u64>(),
         );
 

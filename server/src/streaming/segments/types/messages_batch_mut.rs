@@ -1,5 +1,6 @@
 use super::message_view_mut::IggyMessageViewMutIterator;
 use crate::streaming::segments::indexes::IggyIndexesMut;
+use crate::streaming::utils::random_id;
 use bytes::{BufMut, BytesMut};
 use iggy::models::messaging::{IggyMessagesBatch, INDEX_SIZE};
 use iggy::prelude::*;
@@ -135,6 +136,9 @@ impl IggyMessagesBatchMut {
         while let Some(mut message) = iter.next() {
             message.header_mut().set_offset(curr_abs_offset);
             message.header_mut().set_timestamp(timestamp);
+            if message.header().id() == 0 {
+                message.header_mut().set_id(random_id::get_uuid());
+            }
             message.update_checksum();
 
             let message_size = message.size() as u32;

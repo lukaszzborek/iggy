@@ -1,4 +1,4 @@
-use super::{IggyIndexes, IggyMessageView, IggyMessageViewIterator};
+use super::{IggyIndexes, IggyMessage, IggyMessageView, IggyMessageViewIterator};
 use crate::{
     error::IggyError,
     messages::MAX_PAYLOAD_SIZE,
@@ -6,23 +6,17 @@ use crate::{
     prelude::{BytesSerializable, IggyByteSize, Sizeable, Validatable},
 };
 use bytes::{BufMut, Bytes, BytesMut};
-use serde::{Deserialize, Serialize};
-use serde_with::base64::Base64;
-use serde_with::serde_as;
 use std::ops::{Deref, Index};
 
 /// An immutable messages container that holds a buffer of messages
-#[serde_as]
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct IggyMessagesBatch {
     /// The number of messages in the batch
     count: u32,
-    /// The byte-indexes of messages in the buffer, represented as array of u32's
-    /// Offsets are relative
-    /// Each index position points to the END position of a message (start of next message)
+    /// The byte-indexes of messages in the buffer, represented as array of u32's. Offsets are relative.
+    /// Each index consists of offset, position (byte offset in the buffer) and timestamp.
     indexes: IggyIndexes,
     /// The buffer containing the messages
-    #[serde_as(as = "Base64")]
     messages: Bytes,
 }
 
@@ -273,69 +267,90 @@ impl IggyMessagesBatch {
             return None;
         }
 
+        // TODO: refactor this
         let start_position = if index == 0 {
             0
         } else {
-            self.position_at(index as u32 - 1) as usize
+            self.position_at(index as u32 - 1) as usize - self.indexes.base_position() as usize
         };
 
         let end_position = if index == self.count as usize - 1 {
             self.messages.len()
         } else {
-            self.position_at(index as u32) as usize
+            self.position_at(index as u32) as usize - self.indexes.base_position() as usize
         };
+
+        debug_assert!(
+            start_position <= self.messages.len(),
+            "Start message position {} exceeds buffer length {}, index: {}, self.count: {}, self.base_position: {}",
+            start_position,
+            self.messages.len(),
+            index,
+            self.count,
+            self.indexes.base_position()
+        );
+        debug_assert!(
+            end_position <= self.messages.len(),
+            "End message position {} exceeds buffer length {}, index: {}, self.count: {}, self.base_position: {}",
+            end_position,
+            self.messages.len(),
+            index,
+            self.count,
+            self.indexes.base_position()
+        );
 
         Some(IggyMessageView::new(
             &self.messages[start_position..end_position],
         ))
     }
 
-    /// Creates a batch from a vector of messages. Note that this implementation is:
-    /// - Inefficient with multiple buffer allocations and copies
-    /// - Serializes each message individually rather than in batches
-    /// - Designed for testing purposes only, not optimized for production
-    /// - May cause performance issues with large message collections
-    ///
-    /// This should be used only for testing purposes!
-    /// TODO(hubcio): maybe it can be removed
-    pub fn from_messages_vec(messages: &[crate::prelude::IggyMessage]) -> Self {
-        use crate::prelude::BytesSerializable;
-        use bytes::{BufMut, BytesMut};
-
-        if messages.is_empty() {
-            return Self::empty();
+    /// Consumes the batch and returns a vector of messages.
+    pub fn into_messages(self) -> Vec<IggyMessage> {
+        if self.is_empty() {
+            return Vec::new();
         }
 
-        let messages_count = messages.len() as u32;
-        let mut total_size = 0;
-        for msg in messages.iter() {
-            total_size += msg.get_size_bytes().as_bytes_usize();
+        let (count, indexes, buffer) = self.decompose();
+        let mut result = Vec::with_capacity(count as usize);
+        let base_position = indexes.base_position();
+
+        for i in 0..count {
+            let start_position = if i == 0 {
+                0
+            } else {
+                let prev_idx = indexes.get(i - 1).map(|idx| idx.position()).unwrap_or(0);
+                prev_idx as usize - base_position as usize
+            };
+
+            let end_position = if i == count - 1 {
+                buffer.len()
+            } else {
+                let curr_idx = indexes.get(i).map(|idx| idx.position()).unwrap_or(0);
+                curr_idx as usize - base_position as usize
+            };
+
+            if start_position < buffer.len()
+                && end_position <= buffer.len()
+                && start_position < end_position
+            {
+                if let Ok(message) =
+                    IggyMessage::from_bytes(buffer.slice(start_position..end_position))
+                {
+                    result.push(message);
+                }
+            }
         }
 
-        let mut messages_buffer = BytesMut::with_capacity(total_size);
-        let mut indexes_buffer = BytesMut::new();
-        let mut current_position = 0;
+        result
+    }
+}
 
-        for (i, message) in messages.iter().enumerate() {
-            message.write_to_buffer(&mut messages_buffer);
+impl IntoIterator for IggyMessagesBatch {
+    type Item = IggyMessage;
+    type IntoIter = std::vec::IntoIter<IggyMessage>;
 
-            let msg_size = message.get_size_bytes().as_bytes_u32();
-            current_position += msg_size;
-
-            let offset = i as u32;
-
-            indexes_buffer.put_u32_le(offset);
-            indexes_buffer.put_u32_le(current_position);
-            indexes_buffer.put_u64_le(0); // timestamps from indexes are not used
-        }
-
-        let indexes = crate::models::messaging::IggyIndexes::new(indexes_buffer.freeze(), 0);
-
-        Self {
-            count: messages_count,
-            indexes,
-            messages: messages_buffer.freeze(),
-        }
+    fn into_iter(self) -> Self::IntoIter {
+        self.into_messages().into_iter()
     }
 }
 
@@ -373,7 +388,7 @@ impl Index<usize> for IggyMessagesBatch {
 
 impl BytesSerializable for IggyMessagesBatch {
     fn to_bytes(&self) -> Bytes {
-        self.messages.clone()
+        panic!("should not be used");
     }
 
     fn from_bytes(_bytes: Bytes) -> Result<Self, IggyError> {
@@ -496,5 +511,79 @@ impl Deref for IggyMessagesBatch {
     type Target = [u8];
     fn deref(&self) -> &Self::Target {
         self.buffer()
+    }
+}
+
+/// Converts a slice of IggyMessage objects into an IggyMessagesBatch.
+///
+/// This trait implementation enables idiomatic conversion from message slices:
+/// `let batch = IggyMessagesBatch::from(messages_slice);`
+///
+/// 1. Messages are serialized into a contiguous buffer
+/// 2. Index entries are created for each message with:
+///    - offset: Set to 0 (will be filled by the server during append)
+///    - position: Cumulative byte position of each message in the buffer
+///                Subsequent indexes point to the next message in the buffer
+///    - timestamp: Set to 0 (will be filled by the server during append)
+///
+/// # Performance note
+///
+/// This layout is optimized for server-side processing. The server can efficiently:
+/// - Allocate offsets sequentially
+/// - Assign timestamps
+/// - Write the entire message batch and index data to disk without additional allocations
+/// - Update the offset and timestamp fields in-place before persistence
+impl From<&[IggyMessage]> for IggyMessagesBatch {
+    fn from(messages: &[IggyMessage]) -> Self {
+        if messages.is_empty() {
+            return Self::empty();
+        }
+
+        let messages_count = messages.len() as u32;
+        let mut total_size = 0;
+        for msg in messages.iter() {
+            total_size += msg.get_size_bytes().as_bytes_usize();
+        }
+
+        let mut messages_buffer = BytesMut::with_capacity(total_size);
+        let mut indexes_buffer = BytesMut::with_capacity(messages_count as usize * INDEX_SIZE);
+        let mut current_position = 0;
+
+        for message in messages.iter() {
+            message.write_to_buffer(&mut messages_buffer);
+
+            let msg_size = message.get_size_bytes().as_bytes_u32();
+            current_position += msg_size;
+
+            indexes_buffer.put_u32_le(0);
+            indexes_buffer.put_u32_le(current_position);
+            indexes_buffer.put_u64_le(0);
+        }
+
+        let indexes = IggyIndexes::new(indexes_buffer.freeze(), 0);
+
+        Self {
+            count: messages_count,
+            indexes,
+            messages: messages_buffer.freeze(),
+        }
+    }
+}
+
+/// Converts a reference to Vec<IggyMessage> into an IggyMessagesBatch.
+///
+/// This implementation delegates to the slice implementation via `as_slice()`.
+/// It's provided for convenience so it's possible to use `&messages` without
+/// explicit slice conversion.
+impl From<&Vec<IggyMessage>> for IggyMessagesBatch {
+    fn from(messages: &Vec<IggyMessage>) -> Self {
+        Self::from(messages.as_slice())
+    }
+}
+
+/// Converts a Vec<IggyMessage> into an IggyMessagesBatch.
+impl From<Vec<IggyMessage>> for IggyMessagesBatch {
+    fn from(messages: Vec<IggyMessage>) -> Self {
+        Self::from(messages.as_slice())
     }
 }

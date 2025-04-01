@@ -4,11 +4,17 @@ use crate::command::{Command, SEND_MESSAGES_CODE};
 use crate::error::IggyError;
 use crate::identifier::Identifier;
 use crate::models::messaging::{IggyMessage, IggyMessagesBatch, INDEX_SIZE};
+use crate::prelude::IggyMessageView;
 use crate::utils::sizeable::Sizeable;
 use crate::validatable::Validatable;
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use bytes::{BufMut, Bytes, BytesMut};
-use serde::{Deserialize, Serialize};
-use std::fmt::Display;
+use serde::de::{self, MapAccess, Visitor};
+use serde::ser::SerializeStruct;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_json;
+use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 
 /// `SendMessages` command is used to send messages to a topic in a stream.
 /// It has additional payload:
@@ -16,13 +22,11 @@ use std::fmt::Display;
 /// - `topic_id` - unique topic ID (numeric or name).
 /// - `partitioning` - to which partition the messages should be sent - either provided by the client or calculated by the server.
 /// - `batch` - collection of messages to be sent.
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct SendMessages {
     /// Unique stream ID (numeric or name).
-    #[serde(skip)]
     pub stream_id: Identifier,
     /// Unique topic ID (numeric or name).
-    #[serde(skip)]
     pub topic_id: Identifier,
     /// To which partition the messages should be sent - either provided by the client or calculated by the server.
     pub partitioning: Partitioning,
@@ -75,15 +79,15 @@ impl SendMessages {
             current_position += INDEX_SIZE;
         }
 
-        let result = bytes.freeze();
+        let out = bytes.freeze();
 
         debug_assert_eq!(
             total_size as usize,
-            result.len(),
-            "Calculated size doesn't match actual bytes length",
+            out.len(),
+            "Calculated SendMessages command byte size doesn't match actual command size",
         );
 
-        result
+        out
     }
 }
 
@@ -146,6 +150,177 @@ impl Display for SendMessages {
             f,
             "{}|{}|{}|messages_count:{}|messages_size:{}",
             self.stream_id, self.topic_id, self.partitioning, messages_count, messages_size
+        )
+    }
+}
+
+impl Serialize for SendMessages {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // In HTTP API, we expose:
+        // - partitioning (kind, value)
+        // - messages as an array of {id, payload, headers}
+        // We don't expose stream_id and topic_id via JSON as they're in URL path
+
+        let messages: Vec<HashMap<&str, serde_json::Value>> = self
+            .batch
+            .iter()
+            .map(|msg_view: IggyMessageView<'_>| {
+                let mut map = HashMap::with_capacity(self.batch.count() as usize);
+                map.insert("id", serde_json::to_value(msg_view.header().id()).unwrap());
+
+                let payload_base64 = BASE64.encode(msg_view.payload());
+                map.insert("payload", serde_json::to_value(payload_base64).unwrap());
+
+                if let Ok(Some(headers)) = msg_view.user_headers_map() {
+                    map.insert("headers", serde_json::to_value(&headers).unwrap());
+                }
+
+                map
+            })
+            .collect();
+
+        let mut state = serializer.serialize_struct("SendMessages", 2)?;
+        state.serialize_field("partitioning", &self.partitioning)?;
+        state.serialize_field("messages", &messages)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for SendMessages {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        enum Field {
+            Partitioning,
+            Messages,
+        }
+
+        impl<'de> Deserialize<'de> for Field {
+            fn deserialize<D>(deserializer: D) -> Result<Field, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                struct FieldVisitor;
+
+                impl Visitor<'_> for FieldVisitor {
+                    type Value = Field;
+
+                    fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+                        formatter.write_str("`partitioning` or `messages`")
+                    }
+
+                    fn visit_str<E>(self, value: &str) -> Result<Field, E>
+                    where
+                        E: de::Error,
+                    {
+                        match value {
+                            "partitioning" => Ok(Field::Partitioning),
+                            "messages" => Ok(Field::Messages),
+                            _ => Err(de::Error::unknown_field(
+                                value,
+                                &["partitioning", "messages"],
+                            )),
+                        }
+                    }
+                }
+
+                deserializer.deserialize_identifier(FieldVisitor)
+            }
+        }
+
+        struct SendMessagesVisitor;
+
+        impl<'de> Visitor<'de> for SendMessagesVisitor {
+            type Value = SendMessages;
+
+            fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+                formatter.write_str("struct SendMessages")
+            }
+
+            fn visit_map<V>(self, mut map: V) -> Result<SendMessages, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                let mut partitioning = None;
+                let mut messages = None;
+
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        Field::Partitioning => {
+                            if partitioning.is_some() {
+                                return Err(de::Error::duplicate_field("partitioning"));
+                            }
+                            partitioning = Some(map.next_value()?);
+                        }
+                        Field::Messages => {
+                            if messages.is_some() {
+                                return Err(de::Error::duplicate_field("messages"));
+                            }
+
+                            let message_data: Vec<serde_json::Value> = map.next_value()?;
+                            let mut iggy_messages = Vec::new();
+
+                            for msg in message_data {
+                                let id =
+                                    msg.get("id").and_then(|v| v.as_u64()).unwrap_or(0) as u128;
+
+                                let payload = msg
+                                    .get("payload")
+                                    .and_then(|v| v.as_str())
+                                    .ok_or_else(|| de::Error::missing_field("payload"))?;
+                                let payload_bytes = BASE64
+                                    .decode(payload)
+                                    .map_err(|_| de::Error::custom("Invalid base64 payload"))?;
+
+                                let headers_map = if let Some(headers) = msg.get("headers") {
+                                    if headers.is_null() {
+                                        None
+                                    } else {
+                                        Some(serde_json::from_value(headers.clone()).map_err(
+                                            |_| de::Error::custom("Invalid headers format"),
+                                        )?)
+                                    }
+                                } else {
+                                    None
+                                };
+
+                                let iggy_message = if let Some(headers) = headers_map {
+                                    IggyMessage::with_id_and_headers(id, payload_bytes, headers)
+                                } else {
+                                    IggyMessage::with_id(id, payload_bytes)
+                                };
+
+                                iggy_messages.push(iggy_message);
+                            }
+
+                            messages = Some(iggy_messages);
+                        }
+                    }
+                }
+
+                let partitioning =
+                    partitioning.ok_or_else(|| de::Error::missing_field("partitioning"))?;
+                let messages = messages.ok_or_else(|| de::Error::missing_field("messages"))?;
+
+                let batch = IggyMessagesBatch::from(&messages);
+
+                Ok(SendMessages {
+                    stream_id: Identifier::default(),
+                    topic_id: Identifier::default(),
+                    partitioning,
+                    batch,
+                })
+            }
+        }
+
+        deserializer.deserialize_struct(
+            "SendMessages",
+            &["partitioning", "messages"],
+            SendMessagesVisitor,
         )
     }
 }

@@ -9,6 +9,8 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use crate::prelude::IggyDuration;
+
 /// A struct that represents a timestamp.
 ///
 /// This struct uses `SystemTime` from `std::time` crate.
@@ -84,6 +86,14 @@ impl Sub<SystemTime> for IggyTimestamp {
 
     fn sub(self, rhs: SystemTime) -> Self::Output {
         IggyTimestamp(self.0 - rhs.duration_since(UNIX_EPOCH).unwrap())
+    }
+}
+
+impl Add<IggyDuration> for IggyTimestamp {
+    type Output = IggyTimestamp;
+
+    fn add(self, other: IggyDuration) -> Self::Output {
+        IggyTimestamp(self.0 + other.get_duration())
     }
 }
 

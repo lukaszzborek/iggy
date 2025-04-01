@@ -235,7 +235,7 @@ impl Partition {
             self.current_offset + 1
         };
 
-        // TODO: Fix me
+        // TODO(implement deduplication based on seq number)
         // Use a sequence number on the SendMessages and hold local collection of the last few sequence numbers.
         /*
         let mut retained_messages = Vec::with_capacity(messages.len());

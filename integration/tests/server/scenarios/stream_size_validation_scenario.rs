@@ -1,12 +1,6 @@
 use crate::server::scenarios::{create_client, PARTITIONS_COUNT, PARTITION_ID};
 use bytes::Bytes;
-use iggy::client::{MessageClient, StreamClient, SystemClient, TopicClient};
-use iggy::clients::client::IggyClient;
-use iggy::compression::compression_algorithm::CompressionAlgorithm;
-use iggy::identifier::Identifier;
-use iggy::messages::send_messages::{Message, Partitioning};
-use iggy::utils::expiry::IggyExpiry;
-use iggy::utils::topic_size::MaxTopicSize;
+use iggy::prelude::*;
 use integration::test_server::{assert_clean_system, login_root, ClientFactory};
 use std::str::FromStr;
 use tracing_subscriber::layer::SubscriberExt;
@@ -269,18 +263,13 @@ async fn purge_stream(client: &IggyClient, stream_name: &str) {
         .unwrap();
 }
 
-fn create_messages() -> Vec<Message> {
+fn create_messages() -> Vec<IggyMessage> {
     let mut messages = Vec::new();
     for offset in 0..MSGS_COUNT {
         let id = (offset + 1) as u128;
         let payload = Bytes::from(vec![0xD; MESSAGE_PAYLOAD_SIZE_BYTES as usize]);
 
-        let message = Message {
-            id,
-            length: payload.len() as u32,
-            payload,
-            headers: None,
-        };
+        let message = IggyMessage::with_id(id, payload);
         messages.push(message);
     }
     messages

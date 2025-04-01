@@ -9,10 +9,11 @@
 //! use iggy::prelude::*;
 //! ```
 
-// TODO(hubcio): finish this
-
 pub use crate::bytes_serializable::BytesSerializable;
-pub use crate::client::{Client, MessageClient, StreamClient, TopicClient, UserClient};
+pub use crate::client::{
+    Client, ConsumerGroupClient, ConsumerOffsetClient, MessageClient, PartitionClient,
+    StreamClient, SystemClient, TopicClient, UserClient,
+};
 pub use crate::client_provider;
 pub use crate::client_provider::ClientProviderConfig;
 pub use crate::clients::builder::IggyClientBuilder;
@@ -30,6 +31,7 @@ pub use crate::messages::{
     FlushUnsavedBuffer, Partitioning, PollMessages, PolledMessages, PollingKind, PollingStrategy,
     SendMessages,
 };
+pub use crate::models::consumer_group::ConsumerGroupDetails;
 pub use crate::models::messaging::{
     HeaderKey, HeaderValue, IggyMessage, IggyMessageHeader, IggyMessageHeaderView, IggyMessageView,
     IggyMessageViewIterator,

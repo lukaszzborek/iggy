@@ -49,7 +49,7 @@ impl MessageClient for HttpClient {
         partitioning: &Partitioning,
         messages: &mut [IggyMessage],
     ) -> Result<(), IggyError> {
-        let batch = IggyMessagesBatch::from_messages_vec(messages);
+        let batch = IggyMessagesBatch::from(&*messages);
         self.post(
             &get_path(&stream_id.as_cow_str(), &topic_id.as_cow_str()),
             &SendMessages {

@@ -1,11 +1,9 @@
 use crate::streaming::common::test_setup::TestSetup;
 use crate::streaming::create_messages;
-use iggy::utils::byte_size::IggyByteSize;
 use iggy::utils::expiry::IggyExpiry;
 use iggy::utils::sizeable::Sizeable;
 use iggy::utils::timestamp::IggyTimestamp;
 use server::state::system::PartitionState;
-use server::streaming::batching::appendable_batch_info::AppendableBatchInfo;
 use server::streaming::partitions::partition::Partition;
 use server::streaming::segments::*;
 use std::sync::atomic::{AtomicU32, AtomicU64};
@@ -111,11 +109,6 @@ async fn should_load_existing_partition_from_disk() {
             loaded_partition.should_increment_offset,
             partition.should_increment_offset
         );
-        assert_eq!(loaded_partition.cache.is_some(), partition.cache.is_some());
-        assert_eq!(
-            loaded_partition.cache.unwrap().is_empty(),
-            partition.cache.unwrap().is_empty()
-        );
     }
 }
 
@@ -181,20 +174,15 @@ async fn should_purge_existing_partition_on_disk() {
         partition.persist().await.unwrap();
         assert_persisted_partition(&partition.partition_path, with_segment).await;
         let messages = create_messages();
-        let messages_count = messages.len();
-        let appendable_batch_info = AppendableBatchInfo::new(
-            messages
-                .iter()
-                .map(|msg| msg.get_size_bytes())
-                .sum::<IggyByteSize>(),
-            partition.partition_id,
-        );
-        partition
-            .append_messages(appendable_batch_info, messages, None)
-            .await
-            .unwrap();
+        let messages_count = messages.len() as u32;
+        let messages_size: u32 = messages
+            .iter()
+            .map(|msg| msg.get_size_bytes().as_bytes_u32())
+            .sum();
+        let batch = IggyMessagesBatchMut::from_messages(&messages, messages_size);
+        partition.append_messages(batch, None).await.unwrap();
         let loaded_messages = partition.get_messages_by_offset(0, 100).await.unwrap();
-        assert_eq!(loaded_messages.len(), messages_count);
+        assert_eq!(loaded_messages.count(), messages_count);
         partition.purge().await.unwrap();
         assert_eq!(partition.current_offset, 0);
         assert_eq!(partition.unsaved_messages_count, 0);

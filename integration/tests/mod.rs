@@ -1,6 +1,6 @@
 use ctor::{ctor, dtor};
 use lazy_static::lazy_static;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::RwLock;
@@ -9,19 +9,20 @@ use std::{panic, thread};
 
 mod archiver;
 mod bench;
-// mod cli;
+mod cli;
 mod config_provider;
 mod data_integrity;
 mod examples;
 mod server;
-// mod state;
+mod state;
 mod streaming;
 
 lazy_static! {
     static ref TESTS_FAILED: AtomicBool = AtomicBool::new(false);
     static ref LOGS_BUFFER: Arc<RwLock<HashMap<String, Vec<u8>>>> =
         Arc::new(RwLock::new(HashMap::new()));
-    static ref FAILED_TEST_CASES: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new()));
+    static ref FAILED_TEST_CASES: Arc<RwLock<HashSet<String>>> =
+        Arc::new(RwLock::new(HashSet::new()));
 }
 
 static INIT: Once = Once::new();
@@ -49,7 +50,10 @@ fn setup() {
         let thread = thread::current();
         let thread_name = thread.name().unwrap_or(UNKNOWN_TEST_NAME);
         let failed_tests = FAILED_TEST_CASES.clone();
-        failed_tests.write().unwrap().push(thread_name.to_string());
+        failed_tests
+            .write()
+            .unwrap()
+            .insert(thread_name.to_string());
 
         // If a test panics, set the failure flag to true
         TESTS_FAILED.store(true, Ordering::SeqCst);

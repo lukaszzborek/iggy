@@ -2,7 +2,6 @@ use bytes::Bytes;
 use iggy::prelude::IggyMessage;
 use std::time::Duration;
 
-//TODO: Fix me
 pub fn put_timestamp_in_first_message(message: &mut IggyMessage) {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

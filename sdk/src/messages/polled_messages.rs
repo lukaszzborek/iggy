@@ -56,7 +56,7 @@ impl BytesSerializable for PolledMessages {
                 .map_err(|_| IggyError::InvalidNumberEncoding)?,
         );
 
-        let messages = messages_vec(bytes.slice(16..), count)?;
+        let messages = messages_from_bytes_and_count(bytes.slice(16..), count)?;
 
         Ok(Self {
             partition_id,
@@ -68,7 +68,7 @@ impl BytesSerializable for PolledMessages {
 }
 
 /// Convert Bytes to messages
-fn messages_vec(buffer: Bytes, count: u32) -> Result<Vec<IggyMessage>, IggyError> {
+fn messages_from_bytes_and_count(buffer: Bytes, count: u32) -> Result<Vec<IggyMessage>, IggyError> {
     let mut messages = Vec::with_capacity(count as usize);
     let mut position = 0;
     let buf_len = buffer.len();

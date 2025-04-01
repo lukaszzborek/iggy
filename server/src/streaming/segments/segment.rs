@@ -219,11 +219,9 @@ impl Segment {
             MessagesReader::new(&self.messages_path, self.messages_size.clone()).await?;
         self.messages_reader = Some(messages_reader);
 
-        if !self.config.segment.cache_indexes {
-            let index_reader =
-                IndexReader::new(&self.index_path, self.indexes_size.clone()).await?;
-            self.index_reader = Some(index_reader);
-        }
+        let index_reader = IndexReader::new(&self.index_path, self.indexes_size.clone()).await?;
+        self.index_reader = Some(index_reader);
+
         Ok(())
     }
 
@@ -237,6 +235,7 @@ impl Segment {
 
     pub async fn is_expired(&self, now: IggyTimestamp) -> bool {
         if !self.is_closed {
+            tracing::error!("Segment is not closed");
             return false;
         }
 
@@ -246,16 +245,27 @@ impl Segment {
             IggyExpiry::ExpireDuration(expiry) => {
                 let last_messages = self.get_messages_by_offset(self.end_offset, 1).await;
                 if last_messages.is_err() {
+                    tracing::error!(
+                        "Failed to get last messages, end offset: {}",
+                        self.end_offset
+                    );
                     return false;
                 }
 
                 let last_messages = last_messages.unwrap();
                 if last_messages.is_empty() {
+                    tracing::error!("Last messages is empty, end offset: {}", self.end_offset);
                     return false;
                 }
 
                 let last_message = last_messages.iter().last().unwrap().iter().last().unwrap();
                 let last_message_timestamp = last_message.header().timestamp();
+                tracing::error!(
+                    "Last message timestamp: {}, expiry us: {}, now us: {}",
+                    last_message_timestamp,
+                    expiry.as_micros(),
+                    now.as_micros()
+                );
                 last_message_timestamp + expiry.as_micros() <= now.as_micros()
             }
         }
@@ -370,6 +380,10 @@ impl Segment {
 
     pub fn index_file_path(&self) -> &str {
         &self.index_path
+    }
+
+    pub fn partition_id(&self) -> u32 {
+        self.partition_id
     }
 
     pub fn messages_file_path(&self) -> &str {

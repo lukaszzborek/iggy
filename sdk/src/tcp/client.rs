@@ -21,7 +21,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
-use tokio::time::{sleep, Instant};
+use tokio::time::sleep;
 use tokio_rustls::{TlsConnector, TlsStream};
 use tracing::{error, info, trace, warn};
 
@@ -624,25 +624,11 @@ impl TcpClient {
         if let Some(stream) = stream.as_mut() {
             let payload_length = payload.len() + REQUEST_INITIAL_BYTES_LENGTH;
             trace!("Sending a TCP request of size {payload_length} with code: {code}");
-            let now = Instant::now();
             stream.write(&(payload_length as u32).to_le_bytes()).await?;
-            let payload_len_write_time = Instant::now();
             stream.write(&code.to_le_bytes()).await?;
-            let code_write_time = Instant::now();
             stream.write(&payload).await?;
-            let payload_write_time = Instant::now();
             stream.flush().await?;
-            let flush_time = Instant::now();
             trace!("Sent a TCP request with code: {code}, waiting for a response...");
-            trace!(
-                "Payload length write time: {} us, code write time: {} us, payload write time: {} us, flush time: {} us",
-                (payload_len_write_time - now).as_micros(),
-                (code_write_time - payload_len_write_time).as_micros(),
-                (payload_write_time - code_write_time).as_micros(),
-                (flush_time - payload_write_time).as_micros(),
-            );
-
-            let now = Instant::now();
             let mut response_buffer = [0u8; RESPONSE_INITIAL_BYTES_LENGTH];
             let read_bytes = stream.read(&mut response_buffer).await.map_err(|error| {
                 error!(
@@ -652,7 +638,6 @@ impl TcpClient {
                 );
                 IggyError::Disconnected
             })?;
-            trace!("Response read time: {} us", now.elapsed().as_micros());
 
             if read_bytes != RESPONSE_INITIAL_BYTES_LENGTH {
                 error!("Received an invalid or empty response.");

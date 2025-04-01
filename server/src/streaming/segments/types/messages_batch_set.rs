@@ -79,24 +79,24 @@ impl IggyMessagesBatchSet {
         self.batches.is_empty() || self.count == 0
     }
 
-    /// Get first timestamp of first batch
+    /// Get timestamp of first message in first batch
     pub fn first_timestamp(&self) -> Option<u64> {
         self.batches.first().map(|batch| batch.first_timestamp())
     }
 
-    /// Get first offset of first batch
+    /// Get offset of first message in first batch
     pub fn first_offset(&self) -> Option<u64> {
         self.batches.first().map(|batch| batch.first_offset())
     }
 
-    /// Get offset of last message of last batch
-    pub fn last_offset(&self) -> Option<u64> {
-        self.batches.last().map(|batch| batch.last_offset())
-    }
-
-    /// Get timestamp of last message of last batch
+    /// Get timestamp of last message in last batch
     pub fn last_timestamp(&self) -> Option<u64> {
         self.batches.last().map(|batch| batch.last_timestamp())
+    }
+
+    /// Get offset of last message in last batch
+    pub fn last_offset(&self) -> Option<u64> {
+        self.batches.last().map(|batch| batch.last_offset())
     }
 
     /// Get a reference to the underlying vector of message containers
@@ -117,7 +117,7 @@ impl IggyMessagesBatchSet {
     /// Convert this batch and poll metadata into a vector of fully-formed IggyMessage objects
     ///
     /// This method transforms the internal message views into complete IggyMessage objects
-    /// that can be returned to clients.
+    /// that can be returned to clients. It should only be used by server http implementation.
     ///
     /// # Arguments
     ///
@@ -128,17 +128,11 @@ impl IggyMessagesBatchSet {
     /// A vector of IggyMessage objects with proper metadata
     pub fn into_polled_messages(&self, poll_metadata: IggyPollMetadata) -> PolledMessages {
         if self.is_empty() {
-            return PolledMessages {
-                messages: vec![],
-                partition_id: 0,
-                current_offset: 0,
-                count: 0,
-            };
+            return PolledMessages::empty();
         }
 
         let mut messages = Vec::with_capacity(self.count() as usize);
 
-        // TODO(hubcio): this can be also optimized for zero copy, but it's http...
         for batch in self.iter() {
             for message in batch.iter() {
                 let header = message.header().to_header();

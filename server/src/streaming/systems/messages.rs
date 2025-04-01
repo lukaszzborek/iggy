@@ -54,11 +54,10 @@ impl System {
             .get_messages(polling_consumer, partition_id, args.strategy, args.count)
             .await?;
 
-        let offset = batch_set
-            .last_offset()
-            .expect("Batch set should have at least one batch");
-
-        if args.auto_commit {
+        if args.auto_commit && !batch_set.is_empty() {
+            let offset = batch_set
+                .last_offset()
+                .expect("Batch set should have at least one batch");
             trace!("Last offset: {} will be automatically stored for {}, stream: {}, topic: {}, partition: {}", offset, consumer, stream_id, topic_id, partition_id);
             topic
                 .store_consumer_offset_internal(polling_consumer, offset, partition_id)

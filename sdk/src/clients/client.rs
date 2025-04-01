@@ -547,7 +547,7 @@ impl MessageClient for IggyClient {
             return Err(IggyError::InvalidMessagesCount);
         }
 
-        let polled_messages = self
+        let mut polled_messages = self
             .client
             .read()
             .await
@@ -562,16 +562,14 @@ impl MessageClient for IggyClient {
             )
             .await?;
 
-        // TODO: Fix me
-        /*
         if let Some(ref encryptor) = self.encryptor {
             for message in &mut polled_messages.messages {
                 let payload = encryptor.decrypt(&message.payload)?;
                 message.payload = Bytes::from(payload);
-                message.length = IggyByteSize::from(message.payload.len() as u64);
+                message.header.payload_length = message.payload.len() as u32;
             }
         }
-        */
+
         Ok(polled_messages)
     }
 
