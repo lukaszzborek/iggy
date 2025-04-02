@@ -1,17 +1,19 @@
 use crate::actors::producing_consumer::ProducingConsumer;
 use crate::args::common::IggyBenchArgs;
-use crate::benchmarks::benchmark::{BenchmarkFutures, Benchmarkable};
+use crate::benchmarks::benchmark::Benchmarkable;
 use crate::benchmarks::{CONSUMER_GROUP_BASE_ID, CONSUMER_GROUP_NAME_PREFIX};
 use crate::rate_limiter::RateLimiter;
 use async_trait::async_trait;
 use iggy::client::ConsumerGroupClient;
 use iggy::clients::client::IggyClient;
 use iggy::error::IggyError;
-use iggy::messages::poll_messages::PollingKind;
+use iggy::messages::PollingKind;
 use iggy_bench_report::benchmark_kind::BenchmarkKind;
+use iggy_bench_report::individual_metrics::BenchmarkIndividualMetrics;
 use integration::test_server::{login_root, ClientFactory};
 use std::sync::atomic::AtomicI64;
 use std::sync::Arc;
+use tokio::task::JoinSet;
 use tracing::{error, info};
 
 pub struct EndToEndProducingConsumerGroupBenchmark {
@@ -68,7 +70,9 @@ impl EndToEndProducingConsumerGroupBenchmark {
 
 #[async_trait]
 impl Benchmarkable for EndToEndProducingConsumerGroupBenchmark {
-    async fn run(&mut self) -> BenchmarkFutures {
+    async fn run(
+        &mut self,
+    ) -> Result<JoinSet<Result<BenchmarkIndividualMetrics, IggyError>>, IggyError> {
         self.init_streams().await.expect("Failed to init streams!");
         let consumer_groups_count = self.args.number_of_consumer_groups();
         self.init_consumer_groups(consumer_groups_count)
@@ -87,11 +91,11 @@ impl Benchmarkable for EndToEndProducingConsumerGroupBenchmark {
         let partitions_count = self.args.number_of_partitions();
         let warmup_time = self.args.warmup_time();
         let polling_kind = PollingKind::Next;
-        let mut futures: BenchmarkFutures = Ok(Vec::with_capacity(actors_count as usize));
         let consumer_groups_count = self.args.number_of_consumer_groups();
         let total_message_batches =
             Arc::new(AtomicI64::new((message_batches * actors_count) as i64));
 
+        let mut set = JoinSet::new();
         for actor_id in 1..=actors_count {
             let args = self.args.clone();
             let client_factory = self.client_factory.clone();
@@ -122,11 +126,11 @@ impl Benchmarkable for EndToEndProducingConsumerGroupBenchmark {
                 polling_kind,
                 false,
             );
-            let future = Box::pin(async move { actor.run().await });
-            futures.as_mut().unwrap().push(future);
+            set.spawn(actor.run());
         }
+
         info!("Created {actors_count} producing consumer(s) which would be part of {consumer_groups_count} consumer groups");
-        futures
+        Ok(set)
     }
 
     fn kind(&self) -> BenchmarkKind {

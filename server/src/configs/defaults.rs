@@ -421,6 +421,12 @@ impl Default for PartitionConfig {
     fn default() -> PartitionConfig {
         PartitionConfig {
             path: SERVER_CONFIG.system.partition.path.parse().unwrap(),
+            size_of_messages_required_to_save: SERVER_CONFIG
+                .system
+                .partition
+                .size_of_messages_required_to_save
+                .parse()
+                .unwrap(),
             messages_required_to_save: SERVER_CONFIG.system.partition.messages_required_to_save
                 as u32,
             enforce_fsync: SERVER_CONFIG.system.partition.enforce_fsync,
@@ -433,7 +439,7 @@ impl Default for SegmentConfig {
     fn default() -> SegmentConfig {
         SegmentConfig {
             size: SERVER_CONFIG.system.segment.size.parse().unwrap(),
-            cache_indexes: SERVER_CONFIG.system.segment.cache_indexes,
+            cache_indexes: SERVER_CONFIG.system.segment.cache_indexes.parse().unwrap(),
             message_expiry: SERVER_CONFIG.system.segment.message_expiry.parse().unwrap(),
             archive_expired: SERVER_CONFIG.system.segment.archive_expired,
             server_confirmation: SERVER_CONFIG

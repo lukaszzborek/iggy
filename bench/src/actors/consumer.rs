@@ -7,7 +7,8 @@ use iggy::client::{ConsumerGroupClient, MessageClient};
 use iggy::clients::client::IggyClient;
 use iggy::consumer::Consumer as IggyConsumer;
 use iggy::error::IggyError;
-use iggy::messages::poll_messages::{PollingKind, PollingStrategy};
+use iggy::messages::PollingKind;
+use iggy::prelude::PollingStrategy;
 use iggy::utils::byte_size::IggyByteSize;
 use iggy::utils::duration::IggyDuration;
 use iggy::utils::sizeable::Sizeable;
@@ -74,7 +75,7 @@ impl Consumer {
         }
     }
 
-    pub async fn run(&self) -> Result<BenchmarkIndividualMetrics, IggyError> {
+    pub async fn run(self) -> Result<BenchmarkIndividualMetrics, IggyError> {
         let topic_id: u32 = 1;
         let default_partition_id: u32 = 1;
         let message_batches = self.message_batches as u64;
@@ -129,6 +130,7 @@ impl Consumer {
                     self.consumer_id, self.warmup_time
                 );
             }
+
             let warmup_end = Instant::now() + self.warmup_time.get_duration();
             while Instant::now() < warmup_end {
                 let offset = current_iteration * messages_per_batch as u64;
@@ -228,7 +230,6 @@ impl Consumer {
 
             let polled_messages = polled_messages.unwrap();
             if polled_messages.messages.is_empty() {
-                // Store initial poll timestamp if this is the first attempt
                 if initial_poll_timestamp.is_none() {
                     initial_poll_timestamp = Some(before_poll);
                 }
@@ -287,11 +288,11 @@ impl Consumer {
 
             // We don't need to calculate the size whole batch every time by iterating over it - just always use the size of the first message
             if batch_user_size_bytes == 0 || batch_size_total_bytes == 0 {
-                batch_user_size_bytes =
-                    polled_messages.messages[0].payload.len() as u64 * messages_per_batch as u64;
+                batch_user_size_bytes = polled_messages.messages[0].payload.len() as u64
+                    * polled_messages.messages.len() as u64;
                 batch_size_total_bytes =
                     polled_messages.messages[0].get_size_bytes().as_bytes_u64()
-                        * messages_per_batch as u64;
+                        * polled_messages.messages.len() as u64;
             }
 
             total_user_data_bytes += IggyByteSize::from(batch_user_size_bytes);

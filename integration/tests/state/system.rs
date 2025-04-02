@@ -105,37 +105,37 @@ async fn should_be_initialized_based_on_state_entries() {
         hash: "hash".to_string(),
     };
     state
-        .apply(user_id, EntryCommand::CreateUser(create_user))
+        .apply(user_id, &EntryCommand::CreateUser(create_user))
         .await
         .unwrap();
     state
-        .apply(user_id, EntryCommand::CreateStream(create_stream1))
+        .apply(user_id, &EntryCommand::CreateStream(create_stream1))
         .await
         .unwrap();
     state
-        .apply(user_id, EntryCommand::CreateTopic(create_topic1))
+        .apply(user_id, &EntryCommand::CreateTopic(create_topic1))
         .await
         .unwrap();
     state
-        .apply(user_id, EntryCommand::CreateStream(create_stream2))
+        .apply(user_id, &EntryCommand::CreateStream(create_stream2))
         .await
         .unwrap();
     state
-        .apply(user_id, EntryCommand::CreateTopic(create_topic2))
+        .apply(user_id, &EntryCommand::CreateTopic(create_topic2))
         .await
         .unwrap();
     state
-        .apply(user_id, EntryCommand::CreatePartitions(create_partitions))
+        .apply(user_id, &EntryCommand::CreatePartitions(create_partitions))
         .await
         .unwrap();
     state
-        .apply(user_id, EntryCommand::DeleteStream(delete_stream2))
+        .apply(user_id, &EntryCommand::DeleteStream(delete_stream2))
         .await
         .unwrap();
     state
         .apply(
             user_id,
-            EntryCommand::CreatePersonalAccessToken(create_personal_access_token),
+            &EntryCommand::CreatePersonalAccessToken(create_personal_access_token),
         )
         .await
         .unwrap();

@@ -12,13 +12,12 @@ use crate::error::IggyError;
 use crate::identifier::Identifier;
 use crate::locking::IggySharedMut;
 use crate::locking::IggySharedMutFn;
-use crate::messages::poll_messages::PollingStrategy;
-use crate::messages::send_messages::{Message, Partitioning};
+use crate::messages::PollingStrategy;
 use crate::models::client_info::{ClientInfo, ClientInfoDetails};
 use crate::models::consumer_group::{ConsumerGroup, ConsumerGroupDetails};
 use crate::models::consumer_offset_info::ConsumerOffsetInfo;
 use crate::models::identity_info::IdentityInfo;
-use crate::models::messages::PolledMessages;
+use crate::models::messaging::IggyMessage;
 use crate::models::permissions::Permissions;
 use crate::models::personal_access_token::{PersonalAccessTokenInfo, RawPersonalAccessToken};
 use crate::models::snapshot::Snapshot;
@@ -28,9 +27,9 @@ use crate::models::topic::{Topic, TopicDetails};
 use crate::models::user_info::{UserInfo, UserInfoDetails};
 use crate::models::user_status::UserStatus;
 use crate::partitioner::Partitioner;
+use crate::prelude::{Partitioning, PolledMessages};
 use crate::snapshot::{SnapshotCompression, SystemSnapshotType};
 use crate::tcp::client::TcpClient;
-use crate::utils::byte_size::IggyByteSize;
 use crate::utils::crypto::EncryptorKind;
 use crate::utils::duration::IggyDuration;
 use crate::utils::expiry::IggyExpiry;
@@ -567,7 +566,7 @@ impl MessageClient for IggyClient {
             for message in &mut polled_messages.messages {
                 let payload = encryptor.decrypt(&message.payload)?;
                 message.payload = Bytes::from(payload);
-                message.length = IggyByteSize::from(message.payload.len() as u64);
+                message.header.payload_length = message.payload.len() as u32;
             }
         }
 
@@ -579,7 +578,7 @@ impl MessageClient for IggyClient {
         stream_id: &Identifier,
         topic_id: &Identifier,
         partitioning: &Partitioning,
-        messages: &mut [Message],
+        messages: &mut [IggyMessage],
     ) -> Result<(), IggyError> {
         if messages.is_empty() {
             return Err(IggyError::InvalidMessagesCount);
@@ -588,7 +587,7 @@ impl MessageClient for IggyClient {
         if let Some(encryptor) = &self.encryptor {
             for message in &mut *messages {
                 message.payload = Bytes::from(encryptor.encrypt(&message.payload)?);
-                message.length = message.payload.len() as u32;
+                message.header.payload_length = message.payload.len() as u32;
             }
         }
 

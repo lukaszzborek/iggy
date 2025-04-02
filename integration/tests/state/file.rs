@@ -31,7 +31,7 @@ async fn should_apply_single_entry() {
     });
     let command_bytes = command.to_bytes();
 
-    state.apply(user_id, command).await.unwrap();
+    state.apply(user_id, &command).await.unwrap();
 
     let mut entries = state.load_entries().await.unwrap();
     assert_eq!(entries.len(), 1);
@@ -54,7 +54,7 @@ async fn should_apply_encrypted_entry() {
     });
     let command_bytes = command.to_bytes();
 
-    state.apply(user_id, command).await.unwrap();
+    state.apply(user_id, &command).await.unwrap();
 
     let mut entries = state.load_entries().await.unwrap();
     assert_eq!(entries.len(), 1);
@@ -82,7 +82,7 @@ async fn should_apply_multiple_entries() {
     });
     let create_user_bytes = create_user.to_bytes();
 
-    state.apply(first_user_id, create_user).await.unwrap();
+    state.apply(first_user_id, &create_user).await.unwrap();
 
     assert_eq!(state.current_index(), 0);
     assert_eq!(state.entries_count(), 1);
@@ -94,7 +94,7 @@ async fn should_apply_multiple_entries() {
     });
     let create_stream_bytes = create_stream.to_bytes();
 
-    state.apply(second_user_id, create_stream).await.unwrap();
+    state.apply(second_user_id, &create_stream).await.unwrap();
 
     assert_eq!(state.current_index(), 1);
     assert_eq!(state.entries_count(), 2);

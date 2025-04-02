@@ -4,8 +4,9 @@ use crate::diagnostic::DiagnosticEvent;
 use crate::error::IggyError;
 use crate::identifier::{IdKind, Identifier};
 use crate::locking::{IggySharedMut, IggySharedMutFn};
-use crate::messages::send_messages::{Message, Partitioning};
 use crate::partitioner::Partitioner;
+use crate::prelude::IggyMessage;
+use crate::prelude::Partitioning;
 use crate::utils::crypto::EncryptorKind;
 use crate::utils::duration::IggyDuration;
 use crate::utils::expiry::IggyExpiry;
@@ -212,7 +213,7 @@ impl IggyProducer {
         });
     }
 
-    pub async fn send(&self, messages: Vec<Message>) -> Result<(), IggyError> {
+    pub async fn send(&self, messages: Vec<IggyMessage>) -> Result<(), IggyError> {
         if messages.is_empty() {
             trace!("No messages to send.");
             return Ok(());
@@ -233,13 +234,13 @@ impl IggyProducer {
         .await
     }
 
-    pub async fn send_one(&self, message: Message) -> Result<(), IggyError> {
+    pub async fn send_one(&self, message: IggyMessage) -> Result<(), IggyError> {
         self.send(vec![message]).await
     }
 
     pub async fn send_with_partitioning(
         &self,
-        messages: Vec<Message>,
+        messages: Vec<IggyMessage>,
         partitioning: Option<Arc<Partitioning>>,
     ) -> Result<(), IggyError> {
         if messages.is_empty() {
@@ -266,7 +267,7 @@ impl IggyProducer {
         &self,
         stream: Arc<Identifier>,
         topic: Arc<Identifier>,
-        messages: Vec<Message>,
+        messages: Vec<IggyMessage>,
         partitioning: Option<Arc<Partitioning>>,
     ) -> Result<(), IggyError> {
         if messages.is_empty() {
@@ -288,7 +289,7 @@ impl IggyProducer {
         &self,
         stream: Arc<Identifier>,
         topic: Arc<Identifier>,
-        mut messages: Vec<Message>,
+        mut messages: Vec<IggyMessage>,
         partitioning: Option<Arc<Partitioning>>,
     ) -> Result<(), IggyError> {
         self.encrypt_messages(&mut messages)?;
@@ -324,7 +325,7 @@ impl IggyProducer {
         &self,
         stream: &Identifier,
         topic: &Identifier,
-        mut messages: Vec<Message>,
+        mut messages: Vec<IggyMessage>,
         partitioning: Option<Arc<Partitioning>>,
     ) -> Result<(), IggyError> {
         trace!("No batch size specified, sending messages immediately.");
@@ -365,11 +366,11 @@ impl IggyProducer {
         sleep(Duration::from_micros(remaining)).await;
     }
 
-    fn encrypt_messages(&self, messages: &mut [Message]) -> Result<(), IggyError> {
+    fn encrypt_messages(&self, messages: &mut [IggyMessage]) -> Result<(), IggyError> {
         if let Some(encryptor) = &self.encryptor {
             for message in messages {
                 message.payload = Bytes::from(encryptor.encrypt(&message.payload)?);
-                message.length = message.payload.len() as u32;
+                message.header.payload_length = message.payload.len() as u32;
             }
         }
         Ok(())
@@ -380,7 +381,7 @@ impl IggyProducer {
         stream: &Identifier,
         topic: &Identifier,
         partitioning: &Arc<Partitioning>,
-        messages: &mut [Message],
+        messages: &mut [IggyMessage],
     ) -> Result<(), IggyError> {
         let client = self.client.read().await;
         let Some(max_retries) = self.send_retries_count else {
@@ -456,7 +457,7 @@ impl IggyProducer {
         stream: &Identifier,
         topic: &Identifier,
         partitioning: &Arc<Partitioning>,
-        messages: &mut [Message],
+        messages: &mut [IggyMessage],
         timer: &mut Option<Interval>,
     ) -> Result<(), IggyError> {
         let client = self.client.read().await;
@@ -498,7 +499,7 @@ impl IggyProducer {
         &self,
         stream: &Identifier,
         topic: &Identifier,
-        messages: &[Message],
+        messages: &[IggyMessage],
         partitioning: Option<Arc<Partitioning>>,
     ) -> Result<Arc<Partitioning>, IggyError> {
         if let Some(partitioner) = &self.partitioner {

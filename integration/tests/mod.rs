@@ -1,6 +1,6 @@
 use ctor::{ctor, dtor};
 use lazy_static::lazy_static;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::RwLock;
@@ -21,7 +21,8 @@ lazy_static! {
     static ref TESTS_FAILED: AtomicBool = AtomicBool::new(false);
     static ref LOGS_BUFFER: Arc<RwLock<HashMap<String, Vec<u8>>>> =
         Arc::new(RwLock::new(HashMap::new()));
-    static ref FAILED_TEST_CASES: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new()));
+    static ref FAILED_TEST_CASES: Arc<RwLock<HashSet<String>>> =
+        Arc::new(RwLock::new(HashSet::new()));
 }
 
 static INIT: Once = Once::new();
@@ -32,7 +33,7 @@ fn setup() {
 
     let mut logger = env_logger::builder();
     logger.is_test(true);
-    logger.filter(None, log::LevelFilter::Debug);
+    logger.filter(None, log::LevelFilter::Trace); // todo
     logger.target(env_logger::Target::Pipe(Box::new(LogWriter(log_buffer))));
     logger.format(move |buf, record| {
         let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.6f");
@@ -49,7 +50,10 @@ fn setup() {
         let thread = thread::current();
         let thread_name = thread.name().unwrap_or(UNKNOWN_TEST_NAME);
         let failed_tests = FAILED_TEST_CASES.clone();
-        failed_tests.write().unwrap().push(thread_name.to_string());
+        failed_tests
+            .write()
+            .unwrap()
+            .insert(thread_name.to_string());
 
         // If a test panics, set the failure flag to true
         TESTS_FAILED.store(true, Ordering::SeqCst);
