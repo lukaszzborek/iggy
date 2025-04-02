@@ -108,6 +108,8 @@ impl MessagesAccumulator {
     ///
     /// A batch set containing the requested messages
     pub fn get_messages_by_offset(&self, start_offset: u64, count: u32) -> IggyMessagesBatchSet {
+        trace!("Getting {count} messages from accumulator by offset {start_offset}, current_offset: {}, current_position: {}",
+            self.current_offset, self.current_position);
         self.batches.get_by_offset(start_offset, count)
     }
 

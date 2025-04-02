@@ -312,8 +312,8 @@ pub enum IggyError {
     CannotReadMessageLength = 4020,
     #[error("Cannot save messages to segment")]
     CannotReadMessagePayload = 4021,
-    #[error("Too big message payload: {0}, must be <= {1}")]
-    TooBigMessagePayload(u32, u32) = 4022,
+    #[error("Too big message payload")]
+    TooBigMessagePayload = 4022,
     #[error("Too many messages")]
     TooManyMessages = 4023,
     #[error("Empty message payload")]

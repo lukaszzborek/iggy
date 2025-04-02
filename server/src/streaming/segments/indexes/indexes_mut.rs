@@ -28,6 +28,18 @@ impl IggyIndexesMut {
         }
     }
 
+    /// Gets the size of all indexes messages
+    pub fn messages_size(&self) -> u32 {
+        self.last_position()
+    }
+
+    /// Helper method to get the last index position
+    pub fn last_position(&self) -> u32 {
+        self.get(self.count() - 1)
+            .map(|idx| idx.position())
+            .unwrap_or(0)
+    }
+
     /// Creates a new container with the specified capacity
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
@@ -64,8 +76,8 @@ impl IggyIndexesMut {
     }
 
     /// Gets the size of the buffer in bytes
-    pub fn size(&self) -> usize {
-        self.buffer.len()
+    pub fn size(&self) -> u32 {
+        self.buffer.len() as u32
     }
 
     /// Gets a view of the index at the specified position
@@ -123,10 +135,6 @@ impl IggyIndexesMut {
 
         let first_idx = self.get(0)?;
         if timestamp <= first_idx.timestamp() {
-            tracing::trace!(
-                "Requested timestamp {} is less than any available",
-                timestamp
-            );
             return Some(first_idx);
         }
 
@@ -199,8 +207,7 @@ impl IggyIndexesMut {
         let end_byte = end_pos as usize * INDEX_SIZE;
         let slice = BytesMut::from(&self.buffer[start_byte..end_byte]);
 
-        let i = relative_start_offset.saturating_sub(1);
-        if i == 0 {
+        if relative_start_offset == 0 {
             Some(IggyIndexes::new(slice.freeze(), 0))
         } else {
             let base_position = self.get(relative_start_offset - 1).unwrap().position();

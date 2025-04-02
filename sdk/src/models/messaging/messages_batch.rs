@@ -413,7 +413,7 @@ impl Validatable<IggyError> for IggyMessagesBatch {
         }
 
         let indexes_count = self.indexes.count();
-        let indexes_size = self.indexes.messages_size();
+        let indexes_size = self.indexes.size();
 
         if indexes_size % INDEX_SIZE as u32 != 0 {
             tracing::error!(
@@ -462,10 +462,7 @@ impl Validatable<IggyError> for IggyMessagesBatch {
                         message.payload().len(),
                         MAX_PAYLOAD_SIZE
                     );
-                    return Err(IggyError::TooBigMessagePayload(
-                        message.payload().len() as u32,
-                        MAX_PAYLOAD_SIZE,
-                    ));
+                    return Err(IggyError::TooBigMessagePayload);
                 }
 
                 messages_size += message.size();

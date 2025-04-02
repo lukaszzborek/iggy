@@ -65,7 +65,11 @@ pub(crate) async fn send_response<T>(
 where
     T: AsyncRead + AsyncWrite + Unpin,
 {
-    debug!("Sending response with status: {:?}...", status);
+    debug!(
+        "Sending response of len: {} with status: {:?}...",
+        payload.len(),
+        status
+    );
     let length = (payload.len() as u32).to_le_bytes();
     stream
         .write_all(&[status, &length, payload].as_slice().concat())
@@ -84,13 +88,21 @@ pub(crate) async fn send_response_vectored<T>(
 where
     T: AsyncReadExt + AsyncWriteExt + Unpin,
 {
-    debug!("Sending response with status: {:?}...", status);
+    debug!(
+        "Sending vectored response of len: {} with status: {:?}...",
+        slices.len(),
+        status
+    );
     let prefix = [IoSlice::new(status), IoSlice::new(length)];
     slices.splice(0..0, prefix);
-    stream
-        .write_vectored(&slices)
-        .await
-        .map_err(|_| IggyError::TcpError)?;
+    let mut slice_refs = slices.as_mut_slice();
+    while !slice_refs.is_empty() {
+        let bytes_written = stream
+            .write_vectored(slice_refs)
+            .await
+            .map_err(|_| IggyError::TcpError)?;
+        IoSlice::advance_slices(&mut slice_refs, bytes_written);
+    }
     debug!("Sent response with status: {:?}", status);
     Ok(())
 }

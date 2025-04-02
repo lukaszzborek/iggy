@@ -2,6 +2,7 @@ use super::message_view_mut::IggyMessageViewMutIterator;
 use crate::streaming::segments::indexes::IggyIndexesMut;
 use crate::streaming::utils::random_id;
 use bytes::{BufMut, BytesMut};
+use iggy::messages::MAX_PAYLOAD_SIZE;
 use iggy::models::messaging::{IggyMessagesBatch, INDEX_SIZE};
 use iggy::prelude::*;
 use iggy::utils::timestamp::IggyTimestamp;
@@ -181,6 +182,161 @@ impl IggyMessagesBatchMut {
     /// Decomposes the batch into its constituent parts.
     pub fn decompose(self) -> (IggyIndexesMut, BytesMut) {
         (self.indexes, self.messages)
+    }
+
+    /// Helper method to read a position (u32) from the byte array at the given index
+    fn position_at(&self, position_index: u32) -> u32 {
+        if let Some(index) = self.indexes.get(position_index) {
+            index.position()
+        } else {
+            0
+        }
+    }
+
+    /// Get the message at the specified index.
+    /// Returns None if the index is out of bounds.
+    pub fn get(&self, index: usize) -> Option<IggyMessageView> {
+        if index >= self.count() as usize {
+            return None;
+        }
+
+        // TODO: refactor this
+        let start_position = if index == 0 {
+            0
+        } else {
+            self.position_at(index as u32 - 1) as usize
+        };
+
+        let end_position = if index == self.count() as usize - 1 {
+            self.messages.len()
+        } else {
+            self.position_at(index as u32) as usize
+        };
+
+        debug_assert!(
+            start_position <= self.messages.len(),
+            "Start message position {} exceeds buffer length {}, index: {}, self.count: {}",
+            start_position,
+            self.messages.len(),
+            index,
+            self.count(),
+        );
+        debug_assert!(
+            end_position <= self.messages.len(),
+            "End message position {} exceeds buffer length {}, index: {}, self.count: {}",
+            end_position,
+            self.messages.len(),
+            index,
+            self.count(),
+        );
+
+        Some(IggyMessageView::new(
+            &self.messages[start_position..end_position],
+        ))
+    }
+}
+
+impl Validatable<IggyError> for IggyMessagesBatchMut {
+    fn validate(&self) -> Result<(), IggyError> {
+        if self.is_empty() {
+            return Err(IggyError::InvalidMessagesCount);
+        }
+
+        let indexes_count = self.indexes.count();
+        let indexes_size = self.indexes.size();
+
+        if indexes_size % INDEX_SIZE as u32 != 0 {
+            tracing::error!(
+                "Indexes size {} is not a multiple of index size {}",
+                indexes_size,
+                INDEX_SIZE
+            );
+            return Err(IggyError::InvalidIndexesByteSize(indexes_size));
+        }
+
+        if indexes_count != self.count() {
+            tracing::error!(
+                "Indexes count {} does not match messages count {}",
+                indexes_count,
+                self.count()
+            );
+            return Err(IggyError::InvalidIndexesCount(indexes_count, self.count()));
+        }
+
+        let mut messages_count = 0;
+        let mut messages_size = 0;
+
+        for i in 0..self.count() {
+            if let Some(index_view) = self.indexes.get(i) {
+                if index_view.offset() != 0 {
+                    tracing::error!("Non-zero offset {} at index: {}", index_view.offset(), i);
+                    return Err(IggyError::NonZeroOffset(index_view.offset() as u64, i));
+                }
+                if index_view.timestamp() != 0 {
+                    tracing::error!(
+                        "Non-zero timestamp {} at index: {}",
+                        index_view.timestamp(),
+                        i
+                    );
+                    return Err(IggyError::NonZeroTimestamp(index_view.timestamp(), i));
+                }
+            } else {
+                tracing::error!("Index {} is missing", i);
+                return Err(IggyError::MissingIndex(i));
+            }
+
+            if let Some(message) = self.get(i as usize) {
+                if message.payload().len() as u32 > MAX_PAYLOAD_SIZE {
+                    tracing::error!(
+                        "Message payload size {} B exceeds maximum payload size {} B",
+                        message.payload().len(),
+                        MAX_PAYLOAD_SIZE
+                    );
+                    return Err(IggyError::TooBigMessagePayload);
+                }
+
+                if let Some(user_headers) = message.user_headers() {
+                    tracing::error!("message user headers size {}", user_headers.len());
+                    if user_headers.len() as u32 > MAX_USER_HEADERS_SIZE {
+                        tracing::error!(
+                            "Message user headers size {} B exceeds maximum size {} B",
+                            user_headers.len(),
+                            MAX_USER_HEADERS_SIZE
+                        );
+                        return Err(IggyError::TooBigHeadersPayload);
+                    }
+                }
+
+                messages_size += message.size();
+                messages_count += 1;
+            } else {
+                tracing::error!("Missing index {}", i);
+                return Err(IggyError::MissingIndex(i));
+            }
+        }
+
+        if indexes_count != messages_count {
+            tracing::error!(
+                "Indexes count {} does not match messages count {}",
+                indexes_count,
+                messages_count
+            );
+            return Err(IggyError::InvalidMessagesCount);
+        }
+
+        if messages_size != self.messages.len() as u32 {
+            tracing::error!(
+                "Messages size {} does not match messages buffer size {}",
+                messages_size,
+                self.messages.len() as u64
+            );
+            return Err(IggyError::InvalidMessagesSize(
+                messages_size,
+                self.messages.len() as u32,
+            ));
+        }
+
+        Ok(())
     }
 }
 

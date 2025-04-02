@@ -72,7 +72,6 @@ fn messages_from_bytes_and_count(buffer: Bytes, count: u32) -> Result<Vec<IggyMe
     let mut messages = Vec::with_capacity(count as usize);
     let mut position = 0;
     let buf_len = buffer.len();
-
     while position < buf_len {
         if position + IGGY_MESSAGE_HEADER_SIZE as usize > buf_len {
             break;

@@ -174,7 +174,7 @@ impl IggyExampleTest<'_> {
 
         let consumer_handle = tokio::spawn(async move {
             let consumer_assert = consumer_cmd
-                .timeout(Duration::from_secs(2))
+                .timeout(Duration::from_secs(10))
                 .assert()
                 .success();
             let consumer_output = consumer_assert.get_output();

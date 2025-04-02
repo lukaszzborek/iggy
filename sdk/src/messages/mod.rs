@@ -7,7 +7,7 @@ mod polling_kind;
 mod polling_strategy;
 mod send_messages;
 
-pub const MAX_HEADERS_SIZE: u32 = 100 * 1000;
+pub const MAX_USER_HEADERS_SIZE: u32 = 100 * 1000;
 pub const MAX_PAYLOAD_SIZE: u32 = 10 * 1000 * 1000;
 
 pub use flush_unsaved_buffer::FlushUnsavedBuffer;

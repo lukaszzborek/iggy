@@ -129,6 +129,8 @@ impl Segment {
             .fetch_add(messages_count, Ordering::SeqCst);
         self.messages_count_of_parent_partition
             .fetch_add(messages_count, Ordering::SeqCst);
+        self.messages_size
+            .fetch_add(messages_size, Ordering::SeqCst);
     }
 
     async fn check_and_handle_segment_full(&mut self) -> Result<(), IggyError> {

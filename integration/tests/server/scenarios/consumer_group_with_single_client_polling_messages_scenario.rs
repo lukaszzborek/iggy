@@ -143,7 +143,7 @@ async fn execute_using_none_key(client: &IggyClient) {
     let mut partition_id = 1;
     let mut offset = 0;
     let mut entity_id = 1;
-    for _ in 1..=PARTITIONS_COUNT * MESSAGES_COUNT {
+    for i in 1..=PARTITIONS_COUNT * MESSAGES_COUNT {
         let polled_messages = client
             .poll_messages(
                 &Identifier::numeric(STREAM_ID).unwrap(),
@@ -157,7 +157,11 @@ async fn execute_using_none_key(client: &IggyClient) {
             .await
             .unwrap();
 
-        assert_eq!(polled_messages.messages.len(), 1);
+        assert_eq!(
+            polled_messages.messages.len(),
+            1,
+            "polled messages count is not 1 at iteration {i}"
+        );
         let message = &polled_messages.messages[0];
         assert_eq!(message.header.offset, offset);
         let payload = from_utf8(&message.payload).unwrap();

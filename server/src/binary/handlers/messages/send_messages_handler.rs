@@ -56,25 +56,14 @@ impl ServerCommandHandler for SendMessages {
 
         let mut indexes_and_messages = buffer.split();
 
-        tracing::error!(
-            "indexes_and_messages len {}, messages_count {}",
-            indexes_and_messages.len(),
-            messages_count
-        );
-
         let messages = indexes_and_messages.split_off(messages_count * INDEX_SIZE);
         let indexes = indexes_and_messages;
 
         let indexes = IggyIndexesMut::from_bytes(indexes);
 
-        tracing::error!(
-            "hubcio messages part len {}, indexes size {}, indexes count {}",
-            messages.len(),
-            indexes.size(),
-            indexes.count(),
-        );
-
         let batch = IggyMessagesBatchMut::from_indexes_and_messages(indexes, messages);
+
+        batch.validate()?;
 
         let system = system.read().await;
         system

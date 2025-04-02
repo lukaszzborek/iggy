@@ -9,7 +9,7 @@ use anyhow::Result;
 use error_set::ErrContext;
 use iggy::prelude::*;
 use std::io::IoSlice;
-use tracing::debug;
+use tracing::{debug, trace};
 
 #[derive(Debug)]
 pub struct IggyPollMetadata {
@@ -63,7 +63,8 @@ impl ServerCommandHandler for PollMessages {
         // long enough" errors while optimizing transmission by using larger chunks.
 
         // 4 bytes for partition_id + 8 bytes for current_offset + 4 bytes for messages_count + size of all batches.
-        let response_length = (4 + 8 + 4 + messages.size()).to_le_bytes();
+        let response_length = 4 + 8 + 4 + messages.size();
+        let response_length_bytes = response_length.to_le_bytes();
 
         let partition_id = metadata.partition_id.to_le_bytes();
         let current_offset = metadata.current_offset.to_le_bytes();
@@ -76,8 +77,14 @@ impl ServerCommandHandler for PollMessages {
 
         io_slices.extend(messages.iter().map(|m| IoSlice::new(m)));
 
+        trace!(
+            "Sending {} messages to client ({} bytes) to client",
+            messages.count(),
+            response_length
+        );
+
         sender
-            .send_ok_response_vectored(&response_length, io_slices)
+            .send_ok_response_vectored(&response_length_bytes, io_slices)
             .await?;
         Ok(())
     }

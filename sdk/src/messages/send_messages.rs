@@ -125,8 +125,7 @@ impl Validatable<IggyError> for SendMessages {
             return Err(IggyError::InvalidKeyValueLength);
         }
 
-        // TODO(hubcio): fix validation
-        // self.batch.validate()?;
+        self.batch.validate()?;
 
         Ok(())
     }

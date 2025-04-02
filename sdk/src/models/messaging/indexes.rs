@@ -38,6 +38,11 @@ impl IggyIndexes {
         self.buffer.len() as u32 / INDEX_SIZE as u32
     }
 
+    /// Gets the size of the buffer in bytes
+    pub fn size(&self) -> u32 {
+        self.buffer.len() as u32
+    }
+
     /// Gets the size of all indexes messages
     pub fn messages_size(&self) -> u32 {
         self.last_position() - self.base_position

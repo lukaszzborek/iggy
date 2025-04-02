@@ -9,12 +9,18 @@ use tracing::trace;
 
 const COMPONENT: &str = "STREAMING_SEGMENT";
 
+// TODO: test when offset > u32
+
 impl Segment {
     pub fn get_messages_size(&self) -> IggyByteSize {
         IggyByteSize::from(self.messages_size.load(Ordering::Relaxed))
     }
 
     pub fn get_messages_count(&self) -> u32 {
+        if self.get_messages_size() == 0 {
+            return 0;
+        }
+
         (self.end_offset - self.start_offset + 1) as u32
     }
 
@@ -243,9 +249,9 @@ impl Segment {
         count: u32,
     ) -> Result<IggyMessagesBatchSet, IggyError> {
         tracing::trace!(
-                "Loading {count} messages from disk, start_offset: {start_offset}, current_offset: {}...",
-                self.end_offset
-            );
+            "Loading {count} messages from disk, start_offset: {start_offset}, end_offset: {}...",
+            self.end_offset
+        );
         let relative_start_offset = (start_offset - self.start_offset) as u32;
 
         let indexes_to_read = self
@@ -267,7 +273,12 @@ impl Segment {
                 format!("Failed to load messages from segment file: {self}. {error}")
             })?;
 
-        tracing::trace!("Loaded {} messages from disk", msgs.count());
+        tracing::trace!(
+            "Loaded {} messages ({} bytes) from disk (requested {count} messages), start_offset: {start_offset}, end_offset: {}",
+            msgs.count(),
+            msgs.size(),
+            self.end_offset
+        );
 
         Ok(msgs)
     }

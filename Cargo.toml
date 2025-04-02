@@ -9,8 +9,7 @@ members = [
     "bench/report",
     "cli",
     "examples",
-    # todo
-    #"integration",
+    "integration",
     "sdk",
     "server",
     "tools",

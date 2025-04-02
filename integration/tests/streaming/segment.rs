@@ -317,9 +317,11 @@ async fn given_all_expired_messages_segment_should_be_expired() {
     let batch = IggyMessagesBatchMut::from_messages(&messages, messages_size);
     segment.append_batch(0, batch).await.unwrap();
     segment.persist_messages(None).await.unwrap();
+    let not_expired_ts = IggyTimestamp::now();
+    let expired_ts = not_expired_ts + IggyDuration::from(message_expiry_us + 1);
 
-    let is_expired = segment.is_expired(IggyTimestamp::now()).await;
-    assert!(is_expired);
+    assert!(segment.is_expired(expired_ts).await);
+    assert!(!segment.is_expired(not_expired_ts).await);
 }
 
 #[tokio::test]

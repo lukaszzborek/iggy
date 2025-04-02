@@ -95,7 +95,11 @@ impl Sender for QuicSender {
 
 impl QuicSender {
     async fn send_response(&mut self, status: &[u8], payload: &[u8]) -> Result<(), IggyError> {
-        debug!("Sending response with status: {:?}...", status);
+        debug!(
+            "Sending response of len: {} with status: {:?}...",
+            payload.len(),
+            status
+        );
         let length = (payload.len() as u32).to_le_bytes();
         self.send
             .write_all(&[status, &length, payload].as_slice().concat())

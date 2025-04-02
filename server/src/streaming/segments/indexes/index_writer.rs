@@ -87,7 +87,7 @@ impl IndexWriter {
         self.index_size_bytes
             .fetch_add(indexes.len() as u64, Ordering::Release);
 
-        trace!("XXXX Saved {count} indexes to file: {}", self.file_path);
+        trace!("Saved {count} indexes to file: {}", self.file_path);
 
         Ok(())
     }

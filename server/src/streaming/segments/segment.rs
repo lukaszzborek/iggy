@@ -151,7 +151,7 @@ impl Segment {
         let messages_count = self.get_messages_count() as u64;
 
         info!(
-            "Loaded segment with log file of size {} ({} messages) for start offset {}, current offset: {}, and partition with ID: {} for topic with ID: {} and stream with ID: {}.",
+            "Loaded segment with log file of size {} ({} messages) for start offset {}, end offset: {}, and partition with ID: {} for topic with ID: {} and stream with ID: {}.",
             IggyByteSize::from(log_size_bytes),
             messages_count,
             self.start_offset,
@@ -387,7 +387,7 @@ impl std::fmt::Display for Segment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Segment {{ stream_id: {}, topic_id: {}, partition_id: {}, start_offset: {}, current_offset: {}, size_bytes: {}, last_index_position: {}, max_size_bytes: {}, closed: {} }}",
+            "Segment {{ stream_id: {}, topic_id: {}, partition_id: {}, start_offset: {}, end_offset: {}, size_bytes: {}, last_index_position: {}, max_size_bytes: {}, closed: {} }}",
             self.stream_id,
             self.topic_id,
             self.partition_id,

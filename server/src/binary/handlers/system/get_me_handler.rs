@@ -9,7 +9,6 @@ use error_set::ErrContext;
 use iggy::error::IggyError;
 use iggy::locking::IggySharedMutFn;
 use iggy::system::get_me::GetMe;
-use tracing::debug;
 
 impl ServerCommandHandler for GetMe {
     fn code(&self) -> u32 {

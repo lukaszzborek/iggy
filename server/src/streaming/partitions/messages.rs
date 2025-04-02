@@ -116,7 +116,7 @@ impl Partition {
 
         let offset = consumer_offset.offset + 1;
         trace!(
-            "Getting next messages for {} for partition: {} from offset: {}...",
+            "Getting next messages for consumer id: {} for partition: {} from offset: {}...",
             consumer_id,
             self.partition_id,
             offset
