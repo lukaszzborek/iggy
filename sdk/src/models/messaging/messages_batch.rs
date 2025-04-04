@@ -23,32 +23,6 @@ pub struct IggyMessagesBatch {
 impl IggyMessagesBatch {
     /// Create a batch from indexes buffer and messages buffer
     pub fn new(indexes: IggyIndexes, messages: Bytes, count: u32) -> Self {
-        #[cfg(debug_assertions)]
-        {
-            debug_assert_eq!(indexes.len() % INDEX_SIZE, 0);
-            let indexes_count = indexes.len() / INDEX_SIZE;
-            debug_assert_eq!(indexes_count, count as usize);
-
-            if count > 0 {
-                let first_position = indexes.get(0).unwrap().position() as usize;
-
-                let iter = IggyMessageViewIterator::new(&messages);
-                let mut current_position = first_position;
-
-                for (i, message) in iter.enumerate().skip(1) {
-                    if i < count as usize {
-                        current_position += message.size();
-                        let expected_position = indexes.get(i as u32).unwrap().position() as usize;
-                        debug_assert_eq!(
-                            current_position, expected_position,
-                            "Message {} position mismatch: {} != {}",
-                            i, current_position, expected_position
-                        );
-                    }
-                }
-            }
-        }
-
         Self {
             count,
             indexes,
@@ -427,7 +401,6 @@ impl Index<usize> for IggyMessagesBatch {
             self.position_at(index as u32 - 1) as usize
         };
 
-        // todo check if OK, compare with messages_batch_mut.rs
         let end_position = if index == self.count as usize - 1 {
             self.messages.len()
         } else {

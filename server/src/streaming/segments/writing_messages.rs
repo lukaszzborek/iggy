@@ -58,6 +58,7 @@ impl Segment {
 
         let accumulator = std::mem::take(&mut self.accumulator);
 
+        // todo change to put
         accumulator.update_indexes(&mut self.indexes);
 
         let batches = accumulator.into_batch_set();

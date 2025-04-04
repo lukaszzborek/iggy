@@ -197,12 +197,8 @@ impl PartitionStorage for FilePartitionStorage {
             CacheIndexesConfig::OpenSegment
         ) && !partition.segments.is_empty()
         {
-            tracing::error!("Clearing all segment indexes ({} segments) except the last one for partition with ID: {} and topic with ID: {}",
-                    segments_count, partition.partition_id, partition.topic_id);
-
             let segments_count = partition.segments.len();
             for i in 0..segments_count - 1 {
-                tracing::error!("Dropping indexes for segment with ID: {} for partition with ID: {} and topic with ID: {}", partition.segments[i].start_offset(), partition.partition_id, partition.topic_id);
                 partition.segments[i].drop_indexes();
             }
         }

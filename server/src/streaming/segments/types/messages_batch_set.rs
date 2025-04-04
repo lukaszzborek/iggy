@@ -7,7 +7,7 @@ use std::ops::Index;
 use tracing::trace;
 
 /// A container for multiple IggyMessagesBatch objects
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 pub struct IggyMessagesBatchSet {
     /// The collection of message containers
     batches: Vec<IggyMessagesBatch>,
@@ -59,11 +59,13 @@ impl IggyMessagesBatchSet {
         self.batches.extend(other.batches);
     }
 
+    // todo usize
     /// Get the total number of messages in the batch
     pub fn count(&self) -> u32 {
         self.count
     }
 
+    // todo usize
     /// Get the total size of all messages in bytes
     pub fn size(&self) -> u32 {
         self.size

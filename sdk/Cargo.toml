@@ -37,8 +37,6 @@ fast-async-mutex = { version = "0.6.7", optional = true }
 flume = "0.11.1"
 futures = "0.3.31"
 futures-util = "0.3.31"
-# gxhash = { version = "3.4.1", features = ["hybrid"] }
-gxhash = "3.4.1"
 humantime = "2.1.0"
 keyring = { version = "3.6.1", optional = true, features = [
     "sync-secret-service",

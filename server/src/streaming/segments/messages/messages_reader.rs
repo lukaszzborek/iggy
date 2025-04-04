@@ -3,10 +3,12 @@ use error_set::ErrContext;
 use iggy::{
     error::IggyError,
     models::messaging::{IggyIndexes, IggyMessagesBatch},
+    prelude::IggyTimestamp,
 };
 use std::{
     fs::{File, OpenOptions},
-    os::unix::prelude::FileExt,
+    os::{fd::AsRawFd, unix::prelude::FileExt},
+    time::Duration,
 };
 use std::{
     io::ErrorKind,
@@ -15,8 +17,11 @@ use std::{
         Arc,
     },
 };
-use tokio::task::spawn_blocking;
-use tracing::{error, trace};
+use tokio::{
+    task::{spawn_blocking, JoinHandle},
+    time::interval,
+};
+use tracing::{debug, error, trace};
 
 /// A dedicated struct for reading from the log file.
 #[derive(Debug)]
@@ -24,6 +29,8 @@ pub struct MessagesReader {
     file_path: String,
     file: Arc<File>,
     log_size_bytes: Arc<AtomicU64>,
+    last_access: Arc<AtomicU64>,
+    cache_advisor_task: Option<JoinHandle<()>>,
 }
 
 impl MessagesReader {
@@ -63,11 +70,16 @@ impl MessagesReader {
 
         trace!("Opened messages file for reading: {file_path}, size: {actual_log_size}");
 
-        Ok(Self {
+        let mut reader = Self {
             file_path: file_path.to_string(),
             file: Arc::new(file),
             log_size_bytes,
-        })
+            last_access: Arc::new(AtomicU64::new(IggyTimestamp::now().as_micros())),
+            cache_advisor_task: None,
+        };
+
+        reader.start_cache_advisor_task();
+        Ok(reader)
     }
 
     /// Loads and returns all message IDs from the log file.
@@ -119,10 +131,7 @@ impl MessagesReader {
         let count_bytes = indexes.messages_size();
         let messages_count = indexes.count();
 
-        let messages_bytes = match self
-            .read_bytes_at(start_pos as u64, count_bytes as u64)
-            .await
-        {
+        let messages_bytes = match self.read_bytes_at(start_pos as u64, count_bytes).await {
             Ok(buf) => buf,
             Err(error) if error.kind() == ErrorKind::UnexpectedEof => {
                 return Ok(IggyMessagesBatch::empty())
@@ -144,12 +153,14 @@ impl MessagesReader {
     }
 
     /// Returns the size of the log file in bytes.
-    fn file_size(&self) -> u64 {
-        self.log_size_bytes.load(Ordering::Acquire)
+    pub fn file_size(&self) -> u32 {
+        self.log_size_bytes.load(Ordering::Acquire) as u32
     }
 
     /// Reads `len` bytes from the log file at the specified `offset`.
-    async fn read_bytes_at(&self, offset: u64, len: u64) -> Result<Bytes, std::io::Error> {
+    async fn read_bytes_at(&self, offset: u64, len: u32) -> Result<Bytes, std::io::Error> {
+        self.last_access
+            .store(IggyTimestamp::now().as_micros(), Ordering::Release);
         let file = self.file.clone();
         spawn_blocking(move || {
             let mut buf = BytesMut::with_capacity(len as usize);
@@ -158,5 +169,77 @@ impl MessagesReader {
             Ok(buf.freeze())
         })
         .await?
+    }
+
+    /// Starts a background task that manages file caching based on access patterns
+    fn start_cache_advisor_task(&mut self) {
+        let file = self.file.clone();
+        let file_path = self.file_path.clone();
+        let last_access = self.last_access.clone();
+        let log_size_bytes = self.log_size_bytes.clone();
+
+        const SEQUENTIAL_ACCESS_THRESHOLD_SECS: u64 = 1;
+        const DONTNEED_THRESHOLD_SECS: u64 = 5;
+        const CHECK_INTERVAL_SECS: u64 = 1;
+
+        let task = tokio::spawn(async move {
+            let mut last_advice: Option<nix::fcntl::PosixFadviseAdvice> = None;
+            let mut interval = interval(Duration::from_secs(CHECK_INTERVAL_SECS));
+
+            #[cfg(not(target_os = "macos"))]
+            loop {
+                interval.tick().await;
+
+                let now = IggyTimestamp::now().as_micros();
+                let last_access_time = last_access.load(Ordering::Acquire);
+                let elapsed_secs = (now - last_access_time) / 1_000_000;
+
+                let fd = file.as_raw_fd();
+                let file_size = log_size_bytes.load(Ordering::Acquire);
+
+                let advice = if elapsed_secs < SEQUENTIAL_ACCESS_THRESHOLD_SECS {
+                    Some(nix::fcntl::PosixFadviseAdvice::POSIX_FADV_SEQUENTIAL)
+                } else if elapsed_secs > DONTNEED_THRESHOLD_SECS {
+                    Some(nix::fcntl::PosixFadviseAdvice::POSIX_FADV_DONTNEED)
+                } else {
+                    None
+                };
+
+                if let Some(adv) = advice {
+                    if last_advice != Some(adv) {
+                        match nix::fcntl::posix_fadvise(fd, 0, file_size as i64, adv) {
+                            Ok(_) => {
+                                if adv == nix::fcntl::PosixFadviseAdvice::POSIX_FADV_DONTNEED {
+                                    trace!(
+                                        "Set DONTNEED advice on file: {}, no access for {}s",
+                                        file_path,
+                                        elapsed_secs
+                                    );
+                                } else if adv
+                                    == nix::fcntl::PosixFadviseAdvice::POSIX_FADV_SEQUENTIAL
+                                {
+                                    trace!(
+                                        "Set SEQUENTIAL advice on file: {}, recent access {}s ago",
+                                        file_path,
+                                        elapsed_secs
+                                    );
+                                }
+                                last_advice = Some(adv);
+                            }
+                            Err(e) => {
+                                debug!("Failed to set posix_fadvise on file {}: {}", file_path, e);
+                            }
+                        }
+                    }
+                }
+            }
+
+            #[cfg(target_os = "macos")]
+            loop {
+                interval.tick().await;
+            }
+        });
+
+        self.cache_advisor_task = Some(task);
     }
 }
