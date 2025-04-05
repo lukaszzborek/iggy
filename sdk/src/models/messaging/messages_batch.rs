@@ -60,8 +60,14 @@ impl IggyMessagesBatch {
         &self.messages
     }
 
+    /// Get the indexes slice
     pub fn indexes_slice(&self) -> &[u8] {
         &self.indexes
+    }
+
+    /// Take the indexes from the batch
+    pub fn take_indexes(&mut self) -> IggyIndexes {
+        std::mem::take(&mut self.indexes)
     }
 
     /// Decompose the batch into its components

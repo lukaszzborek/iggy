@@ -1,4 +1,4 @@
-use bytes::{BufMut, BytesMut};
+use bytes::{BufMut, Bytes, BytesMut};
 use iggy::models::messaging::{IggyIndexView, IggyIndexes, INDEX_SIZE};
 use std::fmt;
 use std::ops::{Deref, Index as StdIndex};
@@ -61,8 +61,8 @@ impl IggyIndexesMut {
     }
 
     /// Appends another slice of indexes to this one.
-    pub fn concatenate(&mut self, other: &[u8]) {
-        self.buffer.put_slice(other);
+    pub fn concatenate(&mut self, other: Bytes) {
+        self.buffer.put(other);
     }
 
     /// Gets the number of indexes in the container

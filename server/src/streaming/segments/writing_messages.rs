@@ -58,9 +58,7 @@ impl Segment {
 
         let accumulator = std::mem::take(&mut self.accumulator);
 
-        accumulator.update_indexes(&mut self.indexes);
-
-        let batches = accumulator.into_batch_set();
+        let mut batches = accumulator.into_batch_set();
         let confirmation = match confirmation {
             Some(val) => val,
             None => self.config.segment.server_confirmation,
@@ -73,7 +71,7 @@ impl Segment {
             .messages_writer
             .as_mut()
             .expect("Messages writer not initialized")
-            .save_batch_set(batches, confirmation)
+            .save_batch_set(&batches, confirmation)
             .await
             .with_error_context(|error| {
                 format!(
@@ -82,6 +80,8 @@ impl Segment {
             })?;
 
         self.last_index_position += saved_bytes.as_bytes_u64() as u32;
+
+        batches.extract_indexes_to(&mut self.indexes);
 
         let unsaved_indexes_slice = self.indexes.unsaved_slice();
         self.index_writer

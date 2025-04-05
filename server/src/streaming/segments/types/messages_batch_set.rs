@@ -1,4 +1,5 @@
 use crate::binary::handlers::messages::poll_messages_handler::IggyPollMetadata;
+use crate::streaming::segments::IggyIndexesMut;
 use bytes::Bytes;
 use iggy::models::messaging::IggyMessageView;
 use iggy::models::messaging::IggyMessagesBatch;
@@ -7,7 +8,7 @@ use std::ops::Index;
 use tracing::trace;
 
 /// A container for multiple IggyMessagesBatch objects
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct IggyMessagesBatchSet {
     /// The collection of message containers
     batches: Vec<IggyMessagesBatch>,
@@ -57,6 +58,15 @@ impl IggyMessagesBatchSet {
         self.count += other.count();
         self.size += other.size();
         self.batches.extend(other.batches);
+    }
+
+    /// Extract indexes from all batches in the set
+    pub fn extract_indexes_to(&mut self, target: &mut IggyIndexesMut) {
+        for batch in self.iter_mut() {
+            let indexes = batch.take_indexes();
+            let (_, indexes_buffer) = indexes.decompose();
+            target.concatenate(indexes_buffer);
+        }
     }
 
     /// Get the total number of messages in the batch
@@ -112,6 +122,11 @@ impl IggyMessagesBatchSet {
     /// Iterate over all message containers in the batch
     pub fn iter(&self) -> impl Iterator<Item = &IggyMessagesBatch> {
         self.batches.iter()
+    }
+
+    /// Iterate over all mutable message containers in the batch
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut IggyMessagesBatch> {
+        self.batches.iter_mut()
     }
 
     /// Convert this batch and poll metadata into a vector of fully-formed IggyMessage objects

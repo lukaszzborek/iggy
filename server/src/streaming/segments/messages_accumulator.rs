@@ -1,7 +1,4 @@
-use super::{
-    indexes::IggyIndexesMut,
-    types::{IggyMessagesBatchMut, IggyMessagesBatchSet},
-};
+use super::types::{IggyMessagesBatchMut, IggyMessagesBatchSet};
 use tracing::trace;
 
 /// A container that accumulates messages in memory before they are written to disk.
@@ -159,21 +156,6 @@ impl MessagesAccumulator {
     /// Returns the timestamp of the first message in the accumulator.
     pub fn first_timestamp(&self) -> u64 {
         self.batches.first_timestamp().unwrap_or(0)
-    }
-
-    /// Updates the segment's indexes with index information from all batches in this accumulator.
-    ///
-    /// This method transfers all the index information from the accumulator's batches to the
-    /// provided segment indexes object, ensuring that message positions, offsets, and timestamps
-    /// are properly recorded for later retrieval.
-    ///
-    /// # Arguments
-    ///
-    /// * `segment_indexes` - The segment's mutable indexes to update
-    pub fn update_indexes(&self, segment_indexes: &mut IggyIndexesMut) {
-        for batch in self.batches.iter() {
-            segment_indexes.concatenate(batch.indexes_slice());
-        }
     }
 
     /// Consumes the accumulator and returns the contained message batches.
