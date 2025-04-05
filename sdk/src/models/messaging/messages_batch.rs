@@ -117,7 +117,7 @@ impl IggyMessagesBatch {
             return None;
         }
 
-        // TODO(hubcio): this can be optimized via binary search
+        // TODO(hubcio): this can be optimized via lookup
         let first_message_index = self
             .iter()
             .position(|msg| msg.header().offset() >= start_offset);

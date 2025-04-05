@@ -58,7 +58,6 @@ impl Segment {
 
         let accumulator = std::mem::take(&mut self.accumulator);
 
-        // todo change to put
         accumulator.update_indexes(&mut self.indexes);
 
         let batches = accumulator.into_batch_set();
@@ -131,19 +130,25 @@ impl Segment {
             .fetch_add(messages_count, Ordering::SeqCst);
         self.messages_count_of_parent_partition
             .fetch_add(messages_count, Ordering::SeqCst);
-        self.messages_size
-            .fetch_add(messages_size, Ordering::SeqCst);
     }
 
     async fn check_and_handle_segment_full(&mut self) -> Result<(), IggyError> {
         if self.is_full().await {
+            let max_segment_size_from_config = self.config.segment.size;
+            let current_segment_size = self.get_messages_size();
+            assert!(
+                current_segment_size >= max_segment_size_from_config,
+                "Current segment size: {} is greater than max segment size: {}",
+                current_segment_size,
+                max_segment_size_from_config
+            );
             if self.config.segment.cache_indexes == CacheIndexesConfig::OpenSegment {
                 self.drop_indexes();
             }
             self.shutdown_writing().await;
             info!(
-                "Closed segment with start offset: {}, end offset: {} for partition with ID: {}.",
-                self.start_offset, self.end_offset, self.partition_id
+                "Closed segment with start offset: {}, end offset: {}, size: {} for partition with ID: {}.",
+                self.start_offset, self.end_offset, self.get_messages_size(), self.partition_id
             );
             self.is_closed = true;
         }

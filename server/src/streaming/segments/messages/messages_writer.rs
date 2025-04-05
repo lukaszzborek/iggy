@@ -32,28 +32,37 @@ impl MessagesWriter {
         messages_size_bytes: Arc<AtomicU64>,
         fsync: bool,
         server_confirmation: Confirmation,
+        file_exists: bool,
     ) -> Result<Self, IggyError> {
         let file = OpenOptions::new()
             .write(true)
-            .append(true)
             .create(true)
+            .append(true)
             .open(file_path)
             .await
             .map_err(|_| IggyError::CannotReadFile)?;
 
-        let _ = file.sync_all().await.with_error_context(|error| {
-            format!("Failed to fsync messages file after creation: {file_path}. {error}",)
-        });
+        if file_exists {
+            let _ = file.sync_all().await.with_error_context(|error| {
+                format!("Failed to fsync messages file after creation: {file_path}, error: {error}")
+            });
 
-        let actual_messages_size = file
-            .metadata()
-            .await
-            .map_err(|_| IggyError::CannotReadFileMetadata)?
-            .len();
+            let actual_messages_size = file
+                .metadata()
+                .await
+                .with_error_context(|error| {
+                    format!("Failed to get metadata of messages file: {file_path}, error: {error}")
+                })
+                .map_err(|_| IggyError::CannotReadFileMetadata)?
+                .len();
 
-        messages_size_bytes.store(actual_messages_size, Ordering::Release);
+            messages_size_bytes.store(actual_messages_size, Ordering::Release);
+        }
 
-        trace!("Opened messages file for writing: {file_path}, size: {actual_messages_size}");
+        trace!(
+            "Opened messages file for writing: {file_path}, size: {}",
+            messages_size_bytes.load(Ordering::Acquire)
+        );
 
         let (file, persister_task) = match server_confirmation {
             Confirmation::NoWait => {

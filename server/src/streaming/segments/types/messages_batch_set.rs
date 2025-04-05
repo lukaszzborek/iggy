@@ -59,13 +59,11 @@ impl IggyMessagesBatchSet {
         self.batches.extend(other.batches);
     }
 
-    // todo usize
     /// Get the total number of messages in the batch
     pub fn count(&self) -> u32 {
         self.count
     }
 
-    // todo usize
     /// Get the total size of all messages in bytes
     pub fn size(&self) -> u32 {
         self.size

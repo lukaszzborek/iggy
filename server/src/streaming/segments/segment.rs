@@ -106,7 +106,7 @@ impl Segment {
     /// Load the segment state from disk.
     pub async fn load_from_disk(&mut self) -> Result<(), IggyError> {
         if self.messages_reader.is_none() || self.index_reader.is_none() {
-            self.initialize_writing().await?;
+            self.initialize_writing(true).await?;
             self.initialize_reading().await?;
         }
 
@@ -181,31 +181,37 @@ impl Segment {
     pub async fn persist(&mut self) -> Result<(), IggyError> {
         info!("Saving segment with start offset: {} for partition with ID: {} for topic with ID: {} and stream with ID: {}",
             self.start_offset, self.partition_id, self.topic_id, self.stream_id);
-        self.initialize_writing().await?;
+        self.initialize_writing(false).await?;
         self.initialize_reading().await?;
         info!("Saved segment log file with start offset: {} for partition with ID: {} for topic with ID: {} and stream with ID: {}",
             self.start_offset, self.partition_id, self.topic_id, self.stream_id);
         Ok(())
     }
 
-    pub async fn initialize_writing(&mut self) -> Result<(), IggyError> {
+    pub async fn initialize_writing(&mut self, file_exists: bool) -> Result<(), IggyError> {
         let log_fsync = self.config.partition.enforce_fsync;
         let index_fsync = self.config.partition.enforce_fsync;
 
         let server_confirmation = self.config.segment.server_confirmation;
 
-        let log_writer = MessagesWriter::new(
+        let messages_writer = MessagesWriter::new(
             &self.messages_path,
             self.messages_size.clone(),
             log_fsync,
             server_confirmation,
+            file_exists,
         )
         .await?;
 
-        let index_writer =
-            IndexWriter::new(&self.index_path, self.indexes_size.clone(), index_fsync).await?;
+        let index_writer = IndexWriter::new(
+            &self.index_path,
+            self.indexes_size.clone(),
+            index_fsync,
+            file_exists,
+        )
+        .await?;
 
-        self.messages_writer = Some(log_writer);
+        self.messages_writer = Some(messages_writer);
         self.index_writer = Some(index_writer);
         Ok(())
     }

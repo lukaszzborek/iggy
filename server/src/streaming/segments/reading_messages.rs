@@ -10,7 +10,9 @@ const COMPONENT: &str = "STREAMING_SEGMENT";
 
 impl Segment {
     pub fn get_messages_size(&self) -> IggyByteSize {
-        IggyByteSize::from(self.messages_size.load(Ordering::Relaxed))
+        let on_disk_size = self.messages_size.load(Ordering::Relaxed);
+        let accumulator_size = self.accumulator.size() as u64;
+        IggyByteSize::from(on_disk_size + accumulator_size)
     }
 
     pub fn get_messages_count(&self) -> u32 {

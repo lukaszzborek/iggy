@@ -4,7 +4,7 @@ use error_set::ErrContext;
 use iggy::models::messaging::{IggyIndex, IggyIndexes, INDEX_SIZE};
 use iggy::{error::IggyError, models::messaging::IggyIndexView};
 use std::{
-    fs::{File, OpenOptions},
+    fs::File as StdFile,
     io::ErrorKind,
     os::unix::fs::FileExt,
     sync::{
@@ -12,6 +12,7 @@ use std::{
         Arc,
     },
 };
+use tokio::fs::OpenOptions;
 use tokio::task::spawn_blocking;
 use tracing::{error, trace};
 
@@ -19,7 +20,7 @@ use tracing::{error, trace};
 #[derive(Debug)]
 pub struct IndexReader {
     file_path: String,
-    file: Arc<File>,
+    file: Arc<StdFile>,
     index_size_bytes: Arc<AtomicU64>,
 }
 
@@ -29,23 +30,35 @@ impl IndexReader {
         let file = OpenOptions::new()
             .read(true)
             .open(file_path)
+            .await
             .with_error_context(|error| format!("Failed to open index file: {file_path}. {error}"))
             .map_err(|_| IggyError::CannotReadFile)?;
 
-        let actual_index_size = file
-            .metadata()
-            .with_error_context(|error| {
-                format!("Failed to get metadata of index file: {file_path}. {error}")
-            })
-            .map_err(|_| IggyError::CannotReadFileMetadata)?
-            .len();
+        // posix_fadvise() doesn't exist on MacOS
+        #[cfg(not(target_os = "macos"))]
+        {
+            use std::os::unix::io::AsRawFd;
+            let fd = file.as_raw_fd();
+            let _ = nix::fcntl::posix_fadvise(
+                fd,
+                0,
+                0, // 0 means the entire file
+                nix::fcntl::PosixFadviseAdvice::POSIX_FADV_SEQUENTIAL,
+            )
+            .with_info_context(|error| {
+                format!(
+                    "Failed to set sequential access pattern on index file: {file_path}. {error}"
+                )
+            });
+        }
 
-        index_size_bytes.store(actual_index_size, Ordering::Release);
-
-        trace!("Opened index file for reading: {file_path}, size: {actual_index_size}",);
+        trace!(
+            "Opened index file for reading: {file_path}, size: {}",
+            index_size_bytes.load(Ordering::Acquire)
+        );
         Ok(Self {
             file_path: file_path.to_string(),
-            file: Arc::new(file),
+            file: Arc::new(file.into_std().await),
             index_size_bytes,
         })
     }

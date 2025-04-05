@@ -26,6 +26,7 @@ impl IndexWriter {
         file_path: &str,
         index_size_bytes: Arc<AtomicU64>,
         fsync: bool,
+        file_exists: bool,
     ) -> Result<Self, IggyError> {
         let file = OpenOptions::new()
             .write(true)
@@ -36,22 +37,27 @@ impl IndexWriter {
             .with_error_context(|error| format!("Failed to open index file: {file_path}. {error}"))
             .map_err(|_| IggyError::CannotReadFile)?;
 
-        let _ = file.sync_all().await.with_error_context(|error| {
-            format!("Failed to fsync index file after creation: {file_path}. {error}",)
-        });
+        if file_exists {
+            let _ = file.sync_all().await.with_error_context(|error| {
+                format!("Failed to fsync index file after creation: {file_path}. {error}",)
+            });
 
-        let actual_index_size = file
-            .metadata()
-            .await
-            .with_error_context(|error| {
-                format!("Failed to get metadata of index file: {file_path}. {error}")
-            })
-            .map_err(|_| IggyError::CannotReadFileMetadata)?
-            .len();
+            let actual_index_size = file
+                .metadata()
+                .await
+                .with_error_context(|error| {
+                    format!("Failed to get metadata of index file: {file_path}. {error}")
+                })
+                .map_err(|_| IggyError::CannotReadFileMetadata)?
+                .len();
 
-        index_size_bytes.store(actual_index_size, Ordering::Release);
+            index_size_bytes.store(actual_index_size, Ordering::Release);
+        }
 
-        trace!("Opened index file for writing: {file_path}, size: {actual_index_size}");
+        trace!(
+            "Opened index file for writing: {file_path}, size: {}",
+            index_size_bytes.load(Ordering::Acquire)
+        );
 
         Ok(Self {
             file_path: file_path.to_string(),

@@ -17,7 +17,7 @@ pub struct MessagesAccumulator {
     /// Current (latest) offset in the accumulator
     current_offset: u64,
 
-    /// Current byte position for the next message in the segment
+    /// Current (latest) byte position for the next message in the segment
     current_position: u32,
 
     /// Collection of all message batches in the accumulator
@@ -59,7 +59,7 @@ impl MessagesAccumulator {
         }
 
         trace!(
-            "Coalescing batch base_offset={}, segment_current_offset={}, messages_count={}, batch_count={}",
+            "Coalescing batch with base_offset: {}, segment_current_offset: {}, self.messages_count: {}, batch.count: {}",
             self.base_offset,
             segment_current_offset,
             self.messages_count,
@@ -181,5 +181,10 @@ impl MessagesAccumulator {
     /// This is typically called when it's time to persist the accumulated messages to disk.
     pub fn into_batch_set(self) -> IggyMessagesBatchSet {
         self.batches
+    }
+
+    /// Gets the size of the accumulated messages in bytes
+    pub fn size(&self) -> usize {
+        self.batches.size() as usize
     }
 }

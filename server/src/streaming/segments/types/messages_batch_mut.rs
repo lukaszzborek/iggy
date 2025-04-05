@@ -8,7 +8,7 @@ use iggy::prelude::*;
 use iggy::utils::timestamp::IggyTimestamp;
 use lending_iterator::prelude::*;
 use std::ops::Deref;
-use tracing::{error, trace};
+use tracing::error;
 
 /// A container for mutable messages that are being prepared for persistence.
 ///
@@ -218,15 +218,8 @@ impl IggyMessagesBatchMut {
     /// Get the message at the specified index.
     /// Returns None if the index is out of bounds or the message cannot be found.
     pub fn get(&self, index: usize) -> Option<IggyMessageView> {
-        self.get_message_boundaries(index).map(|(start, end)| {
-            trace!(
-                "Reading message at index {} from positions {}..{}",
-                index,
-                start,
-                end
-            );
-            IggyMessageView::new(&self.messages[start..end])
-        })
+        self.get_message_boundaries(index)
+            .map(|(start, end)| IggyMessageView::new(&self.messages[start..end]))
     }
 
     /// This helper function is used to parse newly appended chunks in the `new_buffer`.

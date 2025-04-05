@@ -69,7 +69,6 @@ impl Partition {
             self.messages_count_of_parent_topic.clone(),
             self.messages_count.clone(),
         );
-
         new_segment.persist().await.with_error_context(|error| {
             format!("{COMPONENT} (error: {error}) - failed to persist new segment: {new_segment}",)
         })?;
