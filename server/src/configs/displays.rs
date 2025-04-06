@@ -10,8 +10,8 @@ use crate::configs::{
     resource_quota::MemoryResourceQuota,
     server::{MessageSaverConfig, ServerConfig},
     system::{
-        CacheConfig, CompressionConfig, EncryptionConfig, LoggingConfig, PartitionConfig,
-        SegmentConfig, StateConfig, StreamConfig, SystemConfig, TopicConfig,
+        CompressionConfig, EncryptionConfig, LoggingConfig, PartitionConfig, SegmentConfig,
+        StateConfig, StreamConfig, SystemConfig, TopicConfig,
     },
     tcp::{TcpConfig, TcpSocketConfig, TcpTlsConfig},
 };
@@ -199,12 +199,6 @@ impl Display for MessageSaverConfig {
             "{{ enabled: {}, enforce_fsync: {}, interval: {} }}",
             self.enabled, self.enforce_fsync, self.interval
         )
-    }
-}
-
-impl Display for CacheConfig {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{{ enabled: {}, size: {} }}", self.enabled, self.size)
     }
 }
 

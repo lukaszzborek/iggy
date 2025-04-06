@@ -1,5 +1,4 @@
 use super::cache_indexes::CacheIndexesConfig;
-use crate::configs::resource_quota::MemoryResourceQuota;
 use iggy::confirmation::Confirmation;
 use iggy::utils::byte_size::IggyByteSize;
 use iggy::utils::expiry::IggyExpiry;
@@ -65,12 +64,6 @@ pub struct LoggingConfig {
     pub retention: IggyDuration,
     #[serde_as(as = "DisplayFromStr")]
     pub sysinfo_print_interval: IggyDuration,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct CacheConfig {
-    pub enabled: bool,
-    pub size: MemoryResourceQuota,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
