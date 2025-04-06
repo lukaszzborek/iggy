@@ -1,4 +1,5 @@
 use super::message_view_mut::IggyMessageViewMutIterator;
+use crate::streaming::deduplication::message_deduplicator::MessageDeduplicator;
 use crate::streaming::segments::indexes::IggyIndexesMut;
 use crate::streaming::utils::random_id;
 use bytes::{BufMut, BytesMut};
@@ -8,7 +9,7 @@ use iggy::prelude::*;
 use iggy::utils::timestamp::IggyTimestamp;
 use lending_iterator::prelude::*;
 use std::ops::Deref;
-use tracing::error;
+use tracing::{error, warn};
 
 /// A container for mutable messages that are being prepared for persistence.
 ///
@@ -38,7 +39,7 @@ impl IggyMessagesBatchMut {
     pub fn with_capacity(bytes_capacity: usize) -> Self {
         let index_capacity = bytes_capacity / INDEX_SIZE + 1; // Add 1 to avoid rounding down to 0
         Self {
-            indexes: IggyIndexesMut::with_capacity(index_capacity),
+            indexes: IggyIndexesMut::with_capacity(index_capacity, 0),
             messages: BytesMut::with_capacity(bytes_capacity),
         }
     }
@@ -65,7 +66,7 @@ impl IggyMessagesBatchMut {
     /// * `messages_size` - Total size of all messages in bytes
     pub fn from_messages(messages: &[IggyMessage], messages_size: u32) -> Self {
         let mut messages_buffer = BytesMut::with_capacity(messages_size as usize);
-        let mut indexes_buffer = IggyIndexesMut::with_capacity(messages.len());
+        let mut indexes_buffer = IggyIndexesMut::with_capacity(messages.len(), 0);
         let mut position = 0;
 
         for message in messages {
@@ -110,25 +111,32 @@ impl IggyMessagesBatchMut {
     /// # Returns
     ///
     /// An immutable `IggyMessagesBatch` ready for persistence
-    pub fn prepare_for_persistence(
+    pub async fn prepare_for_persistence(
         self,
         start_offset: u64,
         base_offset: u64,
         current_position: u32,
+        deduplicator: Option<&MessageDeduplicator>,
     ) -> IggyMessagesBatch {
         let messages_count = self.count();
         if messages_count == 0 {
             return IggyMessagesBatch::empty();
         }
 
-        let timestamp = IggyTimestamp::now().as_micros();
-        let (mut indexes, mut messages) = self.decompose();
-
         let mut curr_abs_offset = base_offset;
         let mut curr_position = current_position;
         let mut curr_rel_offset: u32 = 0;
 
+        // Prepare invalid messages indexes if deduplicator is provided, this
+        // way we avoid creating a new vector if we don't need it.
+        // The less allocation the better.
+        let mut invalid_messages_indexes =
+            deduplicator.map(|_| Vec::with_capacity(messages_count as usize));
+
+        let (mut indexes, mut messages) = self.decompose();
+        indexes.set_base_position(current_position);
         let mut iter = IggyMessageViewMutIterator::new(&mut messages);
+        let timestamp = IggyTimestamp::now().as_micros();
 
         while let Some(mut message) = iter.next() {
             message.header_mut().set_offset(curr_abs_offset);
@@ -136,6 +144,20 @@ impl IggyMessagesBatchMut {
             if message.header().id() == 0 {
                 message.header_mut().set_id(random_id::get_uuid());
             }
+
+            if let Some(deduplicator) = deduplicator {
+                if !deduplicator.try_insert(message.header().id()).await {
+                    warn!(
+                        "Detected duplicate message ID {}, removing...",
+                        message.header().id()
+                    );
+                    invalid_messages_indexes
+                        .as_mut()
+                        .unwrap()
+                        .push(curr_rel_offset);
+                }
+            }
+
             message.update_checksum();
 
             let message_size = message.size() as u32;
@@ -150,11 +172,29 @@ impl IggyMessagesBatchMut {
             curr_rel_offset += 1;
         }
 
-        IggyMessagesBatch::new(
-            indexes.make_immutable(current_position),
-            messages.freeze(),
-            messages_count,
-        )
+        if let Some(invalid_messages_indexes) = invalid_messages_indexes {
+            if invalid_messages_indexes.is_empty() {
+                return IggyMessagesBatch::new(
+                    indexes.make_immutable(),
+                    messages.freeze(),
+                    messages_count,
+                );
+            }
+            let batch = IggyMessagesBatchMut::from_indexes_and_messages(indexes, messages)
+                .remove_messages(&invalid_messages_indexes, current_position);
+
+            let messages_count = batch.count();
+
+            let (indexes, messages) = batch.decompose();
+
+            return IggyMessagesBatch::new(
+                indexes.make_immutable(),
+                messages.freeze(),
+                messages_count,
+            );
+        }
+
+        IggyMessagesBatch::new(indexes.make_immutable(), messages.freeze(), messages_count)
     }
 
     /// Returns the first timestamp in the batch
@@ -164,13 +204,18 @@ impl IggyMessagesBatchMut {
 
     /// Returns the last timestamp in the batch
     pub fn last_timestamp(&self) -> u64 {
-        if let Some(last_index) = self.indexes.get(self.count() - 1) {
-            let last_message_offset = last_index.offset();
-            return IggyMessageView::new(&self.messages[last_message_offset as usize..])
-                .header()
-                .timestamp();
+        if self.is_empty() {
+            return 0;
         }
-        0
+
+        let last_index = self.count() as usize - 1;
+        self.get_message_boundaries(last_index)
+            .map(|(start, _)| {
+                IggyMessageView::new(&self.messages[start..])
+                    .header()
+                    .timestamp()
+            })
+            .unwrap_or(0)
     }
 
     /// Checks if the batch is empty.
@@ -183,36 +228,49 @@ impl IggyMessagesBatchMut {
         (self.indexes, self.messages)
     }
 
-    /// Get message position from the indexes at the given position index
-    pub fn position_at(&self, position_index: u32) -> Option<u32> {
-        self.indexes
-            .get(position_index)
-            .map(|index| index.position())
+    /// Get message position from the indexes at the given index
+    pub fn position_at(&self, index: u32) -> Option<u32> {
+        self.indexes.get(index).map(|index| index.position())
     }
 
-    /// Get the message slice boundaries for a given index
-    fn get_message_boundaries(&self, index: usize) -> Option<(usize, usize)> {
+    /// Calculates the start position of a message at the given index in the buffer
+    fn message_start_position(&self, index: usize) -> Option<usize> {
         if index >= self.count() as usize {
             return None;
         }
 
-        let start_position = if index == 0 {
-            0
+        if index == 0 {
+            Some(0)
         } else {
-            self.position_at(index as u32 - 1).unwrap() as usize
-        };
+            self.position_at(index as u32 - 1)
+                .map(|pos| (pos - self.indexes.base_position()) as usize)
+        }
+    }
 
-        let end_position = if index == self.count() as usize - 1 {
-            self.messages.len()
-        } else {
-            self.position_at(index as u32).unwrap() as usize
-        };
-
-        if start_position > self.messages.len() || end_position > self.messages.len() {
+    /// Calculates the end position of a message at the given index in the buffer
+    fn message_end_position(&self, index: usize) -> Option<usize> {
+        if index >= self.count() as usize {
             return None;
         }
 
-        Some((start_position, end_position))
+        if index == self.count() as usize - 1 {
+            Some(self.messages.len())
+        } else {
+            self.position_at(index as u32)
+                .map(|pos| (pos - self.indexes.base_position()) as usize)
+        }
+    }
+
+    /// Gets the byte range for a message at the given index
+    fn get_message_boundaries(&self, index: usize) -> Option<(usize, usize)> {
+        let start = self.message_start_position(index)?;
+        let end = self.message_end_position(index)?;
+
+        if start > self.messages.len() || end > self.messages.len() || start > end {
+            return None;
+        }
+
+        Some((start, end))
     }
 
     /// Get the message at the specified index.
@@ -242,9 +300,9 @@ impl IggyMessagesBatchMut {
         while current < chunk_end {
             let view = IggyMessageView::new(&new_buffer[current..]);
             let msg_size = view.size();
+            *offset_in_new_buffer += msg_size as u32;
             new_indexes.insert(0, *offset_in_new_buffer, 0);
 
-            *offset_in_new_buffer += msg_size as u32;
             current += msg_size;
         }
     }
@@ -262,7 +320,7 @@ impl IggyMessagesBatchMut {
     /// # Returns
     ///
     /// A new `IggyMessagesBatchMut` with the specified messages removed
-    pub fn remove_messages(self, indexes_to_remove: &[u32]) -> Self {
+    pub fn remove_messages(self, indexes_to_remove: &[u32], current_position: u32) -> Self {
         /*
             A temporary list of message boundaries is first collected for each index
             that should be removed. Chunks of data that are not removed are appended
@@ -287,29 +345,32 @@ impl IggyMessagesBatchMut {
         let mut size_to_remove = 0;
         let boundaries_to_remove: Vec<(usize, usize)> = indexes_to_remove
             .iter()
-            .map(|&idx| {
-                let boundaries = self
-                    .get_message_boundaries(idx as usize)
-                    .unwrap_or_else(|| {
-                        panic!(
-                            "Could not retrieve valid boundaries for message index {}",
-                            idx
-                        )
-                    });
-                size_to_remove += (boundaries.1 - boundaries.0) as u32;
-                boundaries
+            .filter_map(|&idx| {
+                self.get_message_boundaries(idx as usize)
+                    .inspect(|boundaries| {
+                        size_to_remove += (boundaries.1 - boundaries.0) as u32;
+                    })
             })
             .collect();
+
+        assert_eq!(
+            boundaries_to_remove.len(),
+            indexes_to_remove.len(),
+            "Could not retrieve valid boundaries for some message indexes: {:?}, boundaries: {:?}",
+            indexes_to_remove,
+            boundaries_to_remove
+        );
 
         let new_size = current_size - size_to_remove;
         let new_message_count = msg_count as u32 - indexes_to_remove.len() as u32;
 
         let mut new_buffer = BytesMut::with_capacity(new_size as usize);
-        let mut new_indexes = IggyIndexesMut::with_capacity(new_message_count as usize);
+        let mut new_indexes =
+            IggyIndexesMut::with_capacity(new_message_count as usize, current_position);
 
         let mut source = self.messages;
         let mut last_pos = 0_usize;
-        let mut new_pos = 0_u32;
+        let mut new_pos = current_position;
 
         for &(start, end) in &boundaries_to_remove {
             if start > last_pos {
@@ -376,7 +437,6 @@ impl IggyMessagesBatchMut {
         Ok(())
     }
 
-    /// Validates the content of each message in the batch
     fn validate_message_contents(&self) -> Result<(), IggyError> {
         let mut messages_count = 0;
         let mut messages_size = 0;
@@ -389,21 +449,21 @@ impl IggyMessagesBatchMut {
 
             if message.header().offset() < prev_offset {
                 error!(
-                    "Offset of previous message: {} is smaller than current message {} at offset {}",
-                    prev_offset,
-                    message.header().offset(),
-                    i
-                );
+                "Offset of previous message: {} is smaller than current message {} at offset {}",
+                prev_offset,
+                message.header().offset(),
+                i
+            );
                 return Err(IggyError::InvalidOffset(message.header().offset()));
             }
 
             if index.position() < prev_position {
                 error!(
-                    "Position of previous message: {} is smaller than current message {} at offset {}",
-                    prev_position,
-                    index.position(),
-                    i
-                );
+                "Position of previous message: {} is smaller than current message {} at offset {}",
+                prev_position,
+                index.position(),
+                i
+            );
                 return Err(IggyError::CannotReadIndexPosition);
             }
 

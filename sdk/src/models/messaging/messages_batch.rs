@@ -107,6 +107,40 @@ impl IggyMessagesBatch {
             .unwrap_or(0)
     }
 
+    /// Calculates the start position of a message at the given index in the buffer
+    fn message_start_position(&self, index: usize) -> usize {
+        if index == 0 {
+            0
+        } else {
+            self.position_at(index as u32 - 1) as usize - self.indexes.base_position() as usize
+        }
+    }
+
+    /// Calculates the end position of a message at the given index in the buffer
+    fn message_end_position(&self, index: usize) -> usize {
+        if index >= self.count as usize - 1 {
+            self.messages.len()
+        } else {
+            self.position_at(index as u32) as usize - self.indexes.base_position() as usize
+        }
+    }
+
+    /// Gets the byte range for a message at the given index
+    fn get_message_boundaries(&self, index: usize) -> Option<(usize, usize)> {
+        if index >= self.count as usize {
+            return None;
+        }
+
+        let start = self.message_start_position(index);
+        let end = self.message_end_position(index);
+
+        if start > self.messages.len() || end > self.messages.len() || start > end {
+            return None;
+        }
+
+        Some((start, end))
+    }
+
     /// Helper method to read a position (u32) from the byte array at the given index
     fn position_at(&self, position_index: u32) -> u32 {
         if let Some(index) = self.indexes.get(position_index) {
@@ -123,55 +157,50 @@ impl IggyMessagesBatch {
             return None;
         }
 
-        // TODO(hubcio): this can be optimized via lookup
-        let first_message_index = self
-            .iter()
-            .position(|msg| msg.header().offset() >= start_offset);
+        let first_offset = self.first_offset();
 
-        first_message_index?;
+        if start_offset < first_offset {
+            return self.slice_by_index(0, count);
+        }
 
-        let first_message_index = first_message_index.unwrap();
+        let last_offset = self.last_offset();
+        if start_offset > last_offset {
+            return None;
+        }
+
+        let offset_diff = start_offset - first_offset;
+        let first_message_index = offset_diff as usize;
+
+        if first_message_index >= self.count() as usize {
+            return None;
+        }
+
+        self.slice_by_index(first_message_index as u32, count)
+    }
+
+    /// Helper method to slice the batch starting from a specific index
+    fn slice_by_index(&self, start_index: u32, count: u32) -> Option<Self> {
+        if start_index >= self.count() {
+            return None;
+        }
+
         let last_message_index =
-            std::cmp::min(first_message_index + count as usize, self.count() as usize);
+            std::cmp::min((start_index + count) as usize, self.count() as usize);
 
         let sub_indexes = self.indexes.slice_by_offset(
-            first_message_index as u32,
-            (last_message_index - first_message_index) as u32,
+            start_index,
+            (last_message_index - start_index as usize) as u32,
         )?;
 
-        let first_message_position = if first_message_index == 0 {
-            0
-        } else {
-            self.position_at(first_message_index as u32 - 1) as usize
-                - self.indexes.base_position() as usize
-        };
-
-        let last_message_position = if last_message_index >= self.count() as usize {
-            self.messages.len()
-        } else {
-            self.position_at(last_message_index as u32 - 1) as usize
-                - self.indexes.base_position() as usize
-        };
-
-        debug_assert!(
-            first_message_position <= self.messages.len(),
-            "First message position {} exceeds buffer length {}",
-            first_message_position,
-            self.messages.len()
-        );
-        debug_assert!(
-            last_message_position <= self.messages.len(),
-            "Last message position {} exceeds buffer length {}",
-            last_message_position,
-            self.messages.len()
-        );
+        let first_message_position = self.message_start_position(start_index as usize);
+        let last_message_position = self.message_end_position(last_message_index - 1);
 
         let sub_buffer = self
             .messages
             .slice(first_message_position..last_message_position);
 
         Some(IggyMessagesBatch {
-            count: (last_message_index - first_message_index) as u32,
+            count: (last_message_index - start_index as usize) as u32,
             indexes: sub_indexes,
             messages: sub_buffer,
         })
@@ -186,102 +215,59 @@ impl IggyMessagesBatch {
             return None;
         }
 
-        // TODO(hubcio): this can be optimized via binary search
-        let first_message_index = self
-            .iter()
-            .position(|msg| msg.header().timestamp() >= timestamp);
+        // Use binary search to find the first message with timestamp >= the target
+        let first_message_index = self.binary_search_timestamp(timestamp)?;
 
-        first_message_index?;
+        self.slice_by_index(first_message_index, count)
+    }
 
-        let first_message_index = first_message_index.unwrap();
-        let last_message_index =
-            std::cmp::min(first_message_index + count as usize, self.count() as usize);
+    /// Find the position of the index with timestamp closest to (but not exceeding) the target
+    fn binary_search_timestamp(&self, target_timestamp: u64) -> Option<u32> {
+        if self.count() == 0 {
+            return None;
+        }
 
-        let sub_indexes = self.indexes.slice_by_offset(
-            first_message_index as u32,
-            (last_message_index - first_message_index) as u32,
-        )?;
+        let last_timestamp = self.get(self.count() as usize - 1)?.header().timestamp();
+        if target_timestamp > last_timestamp {
+            return Some(self.count() - 1);
+        }
 
-        let first_message_position = if first_message_index == 0 {
-            0
-        } else {
-            self.position_at(first_message_index as u32 - 1) as usize
-                - self.indexes.base_position() as usize
-        };
+        let first_timestamp = self.get(0)?.header().timestamp();
+        if target_timestamp <= first_timestamp {
+            return Some(0);
+        }
 
-        let last_message_position = if last_message_index >= self.count() as usize {
-            self.messages.len()
-        } else {
-            self.position_at(last_message_index as u32 - 1) as usize
-                - self.indexes.base_position() as usize
-        };
+        let mut low = 0;
+        let mut high = self.count() - 1;
 
-        debug_assert!(
-            first_message_position <= self.messages.len(),
-            "First message position {} exceeds buffer length {}",
-            first_message_position,
-            self.messages.len()
-        );
-        debug_assert!(
-            last_message_position <= self.messages.len(),
-            "Last message position {} exceeds buffer length {}",
-            last_message_position,
-            self.messages.len()
-        );
+        while low <= high {
+            let mid = low + (high - low) / 2;
+            let mid_index = self.get(mid as usize)?;
+            let mid_timestamp = mid_index.header().timestamp();
 
-        let sub_buffer = self
-            .messages
-            .slice(first_message_position..last_message_position);
+            match mid_timestamp.cmp(&target_timestamp) {
+                std::cmp::Ordering::Equal => return Some(mid),
+                std::cmp::Ordering::Less => low = mid + 1,
+                std::cmp::Ordering::Greater => {
+                    if mid == 0 {
+                        break;
+                    }
+                    high = mid - 1;
+                }
+            }
+        }
 
-        Some(IggyMessagesBatch {
-            count: (last_message_index - first_message_index) as u32,
-            indexes: sub_indexes,
-            messages: sub_buffer,
-        })
+        Some(low)
     }
 
     /// Get the message at the specified index.
     /// Returns None if the index is out of bounds.
     pub fn get(&self, index: usize) -> Option<IggyMessageView> {
-        if index >= self.count as usize {
-            return None;
+        if let Some((start, end)) = self.get_message_boundaries(index) {
+            Some(IggyMessageView::new(&self.messages[start..end]))
+        } else {
+            None
         }
-
-        // TODO: refactor this
-        let start_position = if index == 0 {
-            0
-        } else {
-            self.position_at(index as u32 - 1) as usize - self.indexes.base_position() as usize
-        };
-
-        let end_position = if index == self.count as usize - 1 {
-            self.messages.len()
-        } else {
-            self.position_at(index as u32) as usize - self.indexes.base_position() as usize
-        };
-
-        debug_assert!(
-            start_position <= self.messages.len(),
-            "Start message position {} exceeds buffer length {}, index: {}, self.count: {}, self.base_position: {}",
-            start_position,
-            self.messages.len(),
-            index,
-            self.count,
-            self.indexes.base_position()
-        );
-        debug_assert!(
-            end_position <= self.messages.len(),
-            "End message position {} exceeds buffer length {}, index: {}, self.count: {}, self.base_position: {}",
-            end_position,
-            self.messages.len(),
-            index,
-            self.count,
-            self.indexes.base_position()
-        );
-
-        Some(IggyMessageView::new(
-            &self.messages[start_position..end_position],
-        ))
     }
 
     /// Consumes the batch and returns a vector of messages.
@@ -290,32 +276,11 @@ impl IggyMessagesBatch {
             return Vec::new();
         }
 
-        let (count, indexes, buffer) = self.decompose();
-        let mut result = Vec::with_capacity(count as usize);
-        let base_position = indexes.base_position();
+        let mut result = Vec::with_capacity(self.count as usize);
 
-        for i in 0..count {
-            let start_position = if i == 0 {
-                0
-            } else {
-                let prev_idx = indexes.get(i - 1).map(|idx| idx.position()).unwrap_or(0);
-                prev_idx as usize - base_position as usize
-            };
-
-            let end_position = if i == count - 1 {
-                buffer.len()
-            } else {
-                let curr_idx = indexes.get(i).map(|idx| idx.position()).unwrap_or(0);
-                curr_idx as usize - base_position as usize
-            };
-
-            if start_position < buffer.len()
-                && end_position <= buffer.len()
-                && start_position < end_position
-            {
-                if let Ok(message) =
-                    IggyMessage::from_bytes(buffer.slice(start_position..end_position))
-                {
+        for i in 0..self.count as usize {
+            if let Some((start, end)) = self.get_message_boundaries(i) {
+                if let Ok(message) = IggyMessage::from_bytes(self.messages.slice(start..end)) {
                     result.push(message);
                 }
             }
@@ -324,6 +289,7 @@ impl IggyMessagesBatch {
         result
     }
 
+    /// Validates that all messages in batch have correct checksums.
     pub fn validate_checksums(&self) -> Result<(), IggyError> {
         for message in self.iter() {
             let calculated_checksum = message.calculate_checksum();
@@ -388,11 +354,6 @@ impl IntoIterator for IggyMessagesBatch {
 impl Index<usize> for IggyMessagesBatch {
     type Output = [u8];
 
-    /// Get the message bytes at the specified index
-    ///
-    /// # Panics
-    ///
-    /// Panics if the index is out of bounds (>= count)
     fn index(&self, index: usize) -> &Self::Output {
         if index >= self.count as usize {
             panic!(
@@ -401,22 +362,13 @@ impl Index<usize> for IggyMessagesBatch {
             );
         }
 
-        let start_position = if index == 0 {
-            0
-        } else {
-            self.position_at(index as u32 - 1) as usize
-        };
+        let (start, end) = self
+            .get_message_boundaries(index)
+            .expect("Invalid message boundaries");
 
-        let end_position = if index == self.count as usize - 1 {
-            self.messages.len()
-        } else {
-            self.position_at(index as u32) as usize
-        };
-
-        &self.messages[start_position..end_position]
+        &self.messages[start..end]
     }
 }
-
 impl BytesSerializable for IggyMessagesBatch {
     fn to_bytes(&self) -> Bytes {
         panic!("should not be used");

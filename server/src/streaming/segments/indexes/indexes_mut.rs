@@ -9,6 +9,7 @@ use std::ops::{Deref, Index as StdIndex};
 pub struct IggyIndexesMut {
     buffer: BytesMut,
     saved_count: u32,
+    base_position: u32,
 }
 
 impl IggyIndexesMut {
@@ -17,6 +18,7 @@ impl IggyIndexesMut {
         Self {
             buffer: BytesMut::new(),
             saved_count: 0,
+            base_position: 0,
         }
     }
 
@@ -25,12 +27,23 @@ impl IggyIndexesMut {
         Self {
             buffer: indexes,
             saved_count: 0,
+            base_position: 0,
         }
     }
 
     /// Gets the size of all indexes messages
     pub fn messages_size(&self) -> u32 {
         self.last_position()
+    }
+
+    /// Gets the base position of the indexes
+    pub fn base_position(&self) -> u32 {
+        self.base_position
+    }
+
+    /// Sets the base position of the indexes
+    pub fn set_base_position(&mut self, base_position: u32) {
+        self.base_position = base_position;
     }
 
     /// Helper method to get the last index position
@@ -41,16 +54,17 @@ impl IggyIndexesMut {
     }
 
     /// Creates a new container with the specified capacity
-    pub fn with_capacity(capacity: usize) -> Self {
+    pub fn with_capacity(capacity: usize, base_position: u32) -> Self {
         Self {
             buffer: BytesMut::with_capacity(capacity * INDEX_SIZE),
             saved_count: 0,
+            base_position,
         }
     }
 
     /// Makes the indexes immutable
-    pub fn make_immutable(self, base_position: u32) -> IggyIndexes {
-        IggyIndexes::new(self.buffer.freeze(), base_position)
+    pub fn make_immutable(self) -> IggyIndexes {
+        IggyIndexes::new(self.buffer.freeze(), self.base_position)
     }
 
     /// Inserts a new index at the end of buffer
@@ -80,13 +94,13 @@ impl IggyIndexesMut {
         self.buffer.len() as u32
     }
 
-    /// Gets a view of the index at the specified position
-    pub fn get(&self, position: u32) -> Option<IggyIndexView> {
-        if position >= self.count() {
+    /// Gets a view of the Index at the specified index
+    pub fn get(&self, index: u32) -> Option<IggyIndexView> {
+        if index >= self.count() {
             return None;
         }
 
-        let start = position as usize * INDEX_SIZE;
+        let start = index as usize * INDEX_SIZE;
         let end = start + INDEX_SIZE;
 
         if end <= self.buffer.len() {
@@ -208,10 +222,10 @@ impl IggyIndexesMut {
         let slice = BytesMut::from(&self.buffer[start_byte..end_byte]);
 
         if relative_start_offset == 0 {
-            Some(IggyIndexes::new(slice.freeze(), 0))
+            Some(IggyIndexes::new(slice.freeze(), self.base_position))
         } else {
-            let base_position = self.get(relative_start_offset - 1).unwrap().position();
-            Some(IggyIndexes::new(slice.freeze(), base_position))
+            let position_offset = self.get(relative_start_offset - 1).unwrap().position();
+            Some(IggyIndexes::new(slice.freeze(), position_offset))
         }
     }
 

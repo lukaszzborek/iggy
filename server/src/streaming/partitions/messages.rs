@@ -6,7 +6,7 @@ use error_set::ErrContext;
 use iggy::confirmation::Confirmation;
 use iggy::prelude::*;
 use std::sync::atomic::Ordering;
-use tracing::{trace, warn};
+use tracing::trace;
 
 impl Partition {
     /// Retrieves messages by timestamp (up to a specified count).
@@ -239,33 +239,9 @@ impl Partition {
             self.current_offset + 1
         };
 
-        let batch = if let Some(message_deduplicator) = &self.message_deduplicator {
-            let mut invalid_messages_indexes = Vec::with_capacity(batch.count() as usize);
-            for (i, message) in batch.iter().enumerate() {
-                if !message_deduplicator.try_insert(message.header().id()).await {
-                    warn!(
-                        "Ignored the duplicated message with ID: {} and size: {} for partition with ID: {}.",
-                        message.header().id(),
-                        message.get_size_bytes(),
-                        self.partition_id
-                    );
-                    invalid_messages_indexes.push(i as u32);
-                    continue;
-                }
-            }
-
-            if !invalid_messages_indexes.is_empty() {
-                batch.remove_messages(&invalid_messages_indexes)
-            } else {
-                batch
-            }
-        } else {
-            batch
-        };
-
         let last_segment = self.segments.last_mut().ok_or(IggyError::SegmentNotFound)?;
         let messages_count = last_segment
-            .append_batch(current_offset, batch)
+            .append_batch(current_offset, batch, self.message_deduplicator.as_ref())
                  .await
                  .with_error_context(|error| {
                      format!(
@@ -380,6 +356,296 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(loaded_messages.count(), unique_messages_count);
+    }
+
+    #[tokio::test]
+    async fn duplicates_at_beginning_should_be_filtered() {
+        let (mut partition, _tempdir) = create_partition(true).await;
+
+        // First and second messages are duplicates
+        let messages = vec![
+            create_message(1, "message 1"),
+            create_message(1, "message 1 - duplicate"),
+            create_message(2, "message 2"),
+            create_message(3, "message 3"),
+        ];
+
+        let messages_size = messages
+            .iter()
+            .map(|m| m.get_size_bytes().as_bytes_u32())
+            .sum();
+        let batch = IggyMessagesBatchMut::from_messages(&messages, messages_size);
+
+        partition.append_messages(batch, None).await.unwrap();
+
+        let loaded_messages = partition.get_messages_by_offset(0, 10).await.unwrap();
+
+        // Only 3 unique messages should be stored
+        assert_eq!(loaded_messages.count(), 3);
+
+        // Check first message (should be the first occurrence of ID 1)
+        let first_message = loaded_messages.get(0).unwrap();
+        assert_eq!(first_message.header().id(), 1);
+        assert_eq!(first_message.payload(), b"message 1");
+    }
+
+    #[tokio::test]
+    async fn duplicates_in_middle_should_be_filtered() {
+        let (mut partition, _tempdir) = create_partition(true).await;
+
+        // Middle messages (ID 2) are duplicates
+        let messages = vec![
+            create_message(1, "message 1"),
+            create_message(2, "message 2"),
+            create_message(2, "message 2 - duplicate"),
+            create_message(3, "message 3"),
+        ];
+
+        let messages_size = messages
+            .iter()
+            .map(|m| m.get_size_bytes().as_bytes_u32())
+            .sum();
+        let batch = IggyMessagesBatchMut::from_messages(&messages, messages_size);
+
+        partition.append_messages(batch, None).await.unwrap();
+
+        let loaded_messages = partition.get_messages_by_offset(0, 10).await.unwrap();
+
+        // Only 3 unique messages should be stored
+        assert_eq!(loaded_messages.count(), 3);
+
+        // Check second message (should be the first occurrence of ID 2)
+        let second_message = loaded_messages.get(1).unwrap();
+        assert_eq!(second_message.header().id(), 2);
+        assert_eq!(second_message.payload(), b"message 2");
+    }
+
+    #[tokio::test]
+    async fn duplicates_at_end_should_be_filtered() {
+        let (mut partition, _tempdir) = create_partition(true).await;
+
+        // Last message is a duplicate
+        let messages = vec![
+            create_message(1, "message 1"),
+            create_message(2, "message 2"),
+            create_message(3, "message 3"),
+            create_message(3, "message 3 - duplicate"),
+        ];
+
+        let messages_size = messages
+            .iter()
+            .map(|m| m.get_size_bytes().as_bytes_u32())
+            .sum();
+        let batch = IggyMessagesBatchMut::from_messages(&messages, messages_size);
+
+        partition.append_messages(batch, None).await.unwrap();
+
+        let loaded_messages = partition.get_messages_by_offset(0, 10).await.unwrap();
+
+        // Only 3 unique messages should be stored
+        assert_eq!(loaded_messages.count(), 3);
+
+        // Check last message (should be the first occurrence of ID 3)
+        let last_message = loaded_messages.get(2).unwrap();
+        assert_eq!(last_message.header().id(), 3);
+        assert_eq!(last_message.payload(), b"message 3");
+    }
+
+    #[tokio::test]
+    async fn interleaved_duplicates_should_be_filtered() {
+        let (mut partition, _tempdir) = create_partition(true).await;
+
+        // Every other message is a duplicate
+        let messages = vec![
+            create_message(1, "message 1"),
+            create_message(1, "message 1 - duplicate"),
+            create_message(2, "message 2"),
+            create_message(2, "message 2 - duplicate"),
+            create_message(3, "message 3"),
+            create_message(3, "message 3 - duplicate"),
+        ];
+
+        let messages_size = messages
+            .iter()
+            .map(|m| m.get_size_bytes().as_bytes_u32())
+            .sum();
+        let batch = IggyMessagesBatchMut::from_messages(&messages, messages_size);
+
+        partition.append_messages(batch, None).await.unwrap();
+
+        let loaded_messages = partition.get_messages_by_offset(0, 10).await.unwrap();
+
+        // Only 3 unique messages should be stored
+        assert_eq!(loaded_messages.count(), 3);
+
+        // Check message content and order
+        let first_message = loaded_messages.get(0).unwrap();
+        assert_eq!(first_message.header().id(), 1);
+        assert_eq!(first_message.payload(), b"message 1");
+
+        let second_message = loaded_messages.get(1).unwrap();
+        assert_eq!(second_message.header().id(), 2);
+        assert_eq!(second_message.payload(), b"message 2");
+
+        let third_message = loaded_messages.get(2).unwrap();
+        assert_eq!(third_message.header().id(), 3);
+        assert_eq!(third_message.payload(), b"message 3");
+    }
+
+    #[tokio::test]
+    async fn all_duplicate_messages_should_be_filtered() {
+        let (mut partition, _tempdir) = create_partition(true).await;
+
+        // Add some initial messages
+        let initial_messages = vec![
+            create_message(1, "message 1"),
+            create_message(2, "message 2"),
+            create_message(3, "message 3"),
+        ];
+
+        let initial_size = initial_messages
+            .iter()
+            .map(|m| m.get_size_bytes().as_bytes_u32())
+            .sum();
+        let initial_batch = IggyMessagesBatchMut::from_messages(&initial_messages, initial_size);
+        partition
+            .append_messages(initial_batch, None)
+            .await
+            .unwrap();
+
+        // Now try to add only duplicates
+        let duplicate_messages = vec![
+            create_message(1, "message 1 - duplicate"),
+            create_message(2, "message 2 - duplicate"),
+            create_message(3, "message 3 - duplicate"),
+        ];
+
+        let duplicate_size = duplicate_messages
+            .iter()
+            .map(|m| m.get_size_bytes().as_bytes_u32())
+            .sum();
+        let duplicate_batch =
+            IggyMessagesBatchMut::from_messages(&duplicate_messages, duplicate_size);
+        partition
+            .append_messages(duplicate_batch, None)
+            .await
+            .unwrap();
+
+        let loaded_messages = partition.get_messages_by_offset(0, 10).await.unwrap();
+
+        // Still only 3 unique messages should be stored (the originals)
+        assert_eq!(loaded_messages.count(), 3);
+    }
+
+    #[tokio::test]
+    async fn multiple_consecutive_duplicates_should_be_filtered() {
+        let (mut partition, _tempdir) = create_partition(true).await;
+
+        // Multiple consecutive duplicates of the same ID
+        let messages = vec![
+            create_message(1, "message 1"),
+            create_message(2, "message 2"),
+            create_message(2, "message 2 - duplicate 1"),
+            create_message(2, "message 2 - duplicate 2"),
+            create_message(2, "message 2 - duplicate 3"),
+            create_message(3, "message 3"),
+        ];
+
+        let messages_size = messages
+            .iter()
+            .map(|m| m.get_size_bytes().as_bytes_u32())
+            .sum();
+        let batch = IggyMessagesBatchMut::from_messages(&messages, messages_size);
+
+        partition.append_messages(batch, None).await.unwrap();
+
+        let loaded_messages = partition.get_messages_by_offset(0, 10).await.unwrap();
+
+        // Only 3 unique messages should be stored
+        assert_eq!(loaded_messages.count(), 3);
+
+        // Check second message (should be the first occurrence of ID 2)
+        let second_message = loaded_messages.get(1).unwrap();
+        assert_eq!(second_message.header().id(), 2);
+        assert_eq!(second_message.payload(), b"message 2");
+    }
+
+    #[tokio::test]
+    async fn deduplication_across_multiple_append_operations() {
+        let (mut partition, _tempdir) = create_partition(true).await;
+
+        // First batch
+        let batch1 = vec![
+            create_message(1, "message 1"),
+            create_message(2, "message 2"),
+        ];
+
+        let batch1_size = batch1
+            .iter()
+            .map(|m| m.get_size_bytes().as_bytes_u32())
+            .sum();
+        let batch1 = IggyMessagesBatchMut::from_messages(&batch1, batch1_size);
+        partition.append_messages(batch1, None).await.unwrap();
+
+        // Second batch with mix of new and duplicate messages
+        let batch2 = vec![
+            create_message(2, "message 2 - duplicate"), // Duplicate
+            create_message(3, "message 3"),             // New
+            create_message(1, "message 1 - duplicate"), // Duplicate
+        ];
+
+        let batch2_size = batch2
+            .iter()
+            .map(|m| m.get_size_bytes().as_bytes_u32())
+            .sum();
+        let batch2 = IggyMessagesBatchMut::from_messages(&batch2, batch2_size);
+        partition.append_messages(batch2, None).await.unwrap();
+
+        let loaded_messages = partition.get_messages_by_offset(0, 10).await.unwrap();
+
+        // Only 3 unique messages should be stored
+        assert_eq!(loaded_messages.count(), 3);
+
+        // Check the message order and content
+        let first_message = loaded_messages.get(0).unwrap();
+        assert_eq!(first_message.header().id(), 1);
+        assert_eq!(first_message.payload(), b"message 1");
+
+        let second_message = loaded_messages.get(1).unwrap();
+        assert_eq!(second_message.header().id(), 2);
+        assert_eq!(second_message.payload(), b"message 2");
+
+        let third_message = loaded_messages.get(2).unwrap();
+        assert_eq!(third_message.header().id(), 3);
+        assert_eq!(third_message.payload(), b"message 3");
+    }
+
+    #[tokio::test]
+    async fn zero_id_messages_should_not_be_deduplicated() {
+        let (mut partition, _tempdir) = create_partition(true).await;
+
+        // Messages with ID 0 (should not be deduplicated as 0 is a special case)
+        let messages = vec![
+            create_message(0, "message with zero ID 1"),
+            create_message(0, "message with zero ID 2"),
+            create_message(1, "message 1"),
+            create_message(0, "message with zero ID 3"),
+        ];
+
+        let messages_size = messages
+            .iter()
+            .map(|m| m.get_size_bytes().as_bytes_u32())
+            .sum();
+        let batch = IggyMessagesBatchMut::from_messages(&messages, messages_size);
+
+        partition.append_messages(batch, None).await.unwrap();
+
+        let loaded_messages = partition.get_messages_by_offset(0, 10).await.unwrap();
+
+        // All 4 messages should be stored (ID 0 messages are not deduplicated)
+        // Note: This assumes the current behavior where ID 0 is treated specially.
+        // If that's not the case, this test needs adjustment.
+        assert_eq!(loaded_messages.count(), 4);
     }
 
     async fn create_partition(deduplication_enabled: bool) -> (Partition, TempDir) {

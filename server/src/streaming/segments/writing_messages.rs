@@ -1,6 +1,9 @@
 use super::IggyMessagesBatchMut;
-use crate::configs::cache_indexes::CacheIndexesConfig;
 use crate::streaming::segments::segment::Segment;
+use crate::{
+    configs::cache_indexes::CacheIndexesConfig,
+    streaming::deduplication::message_deduplicator::MessageDeduplicator,
+};
 use error_set::ErrContext;
 use iggy::confirmation::Confirmation;
 use iggy::prelude::*;
@@ -12,6 +15,7 @@ impl Segment {
         &mut self,
         current_offset: u64,
         messages: IggyMessagesBatchMut,
+        deduplicator: Option<&MessageDeduplicator>,
     ) -> Result<u32, IggyError> {
         if self.is_closed {
             return Err(IggyError::SegmentClosed(
@@ -22,12 +26,15 @@ impl Segment {
         let messages_size = messages.size();
 
         let messages_accumulator = &mut self.accumulator;
-        let messages_count = messages_accumulator.coalesce_batch(
-            self.start_offset,
-            current_offset,
-            self.last_index_position,
-            messages,
-        );
+        let messages_count = messages_accumulator
+            .coalesce_batch(
+                self.start_offset,
+                current_offset,
+                self.last_index_position,
+                messages,
+                deduplicator,
+            )
+            .await;
 
         if self.end_offset == 0 {
             self.start_timestamp = messages_accumulator.first_timestamp();

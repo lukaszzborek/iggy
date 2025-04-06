@@ -159,7 +159,7 @@ async fn should_persist_and_load_segment_with_messages() {
     }
     let batch = IggyMessagesBatchMut::from_messages(&messages, messages_size);
 
-    segment.append_batch(0, batch).await.unwrap();
+    segment.append_batch(0, batch, None).await.unwrap();
     segment.persist_messages(None).await.unwrap();
     let mut loaded_segment = Segment::create(
         stream_id,
@@ -232,7 +232,7 @@ async fn should_persist_and_load_segment_with_messages_with_nowait_confirmation(
         messages.push(message);
     }
     let batch = IggyMessagesBatchMut::from_messages(&messages, messages_size);
-    segment.append_batch(0, batch).await.unwrap();
+    segment.append_batch(0, batch, None).await.unwrap();
     segment
         .persist_messages(Some(Confirmation::NoWait))
         .await
@@ -315,7 +315,7 @@ async fn given_all_expired_messages_segment_should_be_expired() {
         messages.push(message);
     }
     let batch = IggyMessagesBatchMut::from_messages(&messages, messages_size);
-    segment.append_batch(0, batch).await.unwrap();
+    segment.append_batch(0, batch, None).await.unwrap();
     segment.persist_messages(None).await.unwrap();
     let not_expired_ts = IggyTimestamp::now();
     let expired_ts = not_expired_ts + IggyDuration::from(message_expiry_us + 1);
@@ -376,7 +376,7 @@ async fn given_at_least_one_not_expired_message_segment_should_not_be_expired() 
     let first_message = vec![IggyMessage::create(Bytes::from("expired"))];
     let first_message_size = first_message[0].get_size_bytes().as_bytes_u32();
     let first_batch = IggyMessagesBatchMut::from_messages(&first_message, first_message_size);
-    segment.append_batch(0, first_batch).await.unwrap();
+    segment.append_batch(0, first_batch, None).await.unwrap();
 
     sleep(Duration::from_micros(message_expiry_us / 2)).await;
     let first_message_expired_ts = IggyTimestamp::now();
@@ -384,7 +384,7 @@ async fn given_at_least_one_not_expired_message_segment_should_not_be_expired() 
     let second_message = vec![IggyMessage::create(Bytes::from("not-expired"))];
     let second_message_size = second_message[0].get_size_bytes().as_bytes_u32();
     let second_batch = IggyMessagesBatchMut::from_messages(&second_message, second_message_size);
-    segment.append_batch(1, second_batch).await.unwrap();
+    segment.append_batch(1, second_batch, None).await.unwrap();
 
     let second_message_expired_ts =
         IggyTimestamp::now() + IggyDuration::from(message_expiry_us * 2);

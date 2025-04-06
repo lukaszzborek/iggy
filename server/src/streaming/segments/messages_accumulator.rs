@@ -1,3 +1,5 @@
+use crate::streaming::deduplication::message_deduplicator::MessageDeduplicator;
+
 use super::types::{IggyMessagesBatchMut, IggyMessagesBatchSet};
 use tracing::trace;
 
@@ -42,12 +44,13 @@ impl MessagesAccumulator {
     /// # Returns
     ///
     /// The number of messages successfully added to the accumulator
-    pub fn coalesce_batch(
+    pub async fn coalesce_batch(
         &mut self,
         segment_start_offset: u64,
         segment_current_offset: u64,
         segment_current_position: u32,
         batch: IggyMessagesBatchMut,
+        deduplicator: Option<&MessageDeduplicator>,
     ) -> u32 {
         let batch_messages_count = batch.count();
 
@@ -65,11 +68,14 @@ impl MessagesAccumulator {
 
         self.initialize_or_update_offsets(segment_current_offset, segment_current_position);
 
-        let prepared_batch = batch.prepare_for_persistence(
-            segment_start_offset,
-            self.current_offset,
-            self.current_position,
-        );
+        let prepared_batch = batch
+            .prepare_for_persistence(
+                segment_start_offset,
+                self.current_offset,
+                self.current_position,
+                deduplicator,
+            )
+            .await;
 
         let batch_size = prepared_batch.size();
 

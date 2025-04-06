@@ -145,7 +145,7 @@ impl System {
         for batch in batches.iter() {
             let count = batch.count();
 
-            let mut indexes = IggyIndexesMut::with_capacity(batch.count() as usize);
+            let mut indexes = IggyIndexesMut::with_capacity(batch.count() as usize, 0);
             let mut decrypted_messages = BytesMut::with_capacity(batch.size() as usize);
             let mut position = 0;
 
@@ -167,7 +167,7 @@ impl System {
                     }
                 }
             }
-            let indexes = indexes.make_immutable(0);
+            let indexes = indexes.make_immutable();
             let decrypted_messages = decrypted_messages.freeze();
             let decrypted_batch = IggyMessagesBatch::new(indexes, decrypted_messages, count);
             decrypted_batches.push(decrypted_batch);
@@ -182,7 +182,7 @@ impl System {
         encryptor: &EncryptorKind,
     ) -> Result<IggyMessagesBatchMut, IggyError> {
         let mut encrypted_messages = BytesMut::with_capacity(batch.size() as usize * 2);
-        let mut indexes = IggyIndexesMut::with_capacity(batch.count() as usize);
+        let mut indexes = IggyIndexesMut::with_capacity(batch.count() as usize, 0);
         let mut position = 0;
 
         for message in batch.iter() {
