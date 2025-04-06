@@ -11,6 +11,12 @@ documentation = "https://docs.iggy.rs"
 repository = "https://github.com/iggy-rs/iggy"
 readme = "../README.md"
 
+[features]
+default = ["tokio_lock"]
+iggy-cli = ["dep:comfy-table", "dep:keyring", "dep:passterm"]
+tokio_lock = []
+fast_async_lock = ["dep:fast-async-mutex"]
+
 [dependencies]
 aes-gcm = "0.10.3"
 ahash = { version = "0.8.11", features = ["serde"] }
@@ -68,9 +74,3 @@ webpki-roots = { version = "0.26.8" }
 convert_case = "0.7.1"
 serde = { version = "1.0.218", features = ["derive", "rc"] }
 serde_derive = "1.0.218"
-
-[features]
-default = ["tokio_lock"]
-iggy-cli = ["dep:comfy-table", "dep:keyring", "dep:passterm"]
-tokio_lock = []
-fast_async_lock = ["dep:fast-async-mutex"]

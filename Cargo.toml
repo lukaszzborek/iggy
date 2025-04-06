@@ -12,7 +12,7 @@ members = [
     "integration",
     "sdk",
     "server",
-    "tools"
+    "tools",
 ]
 
 [workspace.metadata.cargo-machete]

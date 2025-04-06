@@ -10,6 +10,10 @@ license = "Apache-2.0"
 keywords = ["iggy", "cli", "messaging", "streaming"]
 readme = "../README.md"
 
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/{ name }-{ version }/{ name }-{ target }{ archive-suffix }"
+bin-dir = "{ bin }{ binary-ext }"
+
 [features]
 default = ["login-session"]
 login-session = ["dep:keyring"]
@@ -38,7 +42,3 @@ tracing-subscriber = { version = "0.3.19", default-features = false, features = 
 [[bin]]
 name = "iggy"
 path = "src/main.rs"
-
-[package.metadata.binstall]
-pkg-url = "{ repo }/releases/download/{ name }-{ version }/{ name }-{ target }{ archive-suffix }"
-bin-dir = "{ bin }{ binary-ext }"
