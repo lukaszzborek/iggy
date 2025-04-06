@@ -59,17 +59,7 @@ impl BackgroundServerCommand<SysInfoPrintCommand> for SysInfoPrintExecutor {
             / stats.total_memory.as_bytes_u64() as f64)
             * 100f64;
 
-        let cache_hits = stats
-            .cache_metrics
-            .iter()
-            .fold(0, |acc, (_, metrics)| acc + metrics.hits);
-        let cache_misses = stats
-            .cache_metrics
-            .iter()
-            .fold(0, |acc, (_, metrics)| acc + metrics.misses);
-        let cache_ratio = cache_hits as f64 / (cache_hits + cache_misses) as f64;
-
-        info!("CPU: {:.2}% / {:.2}% (IggyUsage/Total), Mem: {:.2}% / {} / {} / {} (Free/IggyUsage/TotalUsed/Total), Clients: {}, Messages processed: {}, Read: {}, Written: {}, Cache: {}/{}/{:.2} (Hits/Misses/Ratio), Uptime: {}",
+        info!("CPU: {:.2}% / {:.2}% (IggyUsage/Total), Mem: {:.2}% / {} / {} / {} (Free/IggyUsage/TotalUsed/Total), Clients: {}, Messages processed: {}, Read: {}, Written: {}, Uptime: {}",
               stats.cpu_usage,
               stats.total_cpu_usage,
               free_memory_percent,
@@ -80,9 +70,6 @@ impl BackgroundServerCommand<SysInfoPrintCommand> for SysInfoPrintExecutor {
               stats.messages_count.human_count_bare(),
               stats.read_bytes,
               stats.written_bytes,
-              cache_hits.human_count_bare(),
-              cache_misses.human_count_bare(),
-              cache_ratio,
               stats.run_time);
     }
 

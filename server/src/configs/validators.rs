@@ -34,9 +34,6 @@ impl Validatable<ConfigError> for ServerConfig {
         self.system.segment.validate().with_error_context(|error| {
             format!("{COMPONENT} (error: {error}) - failed to validate segment config")
         })?;
-        self.system.cache.validate().with_error_context(|error| {
-            format!("{COMPONENT} (error: {error}) - failed to validate cache config")
-        })?;
         self.system
             .compression
             .validate()

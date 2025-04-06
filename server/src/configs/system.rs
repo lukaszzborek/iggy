@@ -18,7 +18,6 @@ pub struct SystemConfig {
     pub state: StateConfig,
     pub runtime: RuntimeConfig,
     pub logging: LoggingConfig,
-    pub cache: CacheConfig,
     pub stream: StreamConfig,
     pub topic: TopicConfig,
     pub partition: PartitionConfig,

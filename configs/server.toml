@@ -369,16 +369,6 @@ retention = "7 days"
 # Interval for printing system information to the log.
 sysinfo_print_interval = "10 s"
 
-# Cache configuration.
-[system.cache]
-# Enables or disables the system cache.
-# `true` activates caching for frequently accessed data.
-# `false` disables caching, data is always read from the source.
-enabled = false
-
-# Maximum size of the cache, e.g. "4GB".
-size = "4 GB"
-
 # Encryption configuration
 [system.encryption]
 # Determines whether server-side data encryption for the messages payloads and state commands is enabled (boolean).
