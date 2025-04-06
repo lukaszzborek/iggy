@@ -16,7 +16,7 @@ pub struct MessagesAccumulator {
     /// Current (latest) offset in the accumulator
     current_offset: u64,
 
-    /// Current (latest) byte position for the next message in the segment
+    /// Current (latest) byte position for the next message in the segment, also size of all messages in the accumulator
     current_position: u32,
 
     /// Collection of all message batches in the accumulator
@@ -51,11 +51,11 @@ impl MessagesAccumulator {
         segment_current_position: u32,
         batch: IggyMessagesBatchMut,
         deduplicator: Option<&MessageDeduplicator>,
-    ) -> u32 {
+    ) {
         let batch_messages_count = batch.count();
 
         if batch_messages_count == 0 {
-            return 0;
+            return;
         }
 
         trace!(
@@ -84,8 +84,6 @@ impl MessagesAccumulator {
         self.messages_count += batch_messages_count;
         self.current_offset = self.base_offset + self.messages_count as u64 - 1;
         self.current_position += batch_size;
-
-        batch_messages_count
     }
 
     /// Initialize accumulator state for the first batch or update offsets for subsequent batches
@@ -152,6 +150,11 @@ impl MessagesAccumulator {
     /// Returns the timestamp of the last message in the accumulator.
     pub fn last_timestamp(&self) -> u64 {
         self.batches.last_timestamp().unwrap_or(0)
+    }
+
+    /// Returns the size of the last message in the accumulator.
+    pub fn unsaved_messages_size(&self) -> u32 {
+        self.current_position
     }
 
     /// Returns the starting offset of the first message in the accumulator.

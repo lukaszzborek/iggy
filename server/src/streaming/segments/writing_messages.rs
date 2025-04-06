@@ -16,17 +16,18 @@ impl Segment {
         current_offset: u64,
         messages: IggyMessagesBatchMut,
         deduplicator: Option<&MessageDeduplicator>,
-    ) -> Result<u32, IggyError> {
+    ) -> Result<(), IggyError> {
         if self.is_closed {
             return Err(IggyError::SegmentClosed(
                 self.start_offset,
                 self.partition_id,
             ));
         }
-        let messages_size = messages.size();
+        let batch_messages_size = messages.size();
+        let batch_messages_count = messages.count();
 
         let messages_accumulator = &mut self.accumulator;
-        let messages_count = messages_accumulator
+        messages_accumulator
             .coalesce_batch(
                 self.start_offset,
                 current_offset,
@@ -42,9 +43,9 @@ impl Segment {
         self.end_timestamp = messages_accumulator.last_timestamp();
         self.end_offset = messages_accumulator.last_offset();
 
-        self.update_counters(messages_size as u64, messages_count as u64);
+        self.update_counters(batch_messages_size as u64, batch_messages_count as u64);
 
-        Ok(messages_count)
+        Ok(())
     }
 
     pub async fn persist_messages(

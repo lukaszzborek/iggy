@@ -239,8 +239,11 @@ impl Partition {
             self.current_offset + 1
         };
 
+        let batch_messages_count = batch.count();
+        let batch_messages_size = batch.get_size_bytes();
+
         let last_segment = self.segments.last_mut().ok_or(IggyError::SegmentNotFound)?;
-        let messages_count = last_segment
+        last_segment
             .append_batch(current_offset, batch, self.message_deduplicator.as_ref())
                  .await
                  .with_error_context(|error| {
@@ -250,10 +253,10 @@ impl Partition {
                  })?;
 
         // Handle the case when messages_count is 0 to avoid integer underflow
-        let last_offset = if messages_count == 0 {
+        let last_offset = if batch_messages_count == 0 {
             current_offset
         } else {
-            current_offset + messages_count as u64 - 1
+            current_offset + batch_messages_count as u64 - 1
         };
 
         if self.should_increment_offset {
@@ -263,19 +266,47 @@ impl Partition {
             self.current_offset = last_offset;
         }
 
-        self.unsaved_messages_count += messages_count;
+        self.unsaved_messages_count += batch_messages_count;
+        self.unsaved_messages_size += batch_messages_size;
 
-        if self.unsaved_messages_count >= self.config.partition.messages_required_to_save
+        let unsaved_messages_count_exceeded =
+            self.unsaved_messages_count >= self.config.partition.messages_required_to_save;
+        let unsaved_messages_size_exceeded =
+            self.unsaved_messages_size >= self.config.partition.size_of_messages_required_to_save;
+
+        if unsaved_messages_count_exceeded
+            || unsaved_messages_size_exceeded
             || last_segment.is_full().await
         {
             trace!(
-                    "Segment with start offset: {} for partition with ID: {} will be persisted on disk...",
-                    last_segment.start_offset(),
-                    self.partition_id
+                "Segment with start offset: {} for partition with ID: {} will be persisted on disk because {}...",
+                last_segment.start_offset(),
+                self.partition_id,
+                if unsaved_messages_count_exceeded {
+                    format!(
+                        "unsaved messages count exceeded: {}, max from config: {}",
+                        self.unsaved_messages_count,
+                        self.config.partition.messages_required_to_save
+                    )
+                    } else if unsaved_messages_size_exceeded {
+                        format!("unsaved messages size exceeded: {}, max from config: {}",
+                        self.unsaved_messages_size,
+                        self.config.partition.size_of_messages_required_to_save)
+                    } else {
+                        format!("segment is full, current size: {}, max from config: {}",
+                        last_segment.get_messages_size(),
+                        self.config.segment.size)
+                    }
                 );
 
-            last_segment.persist_messages(confirmation).await.unwrap();
+            last_segment.persist_messages(confirmation).await.with_error_context(|error| {
+                format!(
+                    "{COMPONENT} (error: {error}) - failed to persist messages, partition id: {}, start offset: {}",
+                    self.partition_id, last_segment.start_offset()
+                )
+            })?;
             self.unsaved_messages_count = 0;
+            self.unsaved_messages_size = 0.into();
         }
 
         Ok(())
@@ -298,9 +329,15 @@ impl Partition {
             self.partition_id
         );
 
-        last_segment.persist_messages(None).await.unwrap();
+        last_segment.persist_messages(None).await.with_error_context(|error| {
+            format!(
+                "{COMPONENT} (error: {error}) - failed to persist messages, partition id: {}, start offset: {}",
+                self.partition_id, last_segment.start_offset()
+            )
+        })?;
 
         self.unsaved_messages_count = 0;
+        self.unsaved_messages_size = 0.into();
         Ok(())
     }
 }
