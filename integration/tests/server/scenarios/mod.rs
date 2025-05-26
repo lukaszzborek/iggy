@@ -29,6 +29,7 @@ pub mod consumer_group_with_single_client_polling_messages_scenario;
 pub mod create_message_payload;
 pub mod message_headers_scenario;
 pub mod message_size_scenario;
+pub mod multiple_consumer_groups_same_topic_scenario;
 pub mod stream_size_validation_scenario;
 pub mod system_scenario;
 pub mod user_scenario;
