@@ -17,7 +17,8 @@
  */
 
 use crate::server::scenarios::{
-    create_message_payload, stream_size_validation_scenario, system_scenario, user_scenario,
+    create_message_payload, multiple_consumer_groups_same_topic_scenario,
+    stream_size_validation_scenario, system_scenario, user_scenario,
 };
 use integration::{http_client::HttpClientFactory, test_server::TestServer};
 use serial_test::parallel;
@@ -70,4 +71,14 @@ async fn user_scenario_should_be_valid() {
     let server_addr = test_server.get_http_api_addr().unwrap();
     let client_factory = HttpClientFactory { server_addr };
     user_scenario::run(&client_factory).await;
+}
+
+#[tokio::test]
+#[parallel]
+async fn multiple_consumer_groups_same_topic_scenario_should_be_valid() {
+    let mut test_server = TestServer::default();
+    test_server.start();
+    let server_addr = test_server.get_http_api_addr().unwrap();
+    let client_factory = HttpClientFactory { server_addr };
+    multiple_consumer_groups_same_topic_scenario::run(&client_factory).await;
 }
