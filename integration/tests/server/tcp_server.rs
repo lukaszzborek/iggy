@@ -19,8 +19,8 @@
 use crate::server::scenarios::{
     consumer_group_join_scenario, consumer_group_with_multiple_clients_polling_messages_scenario,
     consumer_group_with_single_client_polling_messages_scenario, create_message_payload,
-    message_headers_scenario, message_size_scenario, stream_size_validation_scenario,
-    system_scenario, user_scenario,
+    message_headers_scenario, message_size_scenario, multiple_consumer_groups_same_topic_scenario,
+    stream_size_validation_scenario, system_scenario, user_scenario,
 };
 use integration::{tcp_client::TcpClientFactory, test_server::TestServer};
 use serial_test::parallel;
@@ -140,4 +140,17 @@ async fn message_size_scenario_should_be_valid() {
         ..Default::default()
     };
     message_size_scenario::run(&client_factory).await;
+}
+
+#[tokio::test]
+#[parallel]
+async fn multiple_consumer_groups_same_topic_scenario_should_be_valid() {
+    let mut test_server = TestServer::default();
+    test_server.start();
+    let server_addr = test_server.get_raw_tcp_addr().unwrap();
+    let client_factory = TcpClientFactory {
+        server_addr,
+        ..Default::default()
+    };
+    multiple_consumer_groups_same_topic_scenario::run(&client_factory).await;
 }
