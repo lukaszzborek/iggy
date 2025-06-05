@@ -56,8 +56,6 @@ pub(crate) async fn build_iggy_producer(
     trace!("Build iggy producer");
     let mut builder = client
         .producer(stream, topic)?
-        .batch_length(batch_length)
-        .linger_time(linger_time)
         .partitioning(partitioning)
         .create_stream_if_not_exists()
         .send_retries(send_retries, send_retries_interval)
@@ -66,14 +64,15 @@ pub(crate) async fn build_iggy_producer(
             topic_replication_factor,
             IggyExpiry::ServerDefault,
             MaxTopicSize::ServerDefault,
-        );
+        )
+        .sync(|b| b.batch_length(batch_length).linger_time(linger_time));
 
     if let Some(encryptor) = config.encryptor() {
         builder = builder.encryptor(encryptor);
     }
 
     trace!("Initialize iggy producer");
-    let mut producer = builder.build();
+    let producer = builder.build();
     producer.init().await.map_err(|err| {
         error!("Failed to initialize consumer: {err}");
         err

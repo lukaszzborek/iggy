@@ -260,10 +260,12 @@ async fn create_producers(
     let mut producers = Vec::new();
     for topic in topics {
         for id in 1..=producers_count {
-            let mut producer = client
+            let producer = client
                 .producer(stream, topic)?
-                .batch_length(batch_length)
-                .linger_time(IggyDuration::from_str(interval).expect("Invalid duration"))
+                .sync(|b| {
+                    b.batch_length(batch_length)
+                        .linger_time(IggyDuration::from_str(interval).expect("Invalid duration"))
+                })
                 .partitioning(Partitioning::balanced())
                 .create_topic_if_not_exists(
                     partitions_count,
