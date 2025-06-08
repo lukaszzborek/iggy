@@ -74,21 +74,15 @@ impl ProducerDispatcher {
             shards.push(Shard::new(core.clone(), config.clone(), err_tx.clone()));
         }
 
-        let bytes_permit = match config.max_buffer_size {
-            Some(val) => val.as_bytes_u32() as usize,
-            None => usize::MAX,
-        };
-        let slot_permit = match config.max_in_flight {
-            Some(val) => val,
-            None => usize::MAX,
-        };
+        let bytes_permit = config.max_buffer_size.as_bytes_usize();
+        let max_in_flight = config.max_in_flight;
 
         Self {
             shards,
             config,
             closed: AtomicBool::new(false),
             bytes_permit: Arc::new(Semaphore::new(bytes_permit)),
-            slots_permit: Arc::new(Semaphore::new(slot_permit)),
+            slots_permit: Arc::new(Semaphore::new(max_in_flight)),
             shutdown_notify,
             _join_handle: handle,
         }
@@ -222,7 +216,6 @@ mod tests {
     use tokio::time::sleep;
 
     use crate::clients::producer::MockProducerCoreBackend;
-    use crate::clients::producer_builder::BackgroundBuilder;
     use crate::clients::producer_error_callback::ErrorCallback;
     use crate::clients::producer_sharding::Sharding;
 

@@ -17,10 +17,11 @@
  */
 use std::sync::Arc;
 
+use bon::Builder;
 use iggy_common::{IggyByteSize, IggyDuration};
 
-use crate::clients::producer_error_callback::ErrorCallback;
-use crate::clients::producer_sharding::Sharding;
+use crate::clients::producer_error_callback::{ErrorCallback, LogErrorCallback};
+use crate::clients::producer_sharding::{BalancedSharding, Sharding};
 
 #[derive(Debug, Clone)]
 /// Determines how the `send_messages` API should behave when problem is encountered
@@ -33,21 +34,37 @@ pub enum BackpressureMode {
     FailImmediately,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Builder)]
 pub struct BackgroundConfig {
+    #[builder(default = default_shard_count())]
     pub num_shards: usize,
-    pub batch_size: Option<usize>,
-    pub batch_length: Option<usize>,
-    pub failure_mode: BackpressureMode,
-    pub max_buffer_size: Option<IggyByteSize>,
-    pub max_in_flight: Option<usize>,
+    #[builder(default = IggyDuration::from(1000))]
     pub linger_time: IggyDuration,
+    #[builder(default = Arc::new(Box::new(LogErrorCallback)))]
     pub error_callback: Arc<Box<dyn ErrorCallback + Send + Sync>>,
+    #[builder(default = Box::new(BalancedSharding::default()))]
     pub sharding: Box<dyn Sharding + Send + Sync>,
+    #[builder(default = 1_048_576)]
+    pub batch_size: usize,
+    #[builder(default = 1000)]
+    pub batch_length: usize,
+    #[builder(default = BackpressureMode::Block)]
+    pub failure_mode: BackpressureMode,
+    #[builder(default = IggyByteSize::from(32 * 1_048_576))]
+    pub max_buffer_size: IggyByteSize,
+    #[builder(default = default_shard_count() * 2)]
+    pub max_in_flight: usize,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Builder)]
 pub struct SyncConfig {
-    pub batch_length: usize,
-    pub linger_time: Option<IggyDuration>,
+    #[builder(default = 1000)]
+    pub batch_length: u32,
+    #[builder(default = IggyDuration::from(1000))]
+    pub linger_time: IggyDuration,
+}
+
+fn default_shard_count() -> usize {
+    let cpus = num_cpus::get();
+    cpus.clamp(2, 16)
 }

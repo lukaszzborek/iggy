@@ -378,16 +378,13 @@ impl ProducerCoreBackend for ProducerCore {
 
         match &self.sync_config {
             Some(cfg) => {
-                let linger_time_micros = match cfg.linger_time {
-                    Some(t) => t.as_micros(),
-                    None => 0,
-                };
+                let linger_time_micros = cfg.linger_time.as_micros();
                 if linger_time_micros > 0 {
                     Self::wait_before_sending(linger_time_micros, self.last_sent_at.load(ORDERING))
                         .await;
                 }
 
-                let max = cfg.batch_length;
+                let max = cfg.batch_length as usize;
                 let mut index = 0;
                 while index < msgs.len() {
                     let end = (index + max).min(msgs.len());
