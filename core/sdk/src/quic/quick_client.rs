@@ -458,6 +458,7 @@ impl QuicClient {
                 IggyError::QuicError
             })?;
             trace!("Sending a QUIC request with code: {code}");
+            
             send.write_all(&(payload_length as u32).to_le_bytes())
                 .await
                 .map_err(|error| {
