@@ -39,6 +39,10 @@ use tokio::time::sleep;
 use tracing::log::warn;
 use tracing::{debug, error, info};
 
+// pub struct IggyClientNew {
+//     pub(crate) 
+// }
+
 /// The main client struct which implements all the `Client` traits and wraps the underlying low-level client for the specific transport.
 ///
 /// It also provides the additional builders for the standalone consumer, consumer group, and producer.
