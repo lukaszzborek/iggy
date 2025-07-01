@@ -66,7 +66,7 @@ pub struct IggyCore {
 }
 
 impl IggyCore {
-    pub fn write(&mut self, cmd: impl Command) -> Result<(), IggyError> {
+    pub fn write(&mut self, cmd: &impl Command) -> Result<(), IggyError> {
         match self.state {
             ClientState::Shutdown => {
                 trace!("Cannot send data. Client is shutdown.");
