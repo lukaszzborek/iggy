@@ -1,11 +1,22 @@
 use std::{collections::VecDeque, pin::Pin, sync::Arc};
 
-use bytes::Bytes;
-use iggy_common::{ClientState, Command, IggyDuration, IggyError, IggyTimestamp};
+use bytes::{Bytes, BytesMut};
+use iggy_common::{ClientState, Command, IggyDuration, IggyError, IggyErrorDiscriminants, IggyTimestamp};
 use std::io::IoSlice;
-use tracing::trace;
+use tracing::{error, trace};
 
 const REQUEST_INITIAL_BYTES_LENGTH: usize = 4;
+const RESPONSE_INITIAL_BYTES_LENGTH: usize = 8;
+const ALREADY_EXISTS_STATUSES: &[u32] = &[
+    IggyErrorDiscriminants::TopicIdAlreadyExists as u32,
+    IggyErrorDiscriminants::TopicNameAlreadyExists as u32,
+    IggyErrorDiscriminants::StreamIdAlreadyExists as u32,
+    IggyErrorDiscriminants::StreamNameAlreadyExists as u32,
+    IggyErrorDiscriminants::UserAlreadyExists as u32,
+    IggyErrorDiscriminants::PersonalAccessTokenAlreadyExists as u32,
+    IggyErrorDiscriminants::ConsumerGroupIdAlreadyExists as u32,
+    IggyErrorDiscriminants::ConsumerGroupNameAlreadyExists as u32,
+];
 
 pub trait TransportConfig {
     fn resstablish_after(&self) -> IggyDuration;
@@ -38,18 +49,24 @@ pub enum Order {
     Noop,
 }
 
+pub enum InboundResult {
+    Need(usize),        
+    Response(Bytes),    
+    Error(IggyError),   
+}
+
 pub struct IggyCore {
     state: ClientState,
     last_connect: Option<IggyTimestamp>,
-    reconnect_us: u64,
-    pending: VecDeque<Box<dyn Command>>,
-    config: Box<dyn TransportConfig>, // todo rewrite via generic
+    pending: VecDeque<(u32 /* code */, Bytes /* payload */)>,
+    config: Arc<dyn TransportConfig + Send + Sync + 'static>, // todo rewrite via generic
     retry_count: u32,
     current_tx: Option<TxBuf>,
+    rx_buf: BytesMut,
 }
 
 impl IggyCore {
-    pub fn write(&mut self, cmd: impl Command) -> Result<_, IggyError> {
+    pub fn write(&mut self, cmd: impl Command) -> Result<(), IggyError> {
         match self.state {
             ClientState::Shutdown => {
                 trace!("Cannot send data. Client is shutdown.");
@@ -65,7 +82,7 @@ impl IggyCore {
             }
             _ => {}
         }
-        self.pending.push_back(Box::new(cmd));
+        self.pending.push_back((cmd.code(), cmd.to_bytes()));
         Ok(())
     }
 
@@ -125,46 +142,60 @@ impl IggyCore {
     // TODO вызывать при async fn poll
     pub fn poll_transmit(&mut self) -> Option<&TxBuf> {
         if self.current_tx.is_none() {
-            let cmd = self.pending.pop_front()?;
-            let payload = cmd.to_bytes();
+            let (code, payload) = self.pending.pop_front()?;
             let len = (payload.len() + REQUEST_INITIAL_BYTES_LENGTH) as u32;
 
             self.current_tx = Some(TxBuf {
                 hdr_len: len.to_le_bytes(),
-                hdr_code: cmd.code().to_le_bytes(),
+                hdr_code: code.to_le_bytes(),
                 payload,
             });
         }
         self.current_tx.as_ref()
     }
+
+    pub fn feed_inbound(&mut self, bytes: &[u8]) -> InboundResult {
+        if self.rx_buf.len() < RESPONSE_INITIAL_BYTES_LENGTH {
+            let need = RESPONSE_INITIAL_BYTES_LENGTH - self.rx_buf.len();
+            self.rx_buf.extend_from_slice(bytes);
+            if self.rx_buf.len() < RESPONSE_INITIAL_BYTES_LENGTH {
+                return InboundResult::Need(need);
+            }
+        }
+
+        let status = u32::from_le_bytes(self.rx_buf[0..4].try_into().unwrap());
+        let length = u32::from_le_bytes(self.rx_buf[4..8].try_into().unwrap());
+
+        if status != 0 {
+            if ALREADY_EXISTS_STATUSES.contains(&status) {
+                tracing::debug!(
+                    "Received a server resource already exists response: {} ({})",
+                    status,
+                    IggyError::from_code_as_string(status)
+                )
+            } else {
+                error!(
+                    "Received an invalid response with status: {} ({}).",
+                    status,
+                    IggyError::from_code_as_string(status),
+                );
+            }
+            return InboundResult::Error(IggyError::from_code(status));
+        }
+
+        trace!("Status: OK. Response length: {}", length);
+        if length <= 1 {
+            return InboundResult::Response(Bytes::new());
+        }
+
+        let body_len = length as usize;
+        let got = self.rx_buf.len() - RESPONSE_INITIAL_BYTES_LENGTH;
+        if got < body_len {
+            return InboundResult::Need(body_len - got);
+        }
+
+        let mut full = self.rx_buf.split_to(8 + body_len);
+        let body = full.split_off(8).freeze();
+        InboundResult::Response(body)
+    }
 }
-
-// pub trait ConnectionAdapter: Send + Sync + 'static {
-//     fn write(&mut self, buf: &[u8]) -> Pin<Box<dyn Future<Output = Result<(), IggyError>> + Send>>;
-// }
-
-// pub trait Runtime {
-
-// }
-
-// // pin_project! {
-// pub struct OpenConn<'a> {
-//     conn: &'a Connection,
-// }
-// // }
-
-// impl Future for OpenConn<'_> {
-//     type Output = Result<Connection, IggyError>;
-//     fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
-
-//     }
-// }
-
-// pub struct Connection {
-//     adapter: Arc<dyn ConnectionAdapter>,
-//     runtime: Arc<dyn Runtime>,
-// }
-
-// impl Connection {
-
-// }
