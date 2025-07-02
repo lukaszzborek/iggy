@@ -1,4 +1,4 @@
-use std::task::Context;
+use std::{sync::Mutex, task::Context};
 
 use bytes::Bytes;
 use futures::future::poll_fn;
@@ -9,7 +9,7 @@ use crate::tcp::tcp_connection_stream_kind::ConnectionStreamKind;
 
 pub struct TCPAdapter<R: Runtime> {
     rt: R,
-    core: R::Mutex<IggyCore>,
+    core: Mutex<IggyCore>,
     pub(crate) stream: R::Mutex<Option<ConnectionStreamKind>>,
 }
 
@@ -19,13 +19,13 @@ impl<R: Runtime> TCPAdapter<R> {
         Ok(Bytes::new())
     }
 
-    async fn write(&self, command: &impl Command) -> Result<(), IggyError> {
+    fn write(&self, command: &impl Command) -> Result<(), IggyError> {
         command.validate()?;
-        self.core.lock().await.write(command)
+        self.core.lock().unwrap().write(command)
     }
 
     fn execute_poll(&mut self, cx: &mut Context, command: &impl Command) -> Result<Bytes, IggyError> {
-        self.write(command).await?;
+        self.write(command)?;
         
     }
 }
