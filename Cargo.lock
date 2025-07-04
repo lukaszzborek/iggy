@@ -3707,6 +3707,7 @@ dependencies = [
  "serde",
  "tokio",
  "tokio-rustls",
+ "tokio-util",
  "tracing",
  "trait-variant",
  "webpki-roots 1.0.1",

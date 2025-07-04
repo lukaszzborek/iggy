@@ -27,3 +27,5 @@ pub mod quic;
 pub mod stream_builder;
 pub mod tcp;
 pub mod proto;
+pub mod transport_factory;
+pub mod connection;
