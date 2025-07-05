@@ -17,4 +17,4 @@
  */
 
 pub mod quick_client;
-mod skip_server_verification;
+pub mod skip_server_verification;
