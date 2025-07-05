@@ -1,0 +1,25 @@
+pub mod quic;
+
+use std::{pin::Pin, sync::Arc};
+
+use bytes::Bytes;
+use futures::FutureExt;
+use iggy_common::{Command, IggyError};
+
+use crate::proto::runtime::OneShotReceiver;
+
+pub struct RespFut {
+    rx: OneShotReceiver<Bytes>
+}
+
+impl Future for RespFut {
+    type Output = Result<Bytes, IggyError>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
+        self.get_mut().rx.poll_unpin(cx).map_err(|_| IggyError::ReceiveError)
+    }
+}
+
+pub trait TransportAdapter {
+    fn send_with_response<'a, T: Command>(&'a self, command: &'a T) -> Pin<Box<dyn Future<Output = Result<RespFut, IggyError>> + Send + 'a>>;
+}

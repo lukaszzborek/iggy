@@ -459,6 +459,8 @@ pub enum IggyError {
     CannotReadIndexPosition = 10011,
     #[error("Cannot read index timestamp")]
     CannotReadIndexTimestamp = 10012,
+    #[error("Receive error")]
+    ReceiveError = 10050,
 }
 
 impl IggyError {
