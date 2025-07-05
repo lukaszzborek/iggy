@@ -1,18 +1,26 @@
 use std::{ops::{Deref, DerefMut}, pin::Pin};
 
-pub trait Runtime: Sync + Send + 'static {
-    type Mutex<T>: Lockable<T> + Send + Sync + 'static
-    where
-        T: Send + 'static;
+use iggy_common::IggyError;
 
-    fn mutex<T: Send + 'static>(&self, value: T) -> Self::Mutex<T>;
+
+#[cfg(feature = "runtime_tokio")]
+pub mod sync {
+    pub type Mutex<T> = tokio::sync::Mutex<T>;
+    pub type OneShotSender<T> = tokio::sync::oneshot::Sender<T>;
+    pub type OneShotReceiver<T> = tokio::sync::oneshot::Receiver<T>;
+    pub type Notify = tokio::sync::Notify;
 }
 
-pub trait Lockable<T>: Send + Sync + 'static {
-    type Guard<'a>: Deref<Target = T> + DerefMut + 'a
-    where
-        Self: 'a,
-        T: 'a;
+pub trait Runtime: Sync + Send + 'static {
+    fn spawn(&self, future: Pin<Box<dyn Future<Output = ()> + Send>>);
+}
 
-    fn lock(&self) -> Pin<Box<dyn Future<Output = Self::Guard<'_>> + Send + '_>>;
+#[cfg(feature = "runtime_tokio")]
+pub fn oneshot<T>() -> (sync::OneShotSender<T>, sync::OneShotReceiver<T>) {
+    tokio::sync::oneshot::channel()
+}
+
+#[cfg(feature = "runtime_tokio")]
+pub fn notify() -> sync::Notify {
+    tokio::sync::Notify::new()
 }

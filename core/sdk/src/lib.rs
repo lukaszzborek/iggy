@@ -30,3 +30,4 @@ pub mod proto;
 pub mod transport_factory;
 pub mod connection;
 pub mod transport_adapter;
+pub mod driver;
