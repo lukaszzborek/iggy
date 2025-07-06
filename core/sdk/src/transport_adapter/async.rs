@@ -4,7 +4,7 @@ use bytes::Bytes;
 use iggy_common::{Command, IggyError};
 use tokio::sync::Notify;
 
-use crate::{connection::quic::QuicFactory, proto::{connection::IggyCore, runtime::{self, sync, Lockable, Runtime}}, transport_adapter::{RespFut, TransportAdapter}};
+use crate::{connection::quic::QuicFactory, proto::{connection::{IggyCore, Order}, runtime::{self, sync, Lockable, Runtime}}, transport_adapter::{RespFut, TransportAdapter}};
 
 pub struct AsyncTransportAdapter<F: QuicFactory, R: Runtime> {
     factory: Arc<F>,
@@ -20,7 +20,7 @@ where
     F: QuicFactory + Send + Sync + 'static,
     R: Runtime,
 {
-    fn send_with_response<'a, T: Command>(&'a self, command: &'a T) -> Pin<Box<dyn Future<Output = Result<RespFut, IggyError>> + Send + 'a >> {
+    pub fn send_with_response<'a, T: Command>(&'a self, command: &'a T) -> Pin<Box<dyn Future<Output = Result<RespFut, IggyError>> + Send + 'a >> {
         Box::pin(async move {
             let (tx, rx) = runtime::oneshot::<Bytes>();
             let current_id = self.id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -29,8 +29,19 @@ where
             self.driver.register(current_id);
             self.notify.notify_one();
 
-            OK(RespFut{rx: rx})
+            Ok(RespFut{rx: rx})
         })
+    }
+
+    pub async fn connect(&self) -> Result<(), IggyError> {
+        let connect = self.core.lock().await.start_connect()?;
+        loop {
+            match connect {
+                Order::Reconnect => {
+                    
+                }
+            }
+        }
     }
 }
 /*

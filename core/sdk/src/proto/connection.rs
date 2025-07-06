@@ -24,6 +24,7 @@ pub trait TransportConfig {
 }
 
 pub struct TxBuf {
+    pub id: u64,
     hdr_len: [u8; 4],
     hdr_code: [u8; 4],
     payload: Bytes,
