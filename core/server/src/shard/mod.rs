@@ -779,9 +779,13 @@ impl IggyShard {
         }
     }
 
-    pub async fn broadcast_event_to_all_shards(&self, event: Arc<ShardEvent>) -> Vec<ShardResponse> {
+    pub async fn broadcast_event_to_all_shards(
+        &self,
+        event: Arc<ShardEvent>,
+    ) -> Vec<ShardResponse> {
         let mut responses = Vec::with_capacity(self.get_available_shards_count() as usize);
-        for maybe_receiver in self.shards
+        for maybe_receiver in self
+            .shards
             .iter()
             .filter_map(|shard| {
                 if shard.id != self.id {
@@ -801,18 +805,19 @@ impl IggyShard {
                     conn.send(ShardFrame::new(event.clone().into(), None));
                     None
                 }
-            }) {
-                match maybe_receiver {
-                    Some(receiver) => {
-                        let response = receiver.recv().await.unwrap();
-                        responses.push(response);
-                    }
-                    None => {
-                        responses.push(ShardResponse::Event);
-                    }
+            })
+        {
+            match maybe_receiver {
+                Some(receiver) => {
+                    let response = receiver.recv().await.unwrap();
+                    responses.push(response);
+                }
+                None => {
+                    responses.push(ShardResponse::Event);
                 }
             }
-            responses
+        }
+        responses
     }
 
     fn find_shard(&self, namespace: &IggyNamespace) -> Option<&Shard> {
