@@ -82,7 +82,8 @@ impl Segment {
         let batch_size = batches.size();
         let batch_count = batches.count();
 
-        batches.append_indexes_to(&mut self.indexes);
+        self.ensure_indexes();
+        batches.append_indexes_to(self.indexes.as_mut().unwrap());
 
         let saved_bytes = self
             .messages_writer
@@ -98,7 +99,7 @@ impl Segment {
 
         self.last_index_position += saved_bytes.as_bytes_u64() as u32;
 
-        let unsaved_indexes_slice = self.indexes.unsaved_slice();
+        let unsaved_indexes_slice = self.indexes.as_ref().unwrap().unsaved_slice();
         let len = unsaved_indexes_slice.len();
         self.index_writer
             .as_mut()
@@ -109,17 +110,23 @@ impl Segment {
                 format!("Failed to save index of {} indexes to {self}. {error}", len)
             })?;
 
-        self.indexes.mark_saved();
+        self.indexes.as_mut().unwrap().mark_saved();
 
         if self.config.segment.cache_indexes == CacheIndexesConfig::None {
-            self.indexes.clear();
+            if let Some(indexes) = self.indexes.as_mut() {
+                indexes.clear();
+            }
         }
 
         self.check_and_handle_segment_full().await?;
 
         trace!(
-            "Saved {} messages on disk in segment with start offset: {} for partition with ID: {}, total bytes written: {}.",
-            unsaved_messages_count, self.start_offset, self.partition_id, saved_bytes
+            "Saved {} messages on disk in segment with start offset: {}, end offset: {}, for partition with ID: {}, total bytes written: {}.",
+            unsaved_messages_count,
+            self.start_offset,
+            self.end_offset,
+            self.partition_id,
+            saved_bytes
         );
 
         Ok(unsaved_messages_count)

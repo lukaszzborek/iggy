@@ -21,6 +21,7 @@ use crate::streaming::utils::PooledBuffer;
 use bytes::BytesMut;
 use compio::{
     BufResult,
+    buf::{IntoInner, IoBuf},
     fs::{File, OpenOptions},
     io::AsyncReadAtExt,
 };
@@ -336,19 +337,15 @@ impl IndexReader {
         len: u32,
         use_pool: bool,
     ) -> Result<PooledBuffer, std::io::Error> {
-        if use_pool {
-            let mut buf = PooledBuffer::with_capacity(len as usize);
-            unsafe { buf.set_len(len as usize) };
-            let (result, buf) = self.file.read_exact_at(buf, offset as u64).await.into();
-            result?;
-            Ok(buf)
-        } else {
-            let mut buf = BytesMut::with_capacity(len as usize);
-            unsafe { buf.set_len(len as usize) };
-            let (result, buf) = self.file.read_exact_at(buf, offset as u64).await.into();
-            result?;
-            Ok(PooledBuffer::from_existing(buf))
-        }
+        let mut buf = PooledBuffer::with_capacity(len as usize);
+        let (result, buf) = self
+            .file
+            .read_exact_at(buf.slice(0..len as usize), offset as u64)
+            .await
+            .into();
+        result?;
+
+        Ok(buf.into_inner())
     }
 
     /// Gets the nth index from the index file.
