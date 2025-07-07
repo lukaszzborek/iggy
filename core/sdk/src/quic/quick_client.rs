@@ -20,6 +20,7 @@ use crate::prelude::AutoLogin;
 use iggy_binary_protocol::{
     BinaryClient, BinaryTransport, Client, PersonalAccessTokenClient, UserClient,
 };
+use tokio::io::AsyncWriteExt;
 
 use crate::prelude::{IggyDuration, IggyError, IggyTimestamp, QuicClientConfig};
 use crate::quic::skip_server_verification::SkipServerVerification;
@@ -458,7 +459,6 @@ impl QuicClient {
                 IggyError::QuicError
             })?;
             trace!("Sending a QUIC request with code: {code}");
-            
             send.write_all(&(payload_length as u32).to_le_bytes())
                 .await
                 .map_err(|error| {

@@ -19,9 +19,9 @@
 use crate::BytesSerializable;
 use crate::Validatable;
 use crate::error::IggyError;
-use std::fmt::Display;
+use std::fmt::{Display, Debug};
 
-pub trait Command: BytesSerializable + Validatable<IggyError> + Send + Sync + Display {
+pub trait Command: BytesSerializable + Validatable<IggyError> + Send + Sync + Display + Debug {
     fn code(&self) -> u32;
 }
 

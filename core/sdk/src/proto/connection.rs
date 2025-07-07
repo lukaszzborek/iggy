@@ -40,6 +40,7 @@ impl TxBuf {
     }
 }
 
+#[derive(Debug)]
 pub enum Order {
     Outbound(Box<dyn Command>),
     State(ClientState),
@@ -59,15 +60,15 @@ pub enum InboundResult {
 pub struct IggyCore {
     state: ClientState,
     last_connect: Option<IggyTimestamp>,
-    pending: VecDeque<(u32 /* code */, Bytes /* payload */)>,
+    pending: VecDeque<(u32 /* code */, Bytes /* payload */, u64 /* transport_id */)>,
     config: Arc<dyn TransportConfig + Send + Sync + 'static>, // todo rewrite via generic
     retry_count: u32,
-    current_tx: Option<TxBuf>,
+    current_tx: Option<Arc<TxBuf>>,
     rx_buf: BytesMut,
 }
 
 impl IggyCore {
-    pub fn write(&mut self, cmd: &impl Command) -> Result<(), IggyError> {
+    pub fn write(&mut self, cmd: &impl Command, id: u64) -> Result<(), IggyError> {
         match self.state {
             ClientState::Shutdown => {
                 trace!("Cannot send data. Client is shutdown.");
@@ -83,7 +84,7 @@ impl IggyCore {
             }
             _ => {}
         }
-        self.pending.push_back((cmd.code(), cmd.to_bytes()));
+        self.pending.push_back((cmd.code(), cmd.to_bytes(), id));
         Ok(())
     }
 
@@ -140,19 +141,23 @@ impl IggyCore {
         Ok(Order::Reconnect)
     }
 
-    // TODO вызывать при async fn poll
-    pub fn poll_transmit(&mut self) -> Option<&TxBuf> {
+    pub fn poll_transmit(&mut self) -> Option<Arc<TxBuf>> {
         if self.current_tx.is_none() {
-            let (code, payload) = self.pending.pop_front()?;
+            let (code, payload, id) = self.pending.pop_front()?;
             let len = (payload.len() + REQUEST_INITIAL_BYTES_LENGTH) as u32;
 
-            self.current_tx = Some(TxBuf {
+            self.current_tx = Some(Arc::new(TxBuf{
                 hdr_len: len.to_le_bytes(),
                 hdr_code: code.to_le_bytes(),
-                payload,
-            });
+                payload, 
+                id,
+            }));
         }
-        self.current_tx.as_ref()
+        self.current_tx.as_ref().cloned()
+    }
+
+    pub fn mark_tx_done(&mut self) {
+        self.current_tx = None
     }
 
     pub fn feed_inbound(&mut self, bytes: &[u8]) -> InboundResult {
@@ -198,5 +203,15 @@ impl IggyCore {
         let mut full = self.rx_buf.split_to(8 + body_len);
         let body = full.split_off(8).freeze();
         InboundResult::Response(body)
+    }
+
+    pub fn on_transport_connected(&mut self) {
+        self.state        = ClientState::Connected;
+        self.retry_count  = 0;
+        self.last_connect = Some(IggyTimestamp::now());
+    }
+
+    pub fn on_transport_disconnected(&mut self) {
+        self.state = ClientState::Disconnected;
     }
 }

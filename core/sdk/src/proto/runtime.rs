@@ -1,4 +1,4 @@
-use std::{ops::{Deref, DerefMut}, pin::Pin};
+use std::{ops::{Deref, DerefMut}, pin::Pin, time::Duration};
 
 use iggy_common::IggyError;
 
@@ -13,6 +13,7 @@ pub mod sync {
 
 pub trait Runtime: Sync + Send + 'static {
     fn spawn(&self, future: Pin<Box<dyn Future<Output = ()> + Send>>);
+    fn sleep(&self, duration: Duration) -> Pin<Box<dyn Future<Output = ()> + Send>>;
 }
 
 #[cfg(feature = "runtime_tokio")]

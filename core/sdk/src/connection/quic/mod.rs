@@ -1,39 +1,99 @@
+use std::io::IoSlice;
 use std::sync::Arc;
 use std::{io, net::SocketAddr, pin::Pin, time::Duration};
+use bytes::Bytes;
 use iggy_common::{IggyError, QuicClientConfig};
 use rustls::crypto::CryptoProvider;
+use tokio::io::AsyncWriteExt;
 use tracing::{error, warn};
+use crate::proto::runtime::sync;
 use crate::quic::skip_server_verification::SkipServerVerification;
 
 use quinn::crypto::rustls::QuicClientConfig as QuinnQuicClientConfig;
-use quinn::{ClientConfig, Connection, Endpoint, IdleTimeout, VarInt};
+use quinn::{ClientConfig, Connection, Endpoint, IdleTimeout, RecvStream, SendStream, VarInt};
+
+pub trait StreamPair: Send {
+    fn send_vectored<'a>(&'a mut self, bufs: &'a [IoSlice<'_>]) -> Pin<Box<dyn Future<Output = Result<(), IggyError>> + Send + 'a>>;
+    fn read_chunk<'a>(&'a mut self, at_most: usize) -> Pin<Box<dyn Future<Output = Result<Option<Bytes>, IggyError>> + Send + 'a>>;
+}
 
 pub trait QuicFactory {
-    type Conn;
-    fn connect(&self) -> Pin<Box<dyn Future<Output = Result<Self::Conn, IggyError>> + Send>>;
+    type Stream: StreamPair;
+    
+    fn connect(&self) -> Pin<Box<dyn Future<Output = Result<(), IggyError>> + Send>>;
+    fn open_stream(&self) -> Pin<Box<dyn Future<Output = Result<Self::Stream, IggyError>> + Send + '_>>;
+}
+
+pub struct QuinnStreamPair {
+    send: SendStream,
+    recv: RecvStream,
+}
+
+impl StreamPair for QuinnStreamPair {
+    fn send_vectored<'a>(&'a mut self, bufs: &'a [IoSlice<'_>]) -> Pin<Box<dyn Future<Output = Result<(), IggyError>> + Send + 'a>> {
+        Box::pin(async move {
+            self.send.write_vectored(bufs).await.map_err(|e| {
+                error!("Failed to write vectored buffs to quic conn: {e}");
+                IggyError::QuicError
+            })?;
+            self.send.finish();
+            Ok(())
+        })
+    }
+
+    fn read_chunk<'a>(&'a mut self, at_most: usize) -> Pin<Box<dyn Future<Output = Result<Option<Bytes>, IggyError>> + Send + 'a>> {
+        Box::pin(async move {
+            let res = self.recv.read_chunk(at_most, true).await.map_err(|e| {
+                error!("Failed to read chunk: {e}");
+                IggyError::QuicError
+            })?;
+            if let Some(data) = res {
+                return Ok(Some(data.bytes));
+            }
+            Ok(None)
+        })
+    }
 }
 
 pub struct QuinnFactory {
     config: Arc<QuicClientConfig>,
     ep: Arc<Endpoint>,
+    connection: Arc<sync::Mutex<Option<Connection>>>,
     server_address: SocketAddr,
 }
 
 impl QuicFactory for QuinnFactory {
-    type Conn = Connection;
+    type Stream = QuinnStreamPair;
 
-    fn connect(&self) -> Pin<Box<dyn Future<Output = Result<Self::Conn, IggyError>> + Send>> {
+    fn connect(&self) -> Pin<Box<dyn Future<Output = Result<(), IggyError>> + Send>> {
         let ep  = self.ep.clone();
         let sn  = self.config.server_name.clone();
         let sa = self.server_address.clone();
+        let conn = self.connection.clone();
         Box::pin(async move {
+            let mut connection = conn.lock().await;
             let connecting = ep
                 .connect(sa, &sn)
                 .map_err(|_| IggyError::CannotEstablishConnection)?;
 
-            connecting
+            let new_conn = connecting
                 .await
-                .map_err(|_| IggyError::CannotEstablishConnection)
+                .map_err(|_| IggyError::CannotEstablishConnection)?;
+            let _ = connection.insert(new_conn);
+            Ok(())
+        })
+    }
+
+    fn open_stream(&self) -> Pin<Box<dyn Future<Output = Result<Self::Stream, IggyError>> + Send + '_>> {
+        let conn = self.connection.clone();
+        Box::pin(async move {
+            let guard = conn.lock().await;
+            let conn_ref = guard.as_ref().ok_or(IggyError::NotConnected)?;
+            let (send, recv) = conn_ref.open_bi().await.map_err(|e| {
+                error!("Failed to open a bidirectional stream: {e}");
+                IggyError::QuicError 
+            })?;
+            Ok(QuinnStreamPair { send, recv })
         })
     }
 }
@@ -72,7 +132,7 @@ impl QuinnFactory {
         let mut endpoint = endpoint.unwrap();
         endpoint.set_default_client_config(quic_config);
 
-        Ok(Self { config: cfg, ep: Arc::new(endpoint), server_address })
+        Ok(Self { config: cfg, ep: Arc::new(endpoint), server_address, connection: Arc::new(sync::Mutex::new(None)) })
     }
 }
 

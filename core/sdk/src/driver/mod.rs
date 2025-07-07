@@ -7,7 +7,7 @@ use tokio::io::AsyncWriteExt;
 use tracing::{error, info, trace, warn};
 
 use crate::{
-    connection::quic::{QuicFactory, QuinnFactory},
+    connection::quic::{QuicFactory, QuinnFactory, StreamPair},
     proto::{
         connection::{IggyCore, InboundResult},
         runtime::{Runtime, sync},
@@ -40,49 +40,71 @@ where
         let nt = self.notify.clone();
         let core = self.core.clone();
         let q = self.factory.clone();
-        let cfg: Arc<QuicClientConfig> = self.config.clone();
+        let cfg = self.config.clone();
         let pending = self.pending.clone();
         rt.spawn(Box::pin(async move {
+            if let Err(e) = q.connect().await {
+                error!("Failed to connect: {e}");
+                return;
+            }
             loop {
                 nt.notified().await;
 
-                while let Some(data) = core.lock().await.poll_transmit() {
+                while let Some(data) = {
+                    let mut guard = core.lock().await;
+                    guard.poll_transmit()
+                } {
                     if !pending.contains_key(&data.id) {
                         error!("Failed to get transport adapter id");
                         continue;
                     }
 
-                    let connection = q.connect().await.unwrap(); // todo дорогая операция, перенести хранение connection в структуру quic
-                    let (mut send, mut recv) = connection
-                        .open_bi()
-                        .await
-                        .map_err(|error| {
-                            error!("Failed to open a bidirectional stream: {error}");
-                            IggyError::QuicError
-                        })
-                        .unwrap();
-                    send.write_vectored(&data.as_slices()).await; // TODO add map_err
-                    send.finish().unwrap();
+                    let mut stream = match q.open_stream().await {
+                        Ok(s) => s,
+                        Err(e) => {
+                            error!("Failed to open a bidirectional stream: {e}");
+                            continue;
+                        }
+                    };
 
-                    let mut n = cfg.response_buffer_size as usize;
+                    if let Err(e) = stream.send_vectored(&data.as_slices()).await {
+                        error!("Failed to send vectored: {e}");
+                        continue;
+                    }
+
+                    let mut at_most = cfg.response_buffer_size as usize;
                     loop {
-                        let buffer = recv
-                            .read_to_end(n)
-                            .await
-                            .map_err(|error| {
-                                error!("Failed to read response data: {error}");
-                                IggyError::QuicError
-                            })
-                            .unwrap();
-                        match core.lock().await.feed_inbound(&buffer) {
-                            InboundResult::Need(need) => n = need,
+                        let buffer = match stream.read_chunk(at_most).await {
+                            Ok(Some(buf)) => buf,
+                            Ok(None) => {
+                                error!("Unexpected EOF in stream");
+                                break;
+                            }
+                            Err(e) => {
+                                error!("Failed to read response data: {e}");
+                                break;
+                            }
+                        };
+
+                        let inbound = {
+                            let mut guard = core.lock().await;
+                            guard.feed_inbound(&buffer)
+                        };
+
+                        match inbound {
+                            InboundResult::Need(need) => at_most = need,
                             InboundResult::Response(r) => {
                                 if let Some((_key, tx)) = pending.remove(&data.id) {
                                     let _ = tx.send(r);
                                 }
+                                let mut guard = core.lock().await;
+                                guard.mark_tx_done();
+                                break;
                             }
                             InboundResult::Error(e) => {
-                                // todo add handle error
+                                let mut guard = core.lock().await;
+                                guard.mark_tx_done();
+                                break;
                             }
                         }
                     }
