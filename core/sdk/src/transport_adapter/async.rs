@@ -10,16 +10,16 @@ use tokio::sync::Notify;
 use tracing::{error, trace};
 
 use crate::{
-    connection::quic::QuicFactory,
+    connection::{quic::QuicFactory, ConnectionFactory},
     driver::Driver,
     proto::{
         connection::{IggyCore, Order},
-        runtime::{self, Runtime, sync},
+        runtime::{self, sync, Runtime},
     },
     transport_adapter::RespFut,
 };
 
-pub struct AsyncTransportAdapter<F: QuicFactory, R: Runtime, D: Driver> {
+pub struct AsyncTransportAdapter<F: ConnectionFactory, R: Runtime, D: Driver> {
     factory: Arc<F>,
     rt: Arc<R>,
     core: sync::Mutex<IggyCore>,
@@ -31,15 +31,13 @@ pub struct AsyncTransportAdapter<F: QuicFactory, R: Runtime, D: Driver> {
 
 impl<F, R, D> AsyncTransportAdapter<F, R, D>
 where
-    F: QuicFactory + Send + Sync + 'static,
+    F: ConnectionFactory + Send + Sync + 'static,
     R: Runtime + Send + Sync + 'static,
     D: Driver + Send + Sync,
 {
-    pub fn send_with_response<'a, T: Command>(
-        &'a self,
-        command: &'a T,
-    ) -> Pin<Box<dyn Future<Output = Result<RespFut, IggyError>> + Send + Sync + 'a>> {
-        Box::pin(async move {
+    async fn send_with_response<T: Command>(&self, command: &T) -> Result<RespFut, IggyError> {
+            self.ensure_connected().await?;
+    
             let (tx, rx) = runtime::oneshot::<Bytes>();
             let current_id = self.id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
@@ -48,7 +46,6 @@ where
             self.notify.notify_waiters();
 
             Ok(RespFut { rx: rx })
-        })
     }
 
     pub async fn connect(&self) -> Result<(), IggyError> {
@@ -85,11 +82,27 @@ where
             }
         }
     }
-    // TODO add login/shutdown/disconnect
 
     async fn publish_event(&self, event: DiagnosticEvent) {
         if let Err(error) = self.events.0.broadcast(event).await {
             error!("Failed to send a QUIC diagnostic event: {error}");
         }
     }
+
+    async fn ensure_connected(&self) -> Result<(), IggyError> {
+        if self.factory.is_alive().await {
+            return Ok(())
+        }
+        self.shutdown().await?;
+        self.connect().await
+    }
+
+    async fn shutdown(&self) -> Result<(), IggyError> {
+        self.core.lock().await.on_transport_disconnected();
+        self.factory.shutdown().await?;
+        self.publish_event(DiagnosticEvent::Shutdown).await;
+        Ok(())
+    }
+
+    // TODO add async fn login
 }

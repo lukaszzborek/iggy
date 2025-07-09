@@ -6,6 +6,7 @@ use iggy_common::{IggyError, QuicClientConfig};
 use rustls::crypto::CryptoProvider;
 use tokio::io::AsyncWriteExt;
 use tracing::{error, warn};
+use crate::connection::ConnectionFactory;
 use crate::proto::runtime::sync;
 use crate::quic::skip_server_verification::SkipServerVerification;
 
@@ -17,11 +18,9 @@ pub trait StreamPair: Send {
     fn read_chunk<'a>(&'a mut self, at_most: usize) -> Pin<Box<dyn Future<Output = Result<Option<Bytes>, IggyError>> + Send + 'a>>;
 }
 
-pub trait QuicFactory {
+pub trait QuicFactory: ConnectionFactory {
     type Stream: StreamPair;
-    
-    fn connect(&self) -> Pin<Box<dyn Future<Output = Result<(), IggyError>> + Send>>;
-    
+
     fn open_stream(&self) -> Pin<Box<dyn Future<Output = Result<Self::Stream, IggyError>> + Send + '_>>;
 }
 
@@ -66,10 +65,8 @@ pub struct QuinnFactory {
     server_address: SocketAddr,
 }
 
-impl QuicFactory for QuinnFactory {
-    type Stream = QuinnStreamPair;
-
-    fn connect(&self) -> Pin<Box<dyn Future<Output = Result<(), IggyError>> + Send>> {
+impl ConnectionFactory for QuinnFactory {
+    fn connect(&self) -> Pin<Box<dyn Future<Output = Result<(), IggyError>> + Send + Sync>> {
         let ep  = self.ep.clone();
         let sn  = self.config.server_name.clone();
         let sa = self.server_address.clone();
@@ -87,6 +84,33 @@ impl QuicFactory for QuinnFactory {
             Ok(())
         })
     }
+
+    fn is_alive(&self) -> Pin<Box<dyn Future<Output = bool>>> {
+        let conn = self.connection.clone();
+        Box::pin(async move {
+            let conn = conn.lock().await;
+            match conn.as_ref() {
+                Some(c) => c.close_reason().is_some(),
+                None => false,
+            }
+        })
+    }
+
+    fn shutdown(&self) -> Pin<Box<dyn Future<Output = Result<(), IggyError>> + Send + Sync>> {
+        let conn = self.connection.clone();
+        let ep  = self.ep.clone();
+        Box::pin(async move {
+            if let Some(conn) = conn.lock().await.take() {
+                conn.close(0u32.into(), b"");
+            }
+            ep.wait_idle().await;
+            Ok(())
+        })
+    }
+}
+
+impl QuicFactory for QuinnFactory {
+    type Stream = QuinnStreamPair;
 
     fn open_stream(&self) -> Pin<Box<dyn Future<Output = Result<Self::Stream, IggyError>> + Send + '_>> {
         let conn = self.connection.clone();

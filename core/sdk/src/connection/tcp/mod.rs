@@ -12,3 +12,4 @@ pub trait SocketFactory {
 
     fn connect(&self) -> Pin<Box<dyn Future<Output = io::Result<Self::Stream>> + Send>>;
 }
+
