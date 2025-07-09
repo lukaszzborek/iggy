@@ -2,9 +2,10 @@ use std::{
     pin::Pin,
     sync::{Arc, Mutex, atomic::AtomicU64},
 };
+use async_broadcast::{Receiver, Sender, broadcast};
 
 use bytes::Bytes;
-use iggy_common::{Command, IggyError};
+use iggy_common::{Command, DiagnosticEvent, IggyError};
 use tokio::sync::Notify;
 use tracing::{error, trace};
 
@@ -25,6 +26,7 @@ pub struct AsyncTransportAdapter<F: QuicFactory, R: Runtime, D: Driver> {
     notify: Arc<Notify>,
     id: AtomicU64,
     driver: Arc<D>,
+    events: (Sender<DiagnosticEvent>, Receiver<DiagnosticEvent>),
 }
 
 impl<F, R, D> AsyncTransportAdapter<F, R, D>
@@ -61,12 +63,14 @@ where
                 Order::Reconnect => match self.factory.connect().await {
                     Ok(()) => {
                         self.core.lock().await.on_transport_connected();
+                        self.publish_event(DiagnosticEvent::Connected).await;
                         return Ok(());
                     }
                     Err(e) => {
                         self.core.lock().await.on_transport_disconnected();
                         order = self.core.lock().await.poll_connect()?;
                         if matches!(order, Order::Noop) {
+                            self.publish_event(DiagnosticEvent::Disconnected).await;
                             return Err(e);
                         }
                     }
@@ -74,8 +78,18 @@ where
 
                 Order::Noop => return Ok(()),
 
-                _ => return Err(IggyError::CannotEstablishConnection),
+                _ => {
+                    self.publish_event(DiagnosticEvent::Disconnected).await;
+                    return Err(IggyError::CannotEstablishConnection)
+                },
             }
+        }
+    }
+    // TODO add login/shutdown/disconnect
+
+    async fn publish_event(&self, event: DiagnosticEvent) {
+        if let Err(error) = self.events.0.broadcast(event).await {
+            error!("Failed to send a QUIC diagnostic event: {error}");
         }
     }
 }

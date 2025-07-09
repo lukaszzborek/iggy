@@ -43,10 +43,6 @@ where
         let cfg = self.config.clone();
         let pending = self.pending.clone();
         rt.spawn(Box::pin(async move {
-            if let Err(e) = q.connect().await {
-                error!("Failed to connect: {e}");
-                return;
-            }
             loop {
                 nt.notified().await;
 

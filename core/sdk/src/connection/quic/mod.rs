@@ -21,6 +21,7 @@ pub trait QuicFactory {
     type Stream: StreamPair;
     
     fn connect(&self) -> Pin<Box<dyn Future<Output = Result<(), IggyError>> + Send>>;
+    
     fn open_stream(&self) -> Pin<Box<dyn Future<Output = Result<Self::Stream, IggyError>> + Send + '_>>;
 }
 
@@ -36,7 +37,10 @@ impl StreamPair for QuinnStreamPair {
                 error!("Failed to write vectored buffs to quic conn: {e}");
                 IggyError::QuicError
             })?;
-            self.send.finish();
+            self.send.finish().map_err(|e: quinn::ClosedStream| {
+                error!("Failed to finish sending data: {e}");
+                IggyError::QuicError
+            })?;
             Ok(())
         })
     }
@@ -87,9 +91,11 @@ impl QuicFactory for QuinnFactory {
     fn open_stream(&self) -> Pin<Box<dyn Future<Output = Result<Self::Stream, IggyError>> + Send + '_>> {
         let conn = self.connection.clone();
         Box::pin(async move {
-            let guard = conn.lock().await;
-            let conn_ref = guard.as_ref().ok_or(IggyError::NotConnected)?;
-            let (send, recv) = conn_ref.open_bi().await.map_err(|e| {
+            let conn = {
+                let guard = conn.lock().await;
+                guard.clone().ok_or(IggyError::NotConnected)?
+            };
+            let (send, recv) = conn.open_bi().await.map_err(|e| {
                 error!("Failed to open a bidirectional stream: {e}");
                 IggyError::QuicError 
             })?;
