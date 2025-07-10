@@ -1,9 +1,14 @@
 pub mod tcp;
 pub mod tls;
 
-use std::{io, net::SocketAddr, pin::Pin};
 use futures::{AsyncRead, AsyncWrite};
-use tokio::{io::{AsyncReadExt, BufReader}, net::tcp::OwnedReadHalf};
+use tracing::error;
+use std::{io, net::SocketAddr, pin::Pin};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
+    net::{tcp::{OwnedReadHalf, OwnedWriteHalf}, TcpStream},
+};
+use iggy_common::IggyError;
 
 use crate::connection::StreamPair;
 
@@ -18,11 +23,46 @@ pub trait SocketFactory {
 
 pub struct TokioTcpStream {
     reader: BufReader<OwnedReadHalf>,
-    buf: 
+    writer: BufWriter<OwnedWriteHalf>,
 }
 
 impl StreamPair for TokioTcpStream {
-    fn read_chunk<'a>(&'a mut self, at_most: usize) -> Pin<Box<dyn Future<Output = Result<Option<bytes::Bytes>, iggy_common::IggyError>> + Send + 'a>> {
+    fn send_vectored<'a>(
+        &'a mut self,
+        bufs: &'a [io::IoSlice<'_>],
+    ) -> Pin<Box<dyn Future<Output = Result<(), iggy_common::IggyError>> + Send + 'a>> {
+        Box::pin(async move {
+            self.writer.write_vectored(bufs).await.map_err(|e| {
+                error!(
+                    "Failed to write data to the TCP connection: {e}",
+                );
+                IggyError::TcpError
+            })?;
+            Ok(())
+        })
+    }
 
+    fn read_buf<'a>(
+        &'a mut self,
+        buf: &'a mut [u8],
+    ) -> Pin<Box<dyn Future<Output = Result<usize, iggy_common::IggyError>> + Send + 'a>> {
+        Box::pin(async move {
+            self.reader.read_exact(buf).await.map_err(|e| {
+                error!(
+                    "Failed to read data from the TCP connection: {e}",
+                );
+                IggyError::TcpError
+            })
+        })
+    }
+}
+
+impl TokioTcpStream {
+    fn new(stream: TcpStream) -> Self {
+        let (reader, writer) = stream.into_split();
+        Self {
+            reader: BufReader::new(reader),
+            writer: BufWriter::new(writer),
+        }
     }
 }

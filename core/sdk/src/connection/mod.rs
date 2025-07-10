@@ -20,6 +20,5 @@ pub trait StreamConnectionFactory: ConnectionFactory {
 
 pub trait StreamPair: Send {
     fn send_vectored<'a>(&'a mut self, bufs: &'a [IoSlice<'_>]) -> Pin<Box<dyn Future<Output = Result<(), IggyError>> + Send + 'a>>;
-    fn read_chunk<'a>(&'a mut self, at_most: usize) -> Pin<Box<dyn Future<Output = Result<Option<Bytes>, IggyError>> + Send + 'a>>;
     fn read_buf<'a>(&'a mut self, buf: &'a mut [u8]) -> Pin<Box<dyn Future<Output = Result<usize, IggyError>> + Send + 'a>>;
 }

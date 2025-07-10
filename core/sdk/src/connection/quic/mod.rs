@@ -33,19 +33,6 @@ impl StreamPair for QuinnStreamPair {
         })
     }
 
-    fn read_chunk<'a>(&'a mut self, at_most: usize) -> Pin<Box<dyn Future<Output = Result<Option<Bytes>, IggyError>> + Send + 'a>> {
-        Box::pin(async move {
-            let res = self.recv.read_chunk(at_most, true).await.map_err(|e| {
-                error!("Failed to read chunk: {e}");
-                IggyError::QuicError
-            })?;
-            if let Some(data) = res {
-                return Ok(Some(data.bytes));
-            }
-            Ok(None)
-        })
-    }
-
     fn read_buf<'a>(&'a mut self, mut buf: &'a mut [u8]) -> Pin<Box<dyn Future<Output = Result<usize, IggyError>> + Send + 'a>> {
         Box::pin(async move {
             self.recv.read_buf(&mut buf).await.map_err(|e| {

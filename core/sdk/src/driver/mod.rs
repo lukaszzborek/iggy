@@ -1,6 +1,8 @@
-use std::sync::Arc;
+pub mod tcp;
 
-use bytes::{Bytes, BytesMut};
+use std::{io::Cursor, sync::Arc};
+
+use bytes::{Buf, Bytes, BytesMut};
 use dashmap::DashMap;
 use iggy_common::{IggyError, QuicClientConfig};
 use tokio::io::AsyncWriteExt;
@@ -80,23 +82,25 @@ where
                             Err(e)  => { error!("read_buf failed: {e}");   break }
                         };
 
+                        let buf = Cursor::new(&rx_buf[..]);
+
                         let inbound = {
                             let mut guard = core.lock().await;
-                            guard.feed_inbound(&rx_buf[..])
+                            guard.feed_inbound(buf)
                         };
 
                         match inbound {
                             InboundResult::Need(need) => at_most = need,
-                            InboundResult::Ready => {
-                                if let Some((_key, tx)) = pending.remove(&data.id) {
-                                    let _ = tx.send(rx_buf);
+                            InboundResult::Ready(position) => {
+                                let frame = rx_buf.split_to(position).freeze();
+                                if let Some((_k, tx)) = pending.remove(&data.id) {
+                                    let _ = tx.send(frame);
                                 }
-                                let mut guard = core.lock().await;
-                                guard.mark_tx_done();
-                                rx_buf.clear();
-                                break;
+                                core.lock().await.mark_tx_done();
+                                at_most = cfg.response_buffer_size as usize;
+                                continue;
                             }
-                            InboundResult::Error(e) => {
+                            InboundResult::Error(_) => {
                                 let mut guard = core.lock().await;
                                 guard.mark_tx_done();
                                 break;

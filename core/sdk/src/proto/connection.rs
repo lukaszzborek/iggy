@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, io::Cursor, pin::Pin, sync::Arc};
 
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 use iggy_common::{ClientState, Command, IggyDuration, IggyError, IggyErrorDiscriminants, IggyTimestamp};
 use std::io::IoSlice;
 use tracing::{error, trace};
@@ -53,7 +53,7 @@ pub enum Order {
 
 pub enum InboundResult {
     Need(usize),        
-    Response(Bytes),    
+    Ready(usize),    
     Error(IggyError),   
 }
 
@@ -64,7 +64,6 @@ pub struct IggyCore {
     config: Arc<dyn TransportConfig + Send + Sync + 'static>, // todo rewrite via generic
     retry_count: u32,
     current_tx: Option<Arc<TxBuf>>,
-    rx_buf: BytesMut,
 }
 
 impl IggyCore {
@@ -160,20 +159,14 @@ impl IggyCore {
         self.current_tx = None
     }
 
-    // TODO делоает копию сейчас
-    // нужно сделать так, чтобы оно либо говорило с какого индекса по какой payload в ready статусе и при этом убрать rx_buf
-    // либо должно копить у себя и передавать свой буфер наверх, который будет заполняться
-    pub fn feed_inbound(&mut self, bytes: &[u8]) -> InboundResult {
-        if self.rx_buf.len() < RESPONSE_INITIAL_BYTES_LENGTH {
-            let need = RESPONSE_INITIAL_BYTES_LENGTH - self.rx_buf.len();
-            self.rx_buf.extend_from_slice(bytes);
-            if self.rx_buf.len() < RESPONSE_INITIAL_BYTES_LENGTH {
-                return InboundResult::Need(need);
-            }
+    pub fn feed_inbound(&mut self, mut cur: Cursor<&[u8]>) -> InboundResult {
+        let buf_len = cur.get_ref().len();
+        if buf_len < RESPONSE_INITIAL_BYTES_LENGTH {
+            return InboundResult::Need(RESPONSE_INITIAL_BYTES_LENGTH - buf_len);
         }
 
-        let status = u32::from_le_bytes(self.rx_buf[0..4].try_into().unwrap());
-        let length = u32::from_le_bytes(self.rx_buf[4..8].try_into().unwrap());
+        let status  = cur.get_u32_le();
+        let length  = cur.get_u32_le();
 
         if status != 0 {
             if ALREADY_EXISTS_STATUSES.contains(&status) {
@@ -194,18 +187,15 @@ impl IggyCore {
 
         trace!("Status: OK. Response length: {}", length);
         if length <= 1 {
-            return InboundResult::Response(Bytes::new());
+            return InboundResult::Ready(0);
         }
 
-        let body_len = length as usize;
-        let got = self.rx_buf.len() - RESPONSE_INITIAL_BYTES_LENGTH;
-        if got < body_len {
-            return InboundResult::Need(body_len - got);
+        let total = RESPONSE_INITIAL_BYTES_LENGTH + length as usize;
+        if buf_len < total {
+            return InboundResult::Need(total - buf_len);
         }
 
-        let mut full = self.rx_buf.split_to(8 + body_len);
-        let body = full.split_off(8).freeze();
-        InboundResult::Response(body)
+        InboundResult::Ready(total)
     }
 
     pub fn on_transport_connected(&mut self) {
