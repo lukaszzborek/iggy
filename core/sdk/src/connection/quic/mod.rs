@@ -4,25 +4,14 @@ use std::{io, net::SocketAddr, pin::Pin, time::Duration};
 use bytes::Bytes;
 use iggy_common::{IggyError, QuicClientConfig};
 use rustls::crypto::CryptoProvider;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{error, warn};
-use crate::connection::ConnectionFactory;
+use crate::connection::{ConnectionFactory, StreamConnectionFactory, StreamPair};
 use crate::proto::runtime::sync;
 use crate::quic::skip_server_verification::SkipServerVerification;
 
 use quinn::crypto::rustls::QuicClientConfig as QuinnQuicClientConfig;
 use quinn::{ClientConfig, Connection, Endpoint, IdleTimeout, RecvStream, SendStream, VarInt};
-
-pub trait StreamPair: Send {
-    fn send_vectored<'a>(&'a mut self, bufs: &'a [IoSlice<'_>]) -> Pin<Box<dyn Future<Output = Result<(), IggyError>> + Send + 'a>>;
-    fn read_chunk<'a>(&'a mut self, at_most: usize) -> Pin<Box<dyn Future<Output = Result<Option<Bytes>, IggyError>> + Send + 'a>>;
-}
-
-pub trait QuicFactory: ConnectionFactory {
-    type Stream: StreamPair;
-
-    fn open_stream(&self) -> Pin<Box<dyn Future<Output = Result<Self::Stream, IggyError>> + Send + '_>>;
-}
 
 pub struct QuinnStreamPair {
     send: SendStream,
@@ -54,6 +43,15 @@ impl StreamPair for QuinnStreamPair {
                 return Ok(Some(data.bytes));
             }
             Ok(None)
+        })
+    }
+
+    fn read_buf<'a>(&'a mut self, mut buf: &'a mut [u8]) -> Pin<Box<dyn Future<Output = Result<usize, IggyError>> + Send + 'a>> {
+        Box::pin(async move {
+            self.recv.read_buf(&mut buf).await.map_err(|e| {
+                error!("Failed to read chunk: {e}");
+                IggyError::QuicError
+            })
         })
     }
 }
@@ -109,7 +107,7 @@ impl ConnectionFactory for QuinnFactory {
     }
 }
 
-impl QuicFactory for QuinnFactory {
+impl StreamConnectionFactory for QuinnFactory {
     type Stream = QuinnStreamPair;
 
     fn open_stream(&self) -> Pin<Box<dyn Future<Output = Result<Self::Stream, IggyError>> + Send + '_>> {

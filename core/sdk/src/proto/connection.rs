@@ -1,6 +1,6 @@
-use std::{collections::VecDeque, pin::Pin, sync::Arc};
+use std::{collections::VecDeque, io::Cursor, pin::Pin, sync::Arc};
 
-use bytes::{Bytes, BytesMut};
+use bytes::{BufMut, Bytes, BytesMut};
 use iggy_common::{ClientState, Command, IggyDuration, IggyError, IggyErrorDiscriminants, IggyTimestamp};
 use std::io::IoSlice;
 use tracing::{error, trace};
@@ -160,6 +160,9 @@ impl IggyCore {
         self.current_tx = None
     }
 
+    // TODO делоает копию сейчас
+    // нужно сделать так, чтобы оно либо говорило с какого индекса по какой payload в ready статусе и при этом убрать rx_buf
+    // либо должно копить у себя и передавать свой буфер наверх, который будет заполняться
     pub fn feed_inbound(&mut self, bytes: &[u8]) -> InboundResult {
         if self.rx_buf.len() < RESPONSE_INITIAL_BYTES_LENGTH {
             let need = RESPONSE_INITIAL_BYTES_LENGTH - self.rx_buf.len();

@@ -10,7 +10,7 @@ use tokio::sync::Notify;
 use tracing::{error, trace};
 
 use crate::{
-    connection::{quic::QuicFactory, ConnectionFactory},
+    connection::ConnectionFactory,
     driver::Driver,
     proto::{
         connection::{IggyCore, Order},

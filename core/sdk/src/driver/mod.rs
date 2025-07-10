@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use dashmap::DashMap;
 use iggy_common::{IggyError, QuicClientConfig};
 use tokio::io::AsyncWriteExt;
 use tracing::{error, info, trace, warn};
 
 use crate::{
-    connection::quic::{QuicFactory, QuinnFactory, StreamPair},
+    connection::{StreamConnectionFactory, StreamPair},
+    connection::quic::QuinnFactory,
     proto::{
         connection::{IggyCore, InboundResult},
         runtime::{Runtime, sync},
@@ -43,6 +44,7 @@ where
         let cfg = self.config.clone();
         let pending = self.pending.clone();
         rt.spawn(Box::pin(async move {
+            let mut rx_buf = BytesMut::with_capacity(cfg.response_buffer_size as usize);
             loop {
                 nt.notified().await;
 
@@ -70,31 +72,28 @@ where
 
                     let mut at_most = cfg.response_buffer_size as usize;
                     loop {
-                        let buffer = match stream.read_chunk(at_most).await {
-                            Ok(Some(buf)) => buf,
-                            Ok(None) => {
-                                error!("Unexpected EOF in stream");
-                                break;
-                            }
-                            Err(e) => {
-                                error!("Failed to read response data: {e}");
-                                break;
-                            }
+                        rx_buf.reserve(at_most);
+
+                        match stream.read_buf(&mut rx_buf).await {
+                            Ok(0)   => { error!("EOF before header/body"); break }
+                            Ok(n)   => n,
+                            Err(e)  => { error!("read_buf failed: {e}");   break }
                         };
 
                         let inbound = {
                             let mut guard = core.lock().await;
-                            guard.feed_inbound(&buffer)
+                            guard.feed_inbound(&rx_buf[..])
                         };
 
                         match inbound {
                             InboundResult::Need(need) => at_most = need,
-                            InboundResult::Response(r) => {
+                            InboundResult::Ready => {
                                 if let Some((_key, tx)) = pending.remove(&data.id) {
-                                    let _ = tx.send(r);
+                                    let _ = tx.send(rx_buf);
                                 }
                                 let mut guard = core.lock().await;
                                 guard.mark_tx_done();
+                                rx_buf.clear();
                                 break;
                             }
                             InboundResult::Error(e) => {
