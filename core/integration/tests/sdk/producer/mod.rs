@@ -18,9 +18,17 @@
 
 mod background;
 
+use std::sync::Arc;
+
 use bytes::Bytes;
 use iggy::clients::client::IggyClient;
+use iggy::connection::tcp::tcp::TokioTcpFactory;
+use iggy::driver::tcp::TokioTcpDriver;
 use iggy::prelude::*;
+use iggy::proto::connection::{IggyCore, IggyCoreConfig};
+use iggy::proto::runtime::{sync, TokioRuntime};
+use iggy::transport_adapter::r#async::AsyncTransportAdapter;
+use integration::test_server::TestServer;
 
 const STREAM_ID: u32 = 1;
 const TOPIC_ID: u32 = 1;
@@ -61,4 +69,96 @@ async fn cleanup(system_client: &IggyClient) {
         .delete_stream(&Identifier::numeric(STREAM_ID).unwrap())
         .await
         .unwrap();
+}
+
+
+async fn async_send() {
+    let mut test_server = TestServer::default();
+    test_server.start();
+
+    let tcp_client_config = TcpClientConfig {
+        server_address: test_server.get_raw_tcp_addr().unwrap(),
+        ..TcpClientConfig::default()
+    };
+    
+    let tcp_factory = Arc::new(TokioTcpFactory::create(Arc::new(tcp_client_config)));
+    let core = Arc::new(sync::Mutex::new(IggyCore::new(IggyCoreConfig::default())));
+    let rt: Arc<TokioRuntime> = Arc::new(TokioRuntime{});
+    let notify = Arc::new(sync::Notify::new());
+    let dirver = TokioTcpDriver::new(core, rt.clone(), notify.clone(), tcp_factory);
+    let adapter = AsyncTransportAdapter::new(tcp_factory, rt, core, dirver, notify);
+
+    adapter.connect().await;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+
+    let client = Box::new(TcpClient::create(Arc::new(tcp_client_config)).unwrap());
+    let client = IggyClient::create(client, None, None);
+
+    client.connect().await.unwrap();
+    assert!(client.ping().await.is_ok(), "Failed to ping server");
+
+    login_root(&client).await;
+    init_system(&client).await;
+
+    client.connect().await.unwrap();
+    assert!(client.ping().await.is_ok(), "Failed to ping server");
+
+    let messages_count = 1000;
+
+    let mut messages = Vec::new();
+    for offset in 0..messages_count {
+        let id = (offset + 1) as u128;
+        let payload = create_message_payload(offset as u64);
+        messages.push(
+            IggyMessage::builder()
+                .id(id)
+                .payload(payload)
+                .build()
+                .expect("Failed to create message with headers"),
+        );
+    }
+
+    let producer = client
+        .producer(&STREAM_ID.to_string(), &TOPIC_ID.to_string())
+        .unwrap()
+        .partitioning(Partitioning::partition_id(PARTITION_ID))
+        .background(BackgroundConfig::builder().build())
+        .build();
+
+    producer.send(messages).await.unwrap();
+    sleep(Duration::from_millis(500)).await;
+    producer.shutdown().await;
+
+    let consumer = Consumer::default();
+    let polled_messages = client
+        .poll_messages(
+            &Identifier::numeric(STREAM_ID).unwrap(),
+            &Identifier::numeric(TOPIC_ID).unwrap(),
+            Some(PARTITION_ID),
+            &consumer,
+            &PollingStrategy::offset(0),
+            messages_count,
+            false,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(polled_messages.messages.len() as u32, messages_count);
+    cleanup(&client).await;
 }

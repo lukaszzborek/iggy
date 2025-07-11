@@ -18,6 +18,21 @@ where
     pending: Arc<DashMap<u64, sync::OneShotSender<Bytes>>>,
 }
 
+impl<R> TokioTcpDriver<R>
+where
+    R: Runtime
+{
+    pub fn new(core: Arc<sync::Mutex<IggyCore>>, runtime: Arc<R>, notify: Arc<sync::Notify>, factory: Arc<TokioTcpFactory>) -> Self {
+        Self {
+            core,
+            rt: runtime,
+            notify,
+            factory,
+            pending: Arc::new(DashMap::new()),
+        }
+    }
+}
+
 impl<R> Driver for TokioTcpDriver<R>
 where
     R: Runtime

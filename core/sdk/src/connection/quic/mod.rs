@@ -70,7 +70,7 @@ impl ConnectionFactory for QuinnFactory {
         })
     }
 
-    fn is_alive(&self) -> Pin<Box<dyn Future<Output = bool>>> {
+    fn is_alive(&self) -> Pin<Box<dyn Future<Output = bool> + Send + Sync>> {
         let conn = self.connection.clone();
         Box::pin(async move {
             let conn = conn.lock().await;

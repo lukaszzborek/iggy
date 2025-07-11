@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, io::Cursor, pin::Pin, sync::Arc};
+use std::{collections::VecDeque, io::Cursor, pin::Pin, str::FromStr, sync::Arc};
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use iggy_common::{ClientState, Command, IggyDuration, IggyError, IggyErrorDiscriminants, IggyTimestamp};
@@ -18,9 +18,15 @@ const ALREADY_EXISTS_STATUSES: &[u32] = &[
     IggyErrorDiscriminants::ConsumerGroupNameAlreadyExists as u32,
 ];
 
-pub trait TransportConfig {
-    fn resstablish_after(&self) -> IggyDuration;
-    fn max_retries(&self) -> Option<u32>;
+pub struct IggyCoreConfig {
+    max_retries: Option<u32>,
+    reestablish_after: IggyDuration,
+}
+
+impl Default for IggyCoreConfig {
+    fn default() -> Self {
+        Self { max_retries: None, reestablish_after: IggyDuration::from_str("5s").unwrap() }
+    }
 }
 
 pub struct TxBuf {
@@ -58,16 +64,27 @@ pub enum InboundResult {
 }
 
 pub struct IggyCore {
-    state: ClientState,
+    pub(crate) state: ClientState,
     last_connect: Option<IggyTimestamp>,
     pending: VecDeque<(u32 /* code */, Bytes /* payload */, u64 /* transport_id */)>,
-    config: Arc<dyn TransportConfig + Send + Sync + 'static>, // todo rewrite via generic
+    config: IggyCoreConfig,
     retry_count: u32,
     current_tx: Option<Arc<TxBuf>>,
 }
 
 impl IggyCore {
-    pub fn write(&mut self, cmd: &impl Command, id: u64) -> Result<(), IggyError> {
+    pub fn new(config: IggyCoreConfig) -> Self {
+        Self {
+            state: ClientState::Disconnected,
+            last_connect: None,
+            pending: VecDeque::new(),
+            config,
+            retry_count: 0,
+            current_tx: None,
+        }
+    }
+
+    pub fn write(&mut self, code: u32, payload: Bytes, id: u64) -> Result<(), IggyError> {
         match self.state {
             ClientState::Shutdown => {
                 trace!("Cannot send data. Client is shutdown.");
@@ -83,7 +100,7 @@ impl IggyCore {
             }
             _ => {}
         }
-        self.pending.push_back((cmd.code(), cmd.to_bytes(), id));
+        self.pending.push_back((code, payload, id));
         Ok(())
     }
 
@@ -118,7 +135,7 @@ impl IggyCore {
 
         self.state = ClientState::Connecting;
 
-        if let Some(max_retries) = self.config.max_retries() {
+        if let Some(max_retries) = self.config.max_retries {
             if self.retry_count >= max_retries {
                 self.state = ClientState::Disconnected;
                 return Err(IggyError::CannotEstablishConnection);
@@ -128,7 +145,7 @@ impl IggyCore {
         if let Some(last_connect) = self.last_connect {
             let now = IggyTimestamp::now();
             let elapsed = now.as_micros() - last_connect.as_micros();
-            let interval = self.config.resstablish_after().as_micros();
+            let interval = self.config.reestablish_after.as_micros();
             if elapsed < interval {
                 let remaining = IggyDuration::from(interval - elapsed);
                 return Ok(Order::Wait(remaining));

@@ -56,7 +56,7 @@ impl ConnectionFactory for TokioTcpFactory {
     }
 
     // TODO пока заглушка, нужно подумать насчет того, как это делать
-    fn is_alive(&self) -> std::pin::Pin<Box<dyn Future<Output = bool>>> {
+    fn is_alive(&self) -> std::pin::Pin<Box<dyn Future<Output = bool> + Send + Sync>> {
         let conn = self.stream.clone();
         Box::pin(async move {
             let conn = conn.lock().await;
@@ -80,5 +80,15 @@ impl ConnectionFactory for TokioTcpFactory {
             }
             Ok(())
         })
+    }
+}
+
+impl TokioTcpFactory {
+    pub fn create(config: Arc<TcpClientConfig>) -> Self {
+        Self {
+            config,
+            client_address: Arc::new(sync::Mutex::new(None)),
+            stream: Arc::new(sync::Mutex::new(None)), 
+        }
     }
 }

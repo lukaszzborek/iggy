@@ -25,3 +25,15 @@ pub fn oneshot<T>() -> (sync::OneShotSender<T>, sync::OneShotReceiver<T>) {
 pub fn notify() -> sync::Notify {
     tokio::sync::Notify::new()
 }
+
+pub struct TokioRuntime;
+
+impl Runtime for TokioRuntime {
+    fn spawn(&self, future: Pin<Box<dyn Future<Output = ()> + Send>>) {
+        tokio::spawn(future);
+    }
+
+    fn sleep(&self, duration: Duration) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+        Box::pin(tokio::time::sleep(duration))
+    }
+}

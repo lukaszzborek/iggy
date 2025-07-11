@@ -8,7 +8,7 @@ pub mod quic;
 
 pub trait ConnectionFactory {
     fn connect(&self) -> Pin<Box<dyn Future<Output = Result<(), IggyError>> + Send + Sync>>;
-    fn is_alive(&self) -> Pin<Box<dyn Future<Output = bool>>>;
+    fn is_alive(&self) -> Pin<Box<dyn Future<Output = bool> + Send + Sync>>;
     fn shutdown(&self) -> Pin<Box<dyn Future<Output = Result<(), IggyError>> + Send + Sync>>;
 }
 
