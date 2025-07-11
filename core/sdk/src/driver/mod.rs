@@ -46,7 +46,7 @@ where
         let cfg = self.config.clone();
         let pending = self.pending.clone();
         rt.spawn(Box::pin(async move {
-            let mut rx_buf = BytesMut::with_capacity(cfg.response_buffer_size as usize);
+            let mut rx_buf = BytesMut::new();
             loop {
                 nt.notified().await;
 

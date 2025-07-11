@@ -38,6 +38,12 @@ impl StreamPair for TokioTcpStream {
                 );
                 IggyError::TcpError
             })?;
+            self.writer.flush().await.map_err(|e| {
+                error!(
+                    "Failed to write data to the TCP connection: {e}",
+                );
+                IggyError::TcpError
+            })?;
             Ok(())
         })
     }

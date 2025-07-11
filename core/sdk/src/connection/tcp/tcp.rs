@@ -71,7 +71,6 @@ impl ConnectionFactory for TokioTcpFactory {
         let conn = self.stream.clone();
         Box::pin(async move {
             if let Some(mut conn) = conn.lock().await.take() {
-                // TODO в оригинале вызывается tcpStream.writer.shutdown, нужно понять есть ли разница
                 conn.writer.shutdown().await.map_err(|e| {
                     error!(
                         "Failed to shutdown the TCP connection to the TCP connection: {e}",

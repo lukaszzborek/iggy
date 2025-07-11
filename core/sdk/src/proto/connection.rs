@@ -159,6 +159,10 @@ impl IggyCore {
         self.current_tx = None
     }
 
+    pub fn initial_bytes_len(&self) -> usize {
+        RESPONSE_INITIAL_BYTES_LENGTH
+    }
+
     pub fn feed_inbound(&mut self, mut cur: Cursor<&[u8]>) -> InboundResult {
         let buf_len = cur.get_ref().len();
         if buf_len < RESPONSE_INITIAL_BYTES_LENGTH {

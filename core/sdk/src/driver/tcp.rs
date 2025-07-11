@@ -1,11 +1,11 @@
-use std::sync::Arc;
+use std::{io::Cursor, sync::Arc};
 
 use bytes::{Bytes, BytesMut};
 use dashmap::DashMap;
 use iggy_common::IggyError;
 use tracing::error;
 
-use crate::{connection::{tcp::tcp::TokioTcpFactory, StreamPair}, driver::Driver, proto::{connection::IggyCore, runtime::{sync, Runtime}}};
+use crate::{connection::{tcp::tcp::TokioTcpFactory, StreamPair}, driver::Driver, proto::{connection::{IggyCore, InboundResult}, runtime::{sync, Runtime}}};
 
 pub struct TokioTcpDriver<R>
 where
@@ -30,7 +30,7 @@ where
         let pending = self.pending.clone();
 
         rt.spawn(Box::pin(async move {
-            let mut rx_buf = BytesMut::with_capacity(8); // RESPONSE_INITIAL_BYTES_LENGTH
+            let mut rx_buf = BytesMut::new();
             loop {
                 nt.notified().await;
                 while let Some(data) = {
@@ -50,7 +50,42 @@ where
                         continue;
                     }
 
-                    ...
+                    let init_len = core.lock().await.initial_bytes_len();
+                    let mut at_most = init_len;
+                    loop {
+                        rx_buf.reserve(at_most);
+
+                        match stream.read_buf(&mut rx_buf).await {
+                            Ok(0)   => { error!("EOF before header/body"); break }
+                            Ok(n)   => n,
+                            Err(e)  => { error!("read_buf failed: {e}");   break }
+                        };
+
+                        let buf = Cursor::new(&rx_buf[..]);
+
+                        let inbound = {
+                            let mut guard = core.lock().await;
+                            guard.feed_inbound(buf)
+                        };
+
+                        match inbound {
+                            InboundResult::Need(need) => at_most = need,
+                            InboundResult::Ready(position) => {
+                                let frame = rx_buf.split_to(position).freeze();
+                                if let Some((_k, tx)) = pending.remove(&data.id) {
+                                    let _ = tx.send(frame);
+                                }
+                                core.lock().await.mark_tx_done();
+                                at_most = init_len;
+                                continue;
+                            }
+                            InboundResult::Error(_) => {
+                                pending.remove(&data.id);
+                                core.lock().await.mark_tx_done();
+                                break;
+                            }
+                        }
+                    }
                 }
             }
         }));
