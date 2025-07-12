@@ -7,6 +7,7 @@ use tracing::error;
 
 use crate::{connection::{tcp::tcp::TokioTcpFactory, StreamPair}, driver::Driver, proto::{connection::{IggyCore, InboundResult}, runtime::{sync, Runtime}}};
 
+#[derive(Debug)]
 pub struct TokioTcpDriver<R>
 where
     R: Runtime
@@ -48,6 +49,7 @@ where
             let mut rx_buf = BytesMut::new();
             loop {
                 nt.notified().await;
+                // TODO убирать txBuf, если не удается его прочитать и отсылать ошибку
                 while let Some(data) = {
                     let mut guard = core.lock().await;
                     guard.poll_transmit()

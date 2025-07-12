@@ -34,6 +34,7 @@ where
     pending: Arc<DashMap<u64, sync::OneShotSender<Bytes>>>,
 }
 
+// TODO add errChan
 impl<R> Driver for QuicDriver<R>
 where
     R: Runtime,
@@ -69,7 +70,7 @@ where
 
                     if let Err(e) = stream.send_vectored(&data.as_slices()).await {
                         error!("Failed to send vectored: {e}");
-                        continue;
+                        break;
                     }
 
                     let mut at_most = cfg.response_buffer_size as usize;

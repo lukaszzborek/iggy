@@ -5,7 +5,7 @@ use async_broadcast::{Receiver, Sender, broadcast};
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use iggy_binary_protocol::BinaryTransport;
+use iggy_binary_protocol::{BinaryClient, BinaryTransport, Client};
 use iggy_common::{ClientState, Command, DiagnosticEvent, IggyDuration, IggyError};
 use tokio::sync::Notify;
 use tracing::{error, trace};
@@ -20,6 +20,7 @@ use crate::{
     transport_adapter::RespFut,
 };
 
+#[derive(Debug)]
 pub struct AsyncTransportAdapter<F: ConnectionFactory, R: Runtime, D: Driver> {
     factory: Arc<F>,
     rt: Arc<R>,
@@ -77,6 +78,8 @@ where
                         return Ok(());
                     }
                     Err(e) => {
+                        error!("got error: {e}");
+                        panic!("{e}");
                         self.core.lock().await.on_transport_disconnected();
                         order = self.core.lock().await.poll_connect()?;
                         if matches!(order, Order::Noop) {
@@ -165,3 +168,34 @@ where
         }
     }
 }
+
+#[async_trait]
+impl<F, R, D> Client for AsyncTransportAdapter<F, R, D> 
+where
+    F: ConnectionFactory + Send + Sync + 'static + std::fmt::Debug,
+    R: Runtime + Send + Sync + 'static + std::fmt::Debug,
+    D: Driver + Send + Sync + std::fmt::Debug,
+{
+    async fn connect(&self) -> Result<(), IggyError> {
+        AsyncTransportAdapter::connect(self).await
+    }
+
+    async fn disconnect(&self) -> Result<(), IggyError> {
+        AsyncTransportAdapter::shutdown(self).await
+    }
+
+    async fn shutdown(&self) -> Result<(), IggyError> {
+        AsyncTransportAdapter::shutdown(self).await
+    }
+
+    async fn subscribe_events(&self) -> Receiver<DiagnosticEvent> {
+        self.events.1.clone()
+    }
+}
+
+impl<F, R, D> BinaryClient for AsyncTransportAdapter<F, R, D> 
+where
+    F: ConnectionFactory + Send + Sync + 'static + std::fmt::Debug,
+    R: Runtime + Send + Sync + 'static + std::fmt::Debug,
+    D: Driver + Send + Sync + std::fmt::Debug,
+{}

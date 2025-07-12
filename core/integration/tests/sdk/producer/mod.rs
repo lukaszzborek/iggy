@@ -19,6 +19,7 @@
 mod background;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use bytes::Bytes;
 use iggy::clients::client::IggyClient;
@@ -28,7 +29,8 @@ use iggy::prelude::*;
 use iggy::proto::connection::{IggyCore, IggyCoreConfig};
 use iggy::proto::runtime::{sync, TokioRuntime};
 use iggy::transport_adapter::r#async::AsyncTransportAdapter;
-use integration::test_server::TestServer;
+use integration::test_server::{login_root, TestServer};
+use tokio::time::sleep;
 
 const STREAM_ID: u32 = 1;
 const TOPIC_ID: u32 = 1;
@@ -72,12 +74,13 @@ async fn cleanup(system_client: &IggyClient) {
 }
 
 
-async fn async_send() {
-    let mut test_server = TestServer::default();
-    test_server.start();
+#[tokio::test]
+async fn test_async_send() {
+    // let mut test_server = TestServer::default();
+    // test_server.start();
 
     let tcp_client_config = TcpClientConfig {
-        server_address: test_server.get_raw_tcp_addr().unwrap(),
+        server_address: "127.0.0.1:8090".to_string(),
         ..TcpClientConfig::default()
     };
     
@@ -85,30 +88,10 @@ async fn async_send() {
     let core = Arc::new(sync::Mutex::new(IggyCore::new(IggyCoreConfig::default())));
     let rt: Arc<TokioRuntime> = Arc::new(TokioRuntime{});
     let notify = Arc::new(sync::Notify::new());
-    let dirver = TokioTcpDriver::new(core, rt.clone(), notify.clone(), tcp_factory);
-    let adapter = AsyncTransportAdapter::new(tcp_factory, rt, core, dirver, notify);
+    let dirver = TokioTcpDriver::new(core.clone(), rt.clone(), notify.clone(), tcp_factory.clone());
+    let adapter = Box::new(AsyncTransportAdapter::new(tcp_factory, rt, core, dirver, notify));
 
-    adapter.connect().await;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    
-
-    let client = Box::new(TcpClient::create(Arc::new(tcp_client_config)).unwrap());
-    let client = IggyClient::create(client, None, None);
+    let client = IggyClient::create(adapter, None, None);
 
     client.connect().await.unwrap();
     assert!(client.ping().await.is_ok(), "Failed to ping server");

@@ -1,6 +1,6 @@
 use std::{io::IoSlice, pin::Pin};
 
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use iggy_common::IggyError;
 
 pub mod tcp;
@@ -20,5 +20,5 @@ pub trait StreamConnectionFactory: ConnectionFactory {
 
 pub trait StreamPair: Send {
     fn send_vectored<'a>(&'a mut self, bufs: &'a [IoSlice<'_>]) -> Pin<Box<dyn Future<Output = Result<(), IggyError>> + Send + 'a>>;
-    fn read_buf<'a>(&'a mut self, buf: &'a mut [u8]) -> Pin<Box<dyn Future<Output = Result<usize, IggyError>> + Send + 'a>>;
+    fn read_buf<'a>(&'a mut self, buf: &'a mut BytesMut) -> Pin<Box<dyn Future<Output = Result<usize, IggyError>> + Send + 'a>>;
 }

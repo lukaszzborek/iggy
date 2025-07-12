@@ -1,7 +1,7 @@
 use std::io::IoSlice;
 use std::sync::Arc;
 use std::{io, net::SocketAddr, pin::Pin, time::Duration};
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use iggy_common::{IggyError, QuicClientConfig};
 use rustls::crypto::CryptoProvider;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -33,7 +33,7 @@ impl StreamPair for QuinnStreamPair {
         })
     }
 
-    fn read_buf<'a>(&'a mut self, mut buf: &'a mut [u8]) -> Pin<Box<dyn Future<Output = Result<usize, IggyError>> + Send + 'a>> {
+    fn read_buf<'a>(&'a mut self, mut buf: &'a mut BytesMut) -> Pin<Box<dyn Future<Output = Result<usize, IggyError>> + Send + 'a>> {
         Box::pin(async move {
             self.recv.read_buf(&mut buf).await.map_err(|e| {
                 error!("Failed to read chunk: {e}");

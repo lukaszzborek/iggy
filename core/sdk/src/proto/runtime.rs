@@ -26,6 +26,7 @@ pub fn notify() -> sync::Notify {
     tokio::sync::Notify::new()
 }
 
+#[derive(Debug)]
 pub struct TokioRuntime;
 
 impl Runtime for TokioRuntime {

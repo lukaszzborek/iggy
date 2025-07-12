@@ -11,6 +11,7 @@ use tracing::error;
 
 pub type TokioCompatStream = tokio_util::compat::Compat<tokio::net::TcpStream>;
 
+#[derive(Debug)]
 pub struct TokioTcpFactory {
     pub(crate) config: Arc<TcpClientConfig>,
     client_address: Arc<sync::Mutex<Option<SocketAddr>>>,

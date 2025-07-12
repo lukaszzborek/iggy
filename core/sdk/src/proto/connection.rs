@@ -18,6 +18,7 @@ const ALREADY_EXISTS_STATUSES: &[u32] = &[
     IggyErrorDiscriminants::ConsumerGroupNameAlreadyExists as u32,
 ];
 
+#[derive(Debug)]
 pub struct IggyCoreConfig {
     max_retries: Option<u32>,
     reestablish_after: IggyDuration,
@@ -29,6 +30,7 @@ impl Default for IggyCoreConfig {
     }
 }
 
+#[derive(Debug)]
 pub struct TxBuf {
     pub id: u64,
     hdr_len: [u8; 4],
@@ -63,6 +65,7 @@ pub enum InboundResult {
     Error(IggyError),   
 }
 
+#[derive(Debug)]
 pub struct IggyCore {
     pub(crate) state: ClientState,
     last_connect: Option<IggyTimestamp>,
