@@ -59,8 +59,10 @@ where
                         continue;
                     }
 
-                    let mut guard = factory.stream.lock().await;
-                    let stream = guard.as_mut().unwrap();
+                    let stream = match factory.stream.lock().await.clone() {
+                        Some(s) => s,
+                        None => { error!("Not connected"); break }
+                    };
 
                     if let Err(e) = stream.send_vectored(&data.as_slices()).await {
                         error!("Failed to send vectored: {e}");
@@ -73,9 +75,17 @@ where
                         rx_buf.reserve(at_most);
 
                         match stream.read_buf(&mut rx_buf).await {
-                            Ok(0)   => { error!("EOF before header/body"); break }
+                            Ok(0)   => {
+                                error!("EOF before header/body");
+                                panic!("EOF before header/body");
+                                break
+                            }
                             Ok(n)   => n,
-                            Err(e)  => { error!("read_buf failed: {e}");   break }
+                            Err(e)  => {
+                                error!("read_buf failed: {e}");
+                                panic!("read_buf failed");
+                                break
+                            }
                         };
 
                         let buf = Cursor::new(&rx_buf[..]);
@@ -92,13 +102,14 @@ where
                                 if let Some((_k, tx)) = pending.remove(&data.id) {
                                     let _ = tx.send(frame);
                                 }
-                                core.lock().await.mark_tx_done();
+                                core.try_lock().unwrap().mark_tx_done();
                                 at_most = init_len;
-                                continue;
+                                break;
                             }
                             InboundResult::Error(_) => {
                                 pending.remove(&data.id);
                                 core.lock().await.mark_tx_done();
+                                panic!("read_buf failed");
                                 break;
                             }
                         }

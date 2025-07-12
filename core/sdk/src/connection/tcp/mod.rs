@@ -11,7 +11,7 @@ use tokio::{
 };
 use iggy_common::IggyError;
 
-use crate::connection::StreamPair;
+use crate::{connection::StreamPair, proto::runtime::sync};
 
 pub trait AsyncStream: AsyncRead + AsyncWrite + Unpin + Send + 'static {}
 impl<T> AsyncStream for T where T: AsyncRead + AsyncWrite + Unpin + Send + 'static {}
@@ -24,46 +24,50 @@ pub trait SocketFactory {
 
 #[derive(Debug)]
 pub struct TokioTcpStream {
-    reader: BufReader<OwnedReadHalf>,
-    writer: BufWriter<OwnedWriteHalf>,
+    reader: sync::Mutex<BufReader<OwnedReadHalf>>,
+    writer: sync::Mutex<BufWriter<OwnedWriteHalf>>,
 }
 
 impl StreamPair for TokioTcpStream {
     fn send_vectored<'a>(
-        &'a mut self,
+        &'a self,
         bufs: &'a [io::IoSlice<'_>],
     ) -> Pin<Box<dyn Future<Output = Result<(), iggy_common::IggyError>> + Send + 'a>> {
         Box::pin(async move {
-            for val in bufs {
-                self.writer.write(val).await.map_err(|e| {
-                    error!(
-                        "Failed to write data to the TCP connection: {e}",
-                    );
-                    IggyError::TcpError
-                })?;
-            }
-            // self.writer.write_vectored(bufs).await.map_err(|e| {
+            let mut w = self.writer.lock().await;
+            w.write_vectored(bufs).await.map_err(|_| IggyError::TcpError)?;
+            w.flush().await.map_err(|_| IggyError::TcpError)?;
+            Ok(())
+            // for val in bufs {
+            //     self.writer.write(val).await.map_err(|e| {
+            //         error!(
+            //             "Failed to write data to the TCP connection: {e}",
+            //         );
+            //         IggyError::TcpError
+            //     })?;
+            // }
+            // // self.writer.write_vectored(bufs).await.map_err(|e| {
+            // //     error!(
+            // //         "Failed to write data to the TCP connection: {e}",
+            // //     );
+            // //     IggyError::TcpError
+            // // })?;
+            // self.writer.flush().await.map_err(|e| {
             //     error!(
             //         "Failed to write data to the TCP connection: {e}",
             //     );
             //     IggyError::TcpError
             // })?;
-            self.writer.flush().await.map_err(|e| {
-                error!(
-                    "Failed to write data to the TCP connection: {e}",
-                );
-                IggyError::TcpError
-            })?;
-            Ok(())
+            // Ok(())
         })
     }
 
     fn read_buf<'a>(
-        &'a mut self,
+        &'a self,
         buf: &'a mut BytesMut,
     ) -> Pin<Box<dyn Future<Output = Result<usize, iggy_common::IggyError>> + Send + 'a>> {
         Box::pin(async move {
-            self.reader.read_buf(buf).await.map_err(|e| {
+            self.reader.lock().await.read_buf(buf).await.map_err(|e| {
                 error!(
                     "Failed to read data from the TCP connection: {e}",
                 );
@@ -77,8 +81,8 @@ impl TokioTcpStream {
     fn new(stream: TcpStream) -> Self {
         let (reader, writer) = stream.into_split();
         Self {
-            reader: BufReader::new(reader),
-            writer: BufWriter::new(writer),
+            reader: sync::Mutex::new(BufReader::new(reader)),
+            writer: sync::Mutex::new(BufWriter::new(writer)),
         }
     }
 }

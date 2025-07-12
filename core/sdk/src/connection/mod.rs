@@ -19,6 +19,6 @@ pub trait StreamConnectionFactory: ConnectionFactory {
 }
 
 pub trait StreamPair: Send {
-    fn send_vectored<'a>(&'a mut self, bufs: &'a [IoSlice<'_>]) -> Pin<Box<dyn Future<Output = Result<(), IggyError>> + Send + 'a>>;
-    fn read_buf<'a>(&'a mut self, buf: &'a mut BytesMut) -> Pin<Box<dyn Future<Output = Result<usize, IggyError>> + Send + 'a>>;
+    fn send_vectored<'a>(&'a self, bufs: &'a [IoSlice<'_>]) -> Pin<Box<dyn Future<Output = Result<(), IggyError>> + Send + 'a>>;
+    fn read_buf<'a>(&'a self, buf: &'a mut BytesMut) -> Pin<Box<dyn Future<Output = Result<usize, IggyError>> + Send + 'a>>;
 }

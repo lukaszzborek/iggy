@@ -15,7 +15,7 @@ pub type TokioCompatStream = tokio_util::compat::Compat<tokio::net::TcpStream>;
 pub struct TokioTcpFactory {
     pub(crate) config: Arc<TcpClientConfig>,
     client_address: Arc<sync::Mutex<Option<SocketAddr>>>,
-    pub(crate) stream: Arc<sync::Mutex<Option<TokioTcpStream>>>,
+    pub(crate) stream: Arc<sync::Mutex<Option<Arc<TokioTcpStream>>>>,
 }
 
 impl ConnectionFactory for TokioTcpFactory {
@@ -50,7 +50,7 @@ impl ConnectionFactory for TokioTcpFactory {
                 error!("Failed to set the nodelay option on the client: {e}");
             }
             // TODO add tls
-            let _ = tokio_tcp_stream.insert(TokioTcpStream::new(conn));
+            let _ = tokio_tcp_stream.insert(Arc::new(TokioTcpStream::new(conn)));
 
             Ok(())
         })
@@ -58,21 +58,17 @@ impl ConnectionFactory for TokioTcpFactory {
 
     // TODO пока заглушка, нужно подумать насчет того, как это делать
     fn is_alive(&self) -> std::pin::Pin<Box<dyn Future<Output = bool> + Send + Sync>> {
-        let conn = self.stream.clone();
+        let slot = self.stream.clone();
         Box::pin(async move {
-            let conn = conn.lock().await;
-            match conn.as_ref() {
-                Some(c) => true,
-                None => false,
-            }
+            slot.lock().await.is_some()
         })
     }
 
     fn shutdown(&self) -> std::pin::Pin<Box<dyn Future<Output = Result<(), IggyError>> + Send + Sync>> {
         let conn = self.stream.clone();
         Box::pin(async move {
-            if let Some(mut conn) = conn.lock().await.take() {
-                conn.writer.shutdown().await.map_err(|e| {
+            if let Some(conn) = conn.lock().await.take() {
+                conn.writer.lock().await.shutdown().await.map_err(|e| {
                     error!(
                         "Failed to shutdown the TCP connection to the TCP connection: {e}",
                     );
