@@ -61,7 +61,7 @@ pub enum Order {
 
 pub enum InboundResult {
     Need(usize),        
-    Ready(usize),    
+    Ready(usize, usize),    
     Error(IggyError),   
 }
 
@@ -211,7 +211,7 @@ impl IggyCore {
 
         trace!("Status: OK. Response length: {}", length);
         if length <= 1 {
-            return InboundResult::Ready(0);
+            return InboundResult::Ready(0, 0);
         }
 
         let total = RESPONSE_INITIAL_BYTES_LENGTH + length as usize;
@@ -219,7 +219,7 @@ impl IggyCore {
             return InboundResult::Need(total - buf_len);
         }
 
-        InboundResult::Ready(total)
+        InboundResult::Ready(cur.position() as usize, total)
     }
 
     pub fn on_transport_connected(&mut self) {

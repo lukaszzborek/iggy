@@ -83,10 +83,21 @@ where
                             Ok(n)   => n,
                             Err(e)  => {
                                 error!("read_buf failed: {e}");
-                                panic!("read_buf failed");
+                                panic!("read_buf failed: {e}");
                                 break
                             }
                         };
+
+                        // let status = u32::from_le_bytes(
+                        //     rx_buf[..4]
+                        //         .try_into()
+                        //         .map_err(|_| IggyError::InvalidNumberEncoding).unwrap(),
+                        // );
+                        // let length = u32::from_le_bytes(
+                        //     rx_buf[4..]
+                        //         .try_into()
+                        //         .map_err(|_| IggyError::InvalidNumberEncoding).unwrap(),
+                        // );
 
                         let buf = Cursor::new(&rx_buf[..]);
 
@@ -97,19 +108,21 @@ where
 
                         match inbound {
                             InboundResult::Need(need) => at_most = need,
-                            InboundResult::Ready(position) => {
-                                let frame = rx_buf.split_to(position).freeze();
+                            InboundResult::Ready(start, end) => {
+                                let _ = rx_buf.split_to(start);
+                                let frame = rx_buf.split_to(end - start).freeze();
                                 if let Some((_k, tx)) = pending.remove(&data.id) {
                                     let _ = tx.send(frame);
                                 }
                                 core.try_lock().unwrap().mark_tx_done();
                                 at_most = init_len;
+                                rx_buf.clear();
                                 break;
                             }
-                            InboundResult::Error(_) => {
+                            InboundResult::Error(e) => {
                                 pending.remove(&data.id);
                                 core.lock().await.mark_tx_done();
-                                panic!("read_buf failed");
+                                panic!("read_buf failed: {e}");
                                 break;
                             }
                         }

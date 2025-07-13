@@ -160,6 +160,7 @@ where
     }
 
     async fn set_state(&self, _state: ClientState) {
+        self.core.lock().await.state = _state;
     }
 
     async fn publish_event(&self, event: DiagnosticEvent) {
