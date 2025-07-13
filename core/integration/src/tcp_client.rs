@@ -18,7 +18,7 @@
 
 use crate::test_server::{ClientFactory, Transport};
 use async_trait::async_trait;
-use iggy::prelude::{Client, TcpClient, TcpClientConfig};
+use iggy::{connection::tcp::tcp::TokioTcpFactory, driver::tcp::TokioTcpDriver, prelude::{Client, IggyClient, TcpClient, TcpClientConfig}, proto::{connection::{IggyCore, IggyCoreConfig}, runtime::{sync, TokioRuntime}}, transport_adapter::r#async::AsyncTransportAdapter};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Default)]
@@ -35,12 +35,22 @@ impl ClientFactory for TcpClientFactory {
             nodelay: self.nodelay,
             ..TcpClientConfig::default()
         };
-        let client = TcpClient::create(Arc::new(config)).unwrap_or_else(|e| {
-            panic!(
-                "Failed to create TcpClient, iggy-server has address {}, error: {:?}",
-                self.server_addr, e
-            )
-        });
+
+        let tcp_factory = Arc::new(TokioTcpFactory::create(Arc::new(config)));
+        let core = Arc::new(sync::Mutex::new(IggyCore::new(IggyCoreConfig::default())));
+        let rt = Arc::new(TokioRuntime{});
+        let notify = Arc::new(sync::Notify::new());
+        let dirver = TokioTcpDriver::new(core.clone(), rt.clone(), notify.clone(), tcp_factory.clone());
+        let adapter = Box::new(AsyncTransportAdapter::new(tcp_factory, rt, core, dirver, notify));
+
+        let client = IggyClient::create(adapter, None, None);
+
+        // let client = TcpClient::create(Arc::new(config)).unwrap_or_else(|e| {
+        //     panic!(
+        //         "Failed to create TcpClient, iggy-server has address {}, error: {:?}",
+        //         self.server_addr, e
+        //     )
+        // });
         Client::connect(&client).await.unwrap_or_else(|e| {
             panic!(
                 "Failed to connect to iggy-server at {}, error: {:?}",

@@ -88,17 +88,6 @@ where
                             }
                         };
 
-                        // let status = u32::from_le_bytes(
-                        //     rx_buf[..4]
-                        //         .try_into()
-                        //         .map_err(|_| IggyError::InvalidNumberEncoding).unwrap(),
-                        // );
-                        // let length = u32::from_le_bytes(
-                        //     rx_buf[4..]
-                        //         .try_into()
-                        //         .map_err(|_| IggyError::InvalidNumberEncoding).unwrap(),
-                        // );
-
                         let buf = Cursor::new(&rx_buf[..]);
 
                         let inbound = {
