@@ -183,14 +183,21 @@ impl IggyCore {
         RESPONSE_INITIAL_BYTES_LENGTH
     }
 
-    pub fn feed_inbound(&mut self, mut cur: Cursor<&[u8]>) -> InboundResult {
-        let buf_len = cur.get_ref().len();
+    pub fn feed_inbound(&mut self, cur: &[u8]) -> InboundResult {
+        let buf_len = cur.len();
         if buf_len < RESPONSE_INITIAL_BYTES_LENGTH {
             return InboundResult::Need(RESPONSE_INITIAL_BYTES_LENGTH - buf_len);
         }
 
-        let status  = cur.get_u32_le();
-        let length  = cur.get_u32_le();
+        let status = match cur[..4].try_into() {
+            Ok(bytes) => u32::from_le_bytes(bytes),
+            Err(_) => return InboundResult::Error(IggyError::InvalidNumberEncoding),
+        };
+
+        let length = match cur[4..8].try_into() {
+            Ok(bytes) => u32::from_le_bytes(bytes),
+            Err(_) => return InboundResult::Error(IggyError::InvalidNumberEncoding),
+        };
 
         if status != 0 {
             if ALREADY_EXISTS_STATUSES.contains(&status) {
@@ -219,7 +226,7 @@ impl IggyCore {
             return InboundResult::Need(total - buf_len);
         }
 
-        InboundResult::Ready(cur.position() as usize, total)
+        InboundResult::Ready(8, total)
     }
 
     pub fn on_transport_connected(&mut self) {

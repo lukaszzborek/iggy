@@ -76,11 +76,11 @@ async fn cleanup(system_client: &IggyClient) {
 
 #[tokio::test]
 async fn test_async_send() {
-    // let mut test_server = TestServer::default();
-    // test_server.start();
+    let mut test_server = TestServer::default();
+    test_server.start();
 
     let tcp_client_config = TcpClientConfig {
-        server_address: "127.0.0.1:8090".to_string(),
+        server_address: test_server.get_raw_tcp_addr().unwrap(),
         ..TcpClientConfig::default()
     };
     

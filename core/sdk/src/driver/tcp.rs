@@ -1,6 +1,6 @@
 use std::{io::Cursor, sync::Arc};
 
-use bytes::{Bytes, BytesMut};
+use bytes::{Buf, Bytes, BytesMut};
 use dashmap::DashMap;
 use iggy_common::IggyError;
 use tracing::error;
@@ -88,17 +88,15 @@ where
                             }
                         };
 
-                        let buf = Cursor::new(&rx_buf[..]);
-
                         let inbound = {
                             let mut guard = core.lock().await;
-                            guard.feed_inbound(buf)
+                            guard.feed_inbound(&rx_buf[..])
                         };
 
                         match inbound {
                             InboundResult::Need(need) => at_most = need,
                             InboundResult::Ready(start, end) => {
-                                let _ = rx_buf.split_to(start);
+                                rx_buf.advance(start);
                                 let frame = rx_buf.split_to(end - start).freeze();
                                 if let Some((_k, tx)) = pending.remove(&data.id) {
                                     let _ = tx.send(frame);

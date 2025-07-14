@@ -36,7 +36,7 @@ impl StreamPair for TokioTcpStream {
         Box::pin(async move {
             let mut w = self.writer.lock().await;
             w.write_vectored(bufs).await.map_err(|_| IggyError::TcpError)?;
-            w.flush().await.map_err(|_| IggyError::TcpError)?;
+            // w.flush().await.map_err(|_| IggyError::TcpError)?;
             Ok(())
             // for val in bufs {
             //     self.writer.write(val).await.map_err(|e| {
