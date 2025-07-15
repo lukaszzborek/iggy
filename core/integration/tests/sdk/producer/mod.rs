@@ -88,8 +88,9 @@ async fn test_async_send() {
     let core = Arc::new(sync::Mutex::new(IggyCore::new(IggyCoreConfig::default())));
     let rt: Arc<TokioRuntime> = Arc::new(TokioRuntime{});
     let notify = Arc::new(sync::Notify::new());
-    let dirver = TokioTcpDriver::new(core.clone(), rt.clone(), notify.clone(), tcp_factory.clone());
-    let adapter = Box::new(AsyncTransportAdapter::new(tcp_factory, rt, core, dirver, notify));
+    let (tx, rx) = flume::bounded::<(u32, Bytes, u64)>(1);
+    let dirver = TokioTcpDriver::new(core.clone(), rt.clone(), notify.clone(), tcp_factory.clone(), rx);
+    let adapter = Box::new(AsyncTransportAdapter::new(tcp_factory, rt, core, dirver, notify, tx));
 
     let client = IggyClient::create(adapter, None, None);
 

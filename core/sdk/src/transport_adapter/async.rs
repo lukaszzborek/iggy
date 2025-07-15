@@ -29,6 +29,7 @@ pub struct AsyncTransportAdapter<F: ConnectionFactory, R: Runtime, D: Driver> {
     id: AtomicU64,
     driver: Arc<D>,
     events: (Sender<DiagnosticEvent>, Receiver<DiagnosticEvent>),
+    tx: flume::Sender<(u32, Bytes, u64),>
 }
 
 impl<F, R, D> AsyncTransportAdapter<F, R, D>
@@ -37,7 +38,7 @@ where
     R: Runtime + Send + Sync + 'static,
     D: Driver + Send + Sync,
 {
-    pub fn new(factory: Arc<F>, runtime: Arc<R>, core: Arc<sync::Mutex<IggyCore>>, driver: D, notify: Arc<Notify>) -> Self {
+    pub fn new(factory: Arc<F>, runtime: Arc<R>, core: Arc<sync::Mutex<IggyCore>>, driver: D, notify: Arc<Notify>, tx: flume::Sender<(u32, Bytes, u64)>) -> Self {
         driver.start();
         Self {
             factory: factory,
@@ -47,6 +48,7 @@ where
             id: AtomicU64::new(0),
             driver: Arc::new(driver),
             events: broadcast(1000),
+            tx,
         }
     }
     // async fn send_with_response<T: Command>(&self, command: &T) -> Result<RespFut, IggyError> {
@@ -142,9 +144,10 @@ where
             let (tx, rx) = runtime::oneshot::<Bytes>();
             let current_id = self.id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
-            self.core.lock().await.write(code, payload, current_id)?;
+            // self.core.lock().await.write(code, payload, current_id)?;
             self.driver.register(current_id, tx);
-            self.notify.notify_waiters();
+            self.tx.send_async((code, payload, current_id)).await;
+            // self.notify.notify_waiters();
 
             let resp = RespFut{rx};
             resp.await

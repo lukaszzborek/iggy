@@ -18,6 +18,7 @@
 
 use crate::test_server::{ClientFactory, Transport};
 use async_trait::async_trait;
+use bytes::Bytes;
 use iggy::{connection::tcp::tcp::TokioTcpFactory, driver::tcp::TokioTcpDriver, prelude::{Client, IggyClient, TcpClient, TcpClientConfig}, proto::{connection::{IggyCore, IggyCoreConfig}, runtime::{sync, TokioRuntime}}, transport_adapter::r#async::AsyncTransportAdapter};
 use std::sync::Arc;
 
@@ -40,8 +41,11 @@ impl ClientFactory for TcpClientFactory {
         let core = Arc::new(sync::Mutex::new(IggyCore::new(IggyCoreConfig::default())));
         let rt = Arc::new(TokioRuntime{});
         let notify = Arc::new(sync::Notify::new());
-        let dirver = TokioTcpDriver::new(core.clone(), rt.clone(), notify.clone(), tcp_factory.clone());
-        let adapter = Box::new(AsyncTransportAdapter::new(tcp_factory, rt, core, dirver, notify));
+    
+        let (tx, rx) = flume::bounded::<(u32, Bytes, u64)>(1);
+
+        let dirver = TokioTcpDriver::new(core.clone(), rt.clone(), notify.clone(), tcp_factory.clone(), rx);
+        let adapter = Box::new(AsyncTransportAdapter::new(tcp_factory, rt, core, dirver, notify, tx));
 
         let client = IggyClient::create(adapter, None, None);
 

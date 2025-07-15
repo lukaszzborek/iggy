@@ -5,7 +5,7 @@ use iggy_common::{ClientState, Command, IggyDuration, IggyError, IggyErrorDiscri
 use std::io::IoSlice;
 use tracing::{error, trace};
 
-const REQUEST_INITIAL_BYTES_LENGTH: usize = 4;
+pub const REQUEST_INITIAL_BYTES_LENGTH: usize = 4;
 const RESPONSE_INITIAL_BYTES_LENGTH: usize = 8;
 const ALREADY_EXISTS_STATUSES: &[u32] = &[
     IggyErrorDiscriminants::TopicIdAlreadyExists as u32,
@@ -183,7 +183,7 @@ impl IggyCore {
         RESPONSE_INITIAL_BYTES_LENGTH
     }
 
-    pub fn feed_inbound(&mut self, cur: &[u8]) -> InboundResult {
+    pub fn feed_inbound(&self, cur: &[u8]) -> InboundResult {
         let buf_len = cur.len();
         if buf_len < RESPONSE_INITIAL_BYTES_LENGTH {
             return InboundResult::Need(RESPONSE_INITIAL_BYTES_LENGTH - buf_len);
@@ -239,3 +239,50 @@ impl IggyCore {
         self.state = ClientState::Disconnected;
     }
 }
+
+pub fn feed_inbound(cur: &[u8]) -> InboundResult {
+    let buf_len = cur.len();
+    if buf_len < RESPONSE_INITIAL_BYTES_LENGTH {
+        return InboundResult::Need(RESPONSE_INITIAL_BYTES_LENGTH - buf_len);
+    }
+
+    let status = match cur[..4].try_into() {
+        Ok(bytes) => u32::from_le_bytes(bytes),
+        Err(_) => return InboundResult::Error(IggyError::InvalidNumberEncoding),
+    };
+
+    let length = match cur[4..8].try_into() {
+        Ok(bytes) => u32::from_le_bytes(bytes),
+        Err(_) => return InboundResult::Error(IggyError::InvalidNumberEncoding),
+    };
+
+    if status != 0 {
+        if ALREADY_EXISTS_STATUSES.contains(&status) {
+            tracing::debug!(
+                "Received a server resource already exists response: {} ({})",
+                status,
+                IggyError::from_code_as_string(status)
+            )
+        } else {
+            error!(
+                "Received an invalid response with status: {} ({}).",
+                status,
+                IggyError::from_code_as_string(status),
+            );
+        }
+        return InboundResult::Error(IggyError::from_code(status));
+    }
+
+    trace!("Status: OK. Response length: {}", length);
+    if length <= 1 {
+        return InboundResult::Ready(0, 0);
+    }
+
+    let total = RESPONSE_INITIAL_BYTES_LENGTH + length as usize;
+    if buf_len < total {
+        return InboundResult::Need(total - buf_len);
+    }
+
+    InboundResult::Ready(8, total)
+}
+
