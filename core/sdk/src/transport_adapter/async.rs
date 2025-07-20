@@ -49,18 +49,6 @@ where
             events: broadcast(1000),
         }
     }
-    // async fn send_with_response<T: Command>(&self, command: &T) -> Result<RespFut, IggyError> {
-    //         self.ensure_connected().await?;
-    
-    //         let (tx, rx) = runtime::oneshot::<Bytes>();
-    //         let current_id = self.id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-
-    //         self.core.lock().await.write(command, current_id)?;
-    //         self.driver.register(current_id, tx);
-    //         self.notify.notify_waiters();
-
-    //         Ok(RespFut { rx: rx })
-    // }
 
     pub async fn connect(&self) -> Result<(), IggyError> {
         let mut order = self.core.lock().await.start_connect()?;
@@ -98,12 +86,6 @@ where
             }
         }
     }
-
-    // async fn publish_event(&self, event: DiagnosticEvent) {
-    //     if let Err(error) = self.events.0.broadcast(event).await {
-    //         error!("Failed to send a QUIC diagnostic event: {error}");
-    //     }
-    // }
 
     async fn ensure_connected(&self) -> Result<(), IggyError> {
         if self.factory.is_alive().await {
