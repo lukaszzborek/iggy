@@ -80,6 +80,7 @@ impl StreamPair for TokioTcpStream {
 impl TokioTcpStream {
     fn new(stream: TcpStream) -> Self {
         let (reader, writer) = stream.into_split();
+        writer.try_write(buf)
         Self {
             reader: sync::Mutex::new(BufReader::new(reader)),
             writer: sync::Mutex::new(BufWriter::new(writer)),

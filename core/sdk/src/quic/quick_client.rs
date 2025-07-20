@@ -20,7 +20,7 @@ use crate::prelude::AutoLogin;
 use iggy_binary_protocol::{
     BinaryClient, BinaryTransport, Client, PersonalAccessTokenClient, UserClient,
 };
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::prelude::{IggyDuration, IggyError, IggyTimestamp, QuicClientConfig};
 use crate::quic::skip_server_verification::SkipServerVerification;
