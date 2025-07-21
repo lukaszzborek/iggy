@@ -23,22 +23,33 @@ const ALREADY_EXISTS_STATUSES: &[u32] = &[
     IggyErrorDiscriminants::ConsumerGroupNameAlreadyExists as u32,
 ];
 
-pub enum StateKind {
-    Handshake,
-}
-
 pub struct Connection {
     server_address: SocketAddr,
-    state: StateKind,
+    state: ClientState,
     config: IggyCoreConfig,
+
+    pub send_buf: VecDeque<(u32 /* code */, Bytes /* payload */)>,
+    send_waker: Option<Waker>,
+
+    pub recv_buf: VecDeque<Bytes>,
+    recv_waker: Option<Waker>,
 }
 
 impl Connection {
     pub fn new(config: IggyCoreConfig, server_address: SocketAddr) -> Self {
-        Self { server_address, state: StateKind::Handshake, config }
+        Self {
+            server_address,
+            state: ClientState::Disconnected,
+            config,
+            send_buf: VecDeque::new(),
+            send_waker: None,
+            recv_buf: VecDeque::new(),
+            recv_waker: None,
+        }
     }
 
-    pub fn poll_transmit(&mut self, buf: &mut Vec<u8>) -> Result<(), IggyError> {
+    // TODO add iggy code
+    pub fn write(&mut self, data: Bytes) -> Result<(), IggyError> {
         match self.state {
             ClientState::Shutdown => {
                 trace!("Cannot send data. Client is shutdown.");
@@ -55,49 +66,48 @@ impl Connection {
             _ => {}
         }
 
-        let (code, payload, id) = self.pending.pop_front()?;
-        let len = (payload.len() + REQUEST_INITIAL_BYTES_LENGTH) as u32;
+        self.send_buf.push_back(data);
 
-        self.current_tx = Some(Arc::new(TxBuf{
-            hdr_len: len.to_le_bytes(),
-            hdr_code: code.to_le_bytes(),
-            payload, 
-            id,
-        }));
+        Ok(())
+    }
+
+    pub fn poll_transmit(&mut self, buf: &mut Vec<u8>) {
 
     }
+
+    // pub fn poll_transmit(&mut self, buf: &mut Vec<u8>) -> Result<(), IggyError> {
+    //     match self.state {
+    //         ClientState::Shutdown => {
+    //             trace!("Cannot send data. Client is shutdown.");
+    //             return Err(IggyError::ClientShutdown);
+    //         }
+    //         ClientState::Disconnected => {
+    //             trace!("Cannot send data. Client is not connected.");
+    //             return Err(IggyError::NotConnected);
+    //         }
+    //         ClientState::Connecting => {
+    //             trace!("Cannot send data. Client is still connecting.");
+    //             return Err(IggyError::NotConnected);
+    //         }
+    //         _ => {}
+    //     }
+
+    //     let (code, payload, id) = self.pending.pop_front()?;
+    //     let len = (payload.len() + REQUEST_INITIAL_BYTES_LENGTH) as u32;
+
+    //     self.current_tx = Some(Arc::new(TxBuf{
+    //         hdr_len: len.to_le_bytes(),
+    //         hdr_code: code.to_le_bytes(),
+    //         payload, 
+    //         id,
+    //     }));
+
+    // }
 }
 
-// TODO убрать из протокола
 pub struct Connecting {
     conn: Connection,
     events: mpsc::UnboundedSender<DiagnosticEvent>,
-}
-
-pub struct ConnectionRef {
-
-}
-
-
-pub struct State {
-    pub(crate) inner: Connection,
-    driver: Option<Waker>,
-    on_connected: Option<oneshot::Sender<bool>>,
-    connected: bool,
-    events: mpsc::UnboundedSender<DiagnosticEvent>,
-    pub(crate) blocked_writers: VecDeque<Waker>,
-    pub(crate) blocked_readers: VecDeque<Waker>,
-    pub(crate) error: Option<IggyError>,
-    runtime: Arc<dyn Runtime>,
-    send_buffer: Vec<u8>,
-    socket: Box<dyn AsyncWrite>
-}
-
-impl State {
-    fn drive_transmit(&mut self, cx: &mut Context) -> io::Result<bool> {
-        // todo парсим self.send_buffer через connection
-        self.socket::poll_write_buf(io, cx, buf)
-    }
 }
 
 #[derive(Debug)]
