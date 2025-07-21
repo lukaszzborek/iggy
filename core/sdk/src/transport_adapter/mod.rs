@@ -1,4 +1,6 @@
 pub mod r#async;
+pub mod async_new;
+pub mod connection;
 
 use std::{pin::Pin, sync::Arc};
 
