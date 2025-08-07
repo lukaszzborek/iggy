@@ -96,6 +96,15 @@ impl Topics {
             .await
     }
 
+    pub fn with_topic_stats_by_id<T>(
+        &self,
+        id: &Identifier,
+        f: impl FnOnce(Arc<TopicStats>) -> T,
+    ) -> T {
+        let topic_id = self.with_topic_by_id(id, |topic| topic.id());
+        self.with_stats(|stats| f(stats[topic_id].clone()))
+    }
+
     pub fn with_topic_by_id<T>(&self, id: &Identifier, f: impl FnOnce(&topic2::Topic) -> T) -> T {
         self.with(|topics| Self::get_topic_ref(id, topics).invoke(f))
     }

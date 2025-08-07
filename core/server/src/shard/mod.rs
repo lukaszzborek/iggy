@@ -858,10 +858,16 @@ impl IggyShard {
             ShardEvent::CreatedPartitions2 {
                 stream_id,
                 topic_id,
-                partitions_count,
+                created_at,
+                shared_partitions,
             } => {
-                self.create_partitions2_bypass_auth(stream_id, topic_id, *partitions_count)
-                    .await?;
+                self.create_partitions2_bypass_auth(
+                    stream_id,
+                    topic_id,
+                    *created_at,
+                    shared_partitions,
+                )
+                .await?;
                 Ok(())
             }
             ShardEvent::DeletedTopic2 {
