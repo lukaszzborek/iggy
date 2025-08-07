@@ -66,6 +66,13 @@ impl ProducerClient for LowLevelProducerClient {
         }
 
         let before_send = Instant::now();
+        tracing::error!(
+            "hubcio send_messages stream: {}, topic_id: {}, topic_identifier_kind: {}, partition: {}",
+            self.stream_id,
+            self.topic_id,
+            self.topic_id.kind,
+            self.partitioning
+        );
         client
             .send_messages(
                 &self.stream_id,
@@ -102,8 +109,8 @@ impl BenchmarkInit for LowLevelProducerClient {
 
         self.client = Some(client);
         self.partitioning = partitioning;
-        self.stream_id = self.config.stream_id.try_into()?;
-        self.topic_id = Identifier::numeric(1)?;
+        self.stream_id = self.config.stream_id.as_str().try_into()?;
+        self.topic_id = Identifier::from_str_value("topic-1")?;
         Ok(())
     }
 }
