@@ -1055,12 +1055,6 @@ impl IggyShard {
         stream_id: u32,
         topic_id: u32,
     ) -> impl Iterator<Item = (IggyNamespace, ShardInfo)> {
-        tracing::error!(
-            "hubcio partition_ids: {:?}, stream_id: {}, topic_id: {}",
-            partition_ids,
-            stream_id,
-            topic_id
-        );
         let records = partition_ids.iter().map(move |partition_id| {
             let namespace = IggyNamespace::new(stream_id, topic_id, *partition_id);
             let hash = namespace.generate_hash();

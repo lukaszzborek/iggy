@@ -66,13 +66,6 @@ impl ProducerClient for LowLevelProducerClient {
         }
 
         let before_send = Instant::now();
-        tracing::error!(
-            "hubcio send_messages stream: {}, topic_id: {}, topic_identifier_kind: {}, partition: {}",
-            self.stream_id,
-            self.topic_id,
-            self.topic_id.kind,
-            self.partitioning
-        );
         client
             .send_messages(
                 &self.stream_id,
