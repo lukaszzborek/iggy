@@ -17,6 +17,8 @@
  */
 
 use clap::{Parser, Subcommand};
+use iggy::prelude::IggyDuration;
+use std::str::FromStr;
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum BenchmarkOutputCommand {
@@ -53,4 +55,28 @@ pub struct BenchmarkOutputArgs {
     /// Open generated charts in browser after benchmark is finished
     #[arg(long, short = 'c', default_value_t = false)]
     pub open_charts: bool,
+
+    /// Enable OpenTelemetry metrics export
+    #[arg(long, default_value_t = false)]
+    pub otel_enabled: bool,
+
+    /// OpenTelemetry collector endpoint (gRPC)
+    #[arg(long, default_value = "http://localhost:4317")]
+    pub otel_endpoint: String,
+
+    /// OpenTelemetry metrics export interval in human readable format, e.g. "100ms", "1s", "2m"
+    #[arg(long, default_value_t = IggyDuration::from_str("1s").unwrap(), value_parser = IggyDuration::from_str)]
+    pub otel_export_interval: IggyDuration,
+
+    /// OpenTelemetry metrics export timeout in human readable format, e.g. "10s", "1m"
+    #[arg(long, default_value_t = IggyDuration::from_str("10s").unwrap(), value_parser = IggyDuration::from_str)]
+    pub otel_export_timeout: IggyDuration,
+
+    /// Metrics buffer size (number of events)
+    #[arg(long, default_value_t = 10000)]
+    pub otel_buffer_size: usize,
+
+    /// Metrics buffer flush interval in human readable format, e.g. "100ms", "1s"
+    #[arg(long, default_value_t = IggyDuration::from_str("100ms").unwrap(), value_parser = IggyDuration::from_str)]
+    pub otel_buffer_flush_interval: IggyDuration,
 }
