@@ -1,7 +1,7 @@
-use crate::streaming::{
+use crate::{slab::traits_ext::{Borrow, ComponentsAsRefs, EntityComponentSystem, IntoComponents}, streaming::{
     deduplication::message_deduplicator::MessageDeduplicator, partitions::partition2, segments,
     stats::stats::PartitionStats,
-};
+}};
 use slab::Slab;
 use std::sync::{Arc, atomic::AtomicU64};
 
@@ -16,6 +16,63 @@ pub struct Partitions {
     message_deduplicators: Slab<Option<MessageDeduplicator>>,
     partition_offsets: Slab<Arc<AtomicU64>>,
 }
+
+pub struct Part {
+    partition: partition2::Partition,
+    bless: (),
+}
+
+impl IntoComponents for Part {
+    type Components = (partition2::Partition, ());
+
+    fn into_components(self) -> Self::Components {
+        (self.partition, self.bless)
+    }
+}
+
+pub struct PartRef<'a> {
+    partition: &'a partition2::Partition,
+    bless: &'a (),
+}
+
+impl<'a> IntoComponents for PartRef<'a> {
+    type Components = (&'a partition2::Partition, &'a ());
+
+    fn into_components(self) -> Self::Components {
+        (self.partition, self.bless)
+    }
+}
+
+pub struct PartRefMut<'a> {
+    partition: &'a mut partition2::Partition,
+    bless: &'a mut (),
+}
+
+impl<'a> IntoComponents for PartRefMut<'a> {
+    type Components = (&'a mut partition2::Partition, &'a mut ()    );
+
+    fn into_components(self) -> Self::Components {
+        (self.partition, self.bless)
+    }
+}
+
+impl EntityComponentSystem<Borrow> for Partitions {
+    type Entity = Part;
+    type EntityRef<'a> = PartRef<'a>;
+
+    fn with_new<T, F>(&self, f: F) -> T
+    where
+        F: FnOnce(Self::EntityRef<'_>) -> T {
+        todo!()
+    }
+
+    async fn with_async_new<T, F>(&self, f: F) -> T
+    where
+        F: FnOnce(Self::EntityRef<'_>) -> T {
+        todo!()
+    }
+}
+
 
 impl Default for Partitions {
     fn default() -> Self {
