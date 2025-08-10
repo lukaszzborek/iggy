@@ -63,12 +63,12 @@ jobs:
         working-directory: foreign/csharp/Iggy_SDK
         run: |
           # Check if Version property exists in csproj
-          if grep -q "<Version>" Iggy_SDK.csproj; then
-            version=$(grep -oP '(?<=<Version>)[^<]*' Iggy_SDK.csproj)
+          if grep -q "<PackageVersion>" Iggy_SDK.csproj; then
+            version=$(grep -oP '(?<=<PackageVersion>)[^<]*' Iggy_SDK.csproj)
             echo "csharp_sdk_version=$version" >> "$GITHUB_OUTPUT"
             echo "::notice ::Version csharp sdk csproj version is $version"
           else
-            echo "::error ::No Version property found in csproj. Please add <Version>X.Y.Z</Version> to Iggy_SDK.csproj"
+            echo "::error ::No Version property found in csproj. Please add <PackageVersion>X.Y.Z</PackageVersion> to Iggy_SDK.csproj"
             exit 1
           fi
 
@@ -106,7 +106,7 @@ jobs:
         working-directory: foreign/csharp/Iggy_SDK
         run: |
           dotnet pack -c release --no-restore -o .
-      - name: Publish nuget
-        working-directory: foreign/csharp/Iggy_SDK
-        run: dotnet nuget push *.nupkg -k "${{ secrets.NUGET_API_KEY }}" -s https://api.nuget.org/v3/index.json
+#      - name: Publish nuget
+#        working-directory: foreign/csharp/Iggy_SDK
+#        run: dotnet nuget push *.nupkg -k "${{ secrets.NUGET_API_KEY }}" -s https://api.nuget.org/v3/index.json
 
