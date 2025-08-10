@@ -459,8 +459,10 @@ impl IggyShard {
                     // TODO: Set message expiry for all partitions and segments.
                 });
         self.streams2.with_topics(stream_id, |topics| {
-            topics.with_mut(|container| {
-                container.rename_unchecked(&old_name, new_name);
+            topics.with_mut_index(|index| {
+                // Rename the key inside of hashmap
+                let idx = index.remove(&old_name).expect("Rename key: key not found");
+                index.insert(new_name, idx);
             })
         });
     }

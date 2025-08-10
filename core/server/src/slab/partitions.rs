@@ -1,7 +1,5 @@
 use crate::{
-    slab::traits_ext::{
-        Borrow, Components, ComponentsAsRefs, EntityComponentSystem, IntoComponents,
-    },
+    slab::traits_ext::{Borrow, Components, EntityComponentSystem, IntoComponents},
     streaming::{
         deduplication::message_deduplicator::MessageDeduplicator, partitions::partition2, segments,
         stats::stats::PartitionStats,
@@ -24,40 +22,44 @@ pub struct Partitions {
 
 pub struct Part {
     partition: partition2::Partition,
-    bless: (),
 }
 
 impl IntoComponents for Part {
-    type Components = (partition2::Partition, ());
+    type Components = (partition2::Partition,);
 
     fn into_components(self) -> Self::Components {
-        (self.partition, self.bless)
+        (self.partition,)
     }
 }
 
 pub struct PartRef<'a> {
-    partition: &'a partition2::Partition,
-    bless: &'a (),
+    partition: &'a Slab<partition2::Partition>,
 }
 
 impl<'a> IntoComponents for PartRef<'a> {
-    type Components = (&'a partition2::Partition, &'a ());
+    type Components = (&'a Slab<partition2::Partition>,);
 
     fn into_components(self) -> Self::Components {
-        (self.partition, self.bless)
+        (self.partition,)
     }
 }
 
-pub struct PartRefMut<'a> {
-    partition: &'a mut partition2::Partition,
-    bless: &'a mut (),
-}
+impl EntityComponentSystem<Borrow> for Partitions {
+    type Entity = Part;
+    type EntityRef<'a> = PartRef<'a>;
 
-impl<'a> IntoComponents for PartRefMut<'a> {
-    type Components = (&'a mut partition2::Partition, &'a mut ());
+    fn with<O, F>(&self, f: F) -> O
+    where
+        F: for<'a> FnOnce(Components<Self::EntityRef<'a>>) -> O,
+    {
+        todo!()
+    }
 
-    fn into_components(self) -> Self::Components {
-        (self.partition, self.bless)
+    async fn with_async<O, F>(&self, f: F) -> O
+    where
+        F: for<'a> FnOnce(Components<Self::EntityRef<'a>>) -> O,
+    {
+        todo!()
     }
 }
 

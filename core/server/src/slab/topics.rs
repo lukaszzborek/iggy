@@ -30,43 +30,21 @@ impl Topics {
         match id.kind {
             iggy_common::IdKind::Numeric => {
                 let id = id.get_u32_value().unwrap() as usize;
-                self.container.borrow().slab.contains(id)
+                self.container.borrow().contains(id)
             }
             iggy_common::IdKind::String => {
                 let key = id.get_string_value().unwrap();
-                self.container.borrow().index.contains_key(&key)
+                self.index.borrow().contains_key(&key)
             }
         }
     }
 
-    fn get_topic_ref<'topics>(
-        id: &Identifier,
-        slab: &'topics Slab<topic2::Topic>,
-    ) -> &'topics topic2::Topic {
+    fn get_index(&self, id: &Identifier) -> usize {
         match id.kind {
-            iggy_common::IdKind::Numeric => {
-                let idx = id.get_u32_value().unwrap() as usize;
-                &slab[idx]
-            }
+            iggy_common::IdKind::Numeric => id.get_u32_value().unwrap() as usize,
             iggy_common::IdKind::String => {
                 let key = id.get_string_value().unwrap();
-                unsafe { slab.get_by_key_unchecked(&key) }
-            }
-        }
-    }
-
-    fn get_topic_mut<'topics>(
-        id: &Identifier,
-        slab: &'topics mut Slab<topic2::Topic>,
-    ) -> &'topics mut topic2::Topic {
-        match id.kind {
-            iggy_common::IdKind::Numeric => {
-                let idx = id.get_u32_value().unwrap() as usize;
-                &mut slab[idx]
-            }
-            iggy_common::IdKind::String => {
-                let key = id.get_string_value().unwrap();
-                unsafe { slab.get_by_key_mut_unchecked(&key) }
+                *self.index.borrow().get(&key).expect("Topic not found")
             }
         }
     }
@@ -90,12 +68,21 @@ impl Topics {
         f(&mut container)
     }
 
+    pub fn with_mut_index<T>(
+        &self,
+        f: impl FnOnce(&mut AHashMap<<topic2::Topic as Keyed>::Key, usize>) -> T,
+    ) -> T {
+        let mut index = self.index.borrow_mut();
+        f(&mut index)
+    }
+
     pub async fn with_topic_by_id_async<T>(
         &self,
         id: &Identifier,
         f: impl AsyncFnOnce(&topic2::Topic) -> T,
     ) -> T {
-        self.with_async(async |topics| Self::get_topic_ref(id, topics).invoke_async(f).await)
+        let id = self.get_index(id);
+        self.with_async(async |topics| topics[id].invoke_async(f).await)
             .await
     }
 
@@ -109,7 +96,8 @@ impl Topics {
     }
 
     pub fn with_topic_by_id<T>(&self, id: &Identifier, f: impl FnOnce(&topic2::Topic) -> T) -> T {
-        self.with(|topics| Self::get_topic_ref(id, topics).invoke(f))
+        let id = self.get_index(id);
+        self.with(|topics| topics[id].invoke(f))
     }
 
     pub fn with_topic_by_id_mut<T>(
@@ -117,7 +105,8 @@ impl Topics {
         id: &Identifier,
         f: impl FnOnce(&mut topic2::Topic) -> T,
     ) -> T {
-        self.with_mut(|topics| Self::get_topic_mut(id, topics).invoke_mut(f))
+        let id = self.get_index(id);
+        self.with_mut(|topics| topics[id].invoke_mut(f))
     }
 
     pub fn with_partitions(&self, topic_id: &Identifier, f: impl FnOnce(&Partitions)) {

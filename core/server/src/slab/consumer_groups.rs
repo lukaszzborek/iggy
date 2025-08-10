@@ -25,15 +25,22 @@ impl ConsumerGroups {
         f(&mut self.container)
     }
 
+    pub fn with_index<T>(
+        &self,
+        f: impl FnOnce(&AHashMap<<consumer_group2::ConsumerGroup as Keyed>::Key, usize>) -> T,
+    ) -> T {
+        f(&self.index)
+    }
+
     pub fn exists(&self, id: &Identifier) -> bool {
         match id.kind {
             iggy_common::IdKind::Numeric => {
                 let id = id.get_u32_value().unwrap() as usize;
-                self.container.slab.contains(id)
+                self.container.contains(id)
             }
             iggy_common::IdKind::String => {
                 let key = id.get_string_value().unwrap();
-                self.container.index.contains_key(&key)
+                self.index.contains_key(&key)
             }
         }
     }
@@ -42,7 +49,8 @@ impl ConsumerGroups {
 impl Default for ConsumerGroups {
     fn default() -> Self {
         Self {
-            container: IndexedSlab::with_capacity(CAPACITY),
+            index: AHashMap::with_capacity(CAPACITY),
+            container: Slab::with_capacity(CAPACITY),
         }
     }
 }

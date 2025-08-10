@@ -31,11 +31,21 @@ impl Streams {
         match id.kind {
             iggy_common::IdKind::Numeric => {
                 let id = id.get_u32_value().unwrap() as usize;
-                self.container.borrow().slab.contains(id)
+                self.container.borrow().contains(id)
             }
             iggy_common::IdKind::String => {
                 let key = id.get_string_value().unwrap();
-                self.container.borrow().index.contains_key(&key)
+                self.index.borrow().contains_key(&key)
+            }
+        }
+    }
+
+    fn get_index(&self, id: &Identifier) -> usize {
+        match id.kind {
+            iggy_common::IdKind::Numeric => id.get_u32_value().unwrap() as usize,
+            iggy_common::IdKind::String => {
+                let key = id.get_string_value().unwrap();
+                *self.index.borrow().get(&key).expect("Topic not found")
             }
         }
     }
@@ -82,7 +92,8 @@ impl Streams {
         id: &Identifier,
         f: impl FnOnce(&stream2::Stream) -> T,
     ) -> T {
-        self.with(|streams| Self::get_stream_ref(id, streams).invoke(f))
+        let id = self.get_index(id);
+        self.with(|streams| streams[id].invoke(f))
     }
 
     pub async fn with_stream_by_id_async<T>(
@@ -90,7 +101,8 @@ impl Streams {
         id: &Identifier,
         f: impl AsyncFnOnce(&stream2::Stream) -> T,
     ) -> T {
-        self.with_async(async |streams| Self::get_stream_ref(id, streams).invoke_async(f).await)
+        let id = self.get_index(id);
+        self.with_async(async |streams| streams[id].invoke_async(f).await)
             .await
     }
 
@@ -99,7 +111,8 @@ impl Streams {
         id: &Identifier,
         f: impl FnOnce(&mut stream2::Stream) -> T,
     ) -> T {
-        self.with_mut(|streams| Self::get_stream_mut(id, streams).invoke_mut(f))
+        let id = self.get_index(id);
+        self.with_mut(|streams| streams[id].invoke_mut(f))
     }
 
     pub fn with_topics<T>(&self, stream_id: &Identifier, f: impl FnOnce(&Topics) -> T) -> T {
@@ -186,38 +199,6 @@ impl Streams {
         self.with_partitions(stream_id, topic_id, |partitions| {
             partitions.with_partition_id(partition_id, f);
         });
-    }
-
-    fn get_stream_ref<'streams>(
-        id: &Identifier,
-        slab: &'streams IndexedSlab<stream2::Stream>,
-    ) -> &'streams stream2::Stream {
-        match id.kind {
-            iggy_common::IdKind::Numeric => {
-                let idx = id.get_u32_value().unwrap() as usize;
-                &slab[idx]
-            }
-            iggy_common::IdKind::String => {
-                let key = id.get_string_value().unwrap();
-                unsafe { slab.get_by_key_unchecked(&key) }
-            }
-        }
-    }
-
-    fn get_stream_mut<'streams>(
-        id: &Identifier,
-        slab: &'streams mut IndexedSlab<stream2::Stream>,
-    ) -> &'streams mut stream2::Stream {
-        match id.kind {
-            iggy_common::IdKind::Numeric => {
-                let idx = id.get_u32_value().unwrap() as usize;
-                &mut slab[idx]
-            }
-            iggy_common::IdKind::String => {
-                let key = id.get_string_value().unwrap();
-                unsafe { slab.get_by_key_mut_unchecked(&key) }
-            }
-        }
     }
 
     pub fn len(&self) -> usize {
