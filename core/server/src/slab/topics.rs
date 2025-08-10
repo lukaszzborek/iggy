@@ -1,9 +1,10 @@
+use ahash::AHashMap;
 use iggy_common::Identifier;
 use slab::Slab;
 use std::{cell::RefCell, sync::Arc};
 
 use crate::{
-    slab::{IndexedSlab, Keyed, partitions::Partitions},
+    slab::{Keyed, partitions::Partitions},
     streaming::{partitions::partition2, stats::stats::TopicStats, topics::topic2},
 };
 
@@ -11,14 +12,16 @@ const CAPACITY: usize = 1024;
 
 #[derive(Debug)]
 pub struct Topics {
-    container: RefCell<IndexedSlab<topic2::Topic>>,
+    index: RefCell<AHashMap<<topic2::Topic as Keyed>::Key, usize>>,
+    container: RefCell<Slab<topic2::Topic>>,
     stats: RefCell<Slab<Arc<TopicStats>>>,
 }
 
 impl Topics {
     pub fn init() -> Self {
         Self {
-            container: RefCell::new(IndexedSlab::with_capacity(CAPACITY)),
+            index: RefCell::new(AHashMap::with_capacity(CAPACITY)),
+            container: RefCell::new(Slab::with_capacity(CAPACITY)),
             stats: RefCell::new(Slab::with_capacity(CAPACITY)),
         }
     }
@@ -38,7 +41,7 @@ impl Topics {
 
     fn get_topic_ref<'topics>(
         id: &Identifier,
-        slab: &'topics IndexedSlab<topic2::Topic>,
+        slab: &'topics Slab<topic2::Topic>,
     ) -> &'topics topic2::Topic {
         match id.kind {
             iggy_common::IdKind::Numeric => {
@@ -54,7 +57,7 @@ impl Topics {
 
     fn get_topic_mut<'topics>(
         id: &Identifier,
-        slab: &'topics mut IndexedSlab<topic2::Topic>,
+        slab: &'topics mut Slab<topic2::Topic>,
     ) -> &'topics mut topic2::Topic {
         match id.kind {
             iggy_common::IdKind::Numeric => {
@@ -72,17 +75,17 @@ impl Topics {
         self.container.borrow().len()
     }
 
-    pub async fn with_async<T>(&self, f: impl AsyncFnOnce(&IndexedSlab<topic2::Topic>) -> T) -> T {
+    pub async fn with_async<T>(&self, f: impl AsyncFnOnce(&Slab<topic2::Topic>) -> T) -> T {
         let container = self.container.borrow();
         f(&container).await
     }
 
-    pub fn with<T>(&self, f: impl FnOnce(&IndexedSlab<topic2::Topic>) -> T) -> T {
+    pub fn with<T>(&self, f: impl FnOnce(&Slab<topic2::Topic>) -> T) -> T {
         let container = self.container.borrow();
         f(&container)
     }
 
-    pub fn with_mut<T>(&self, f: impl FnOnce(&mut IndexedSlab<topic2::Topic>) -> T) -> T {
+    pub fn with_mut<T>(&self, f: impl FnOnce(&mut Slab<topic2::Topic>) -> T) -> T {
         let mut container = self.container.borrow_mut();
         f(&mut container)
     }

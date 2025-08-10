@@ -1,9 +1,10 @@
+use ahash::AHashMap;
 use iggy_common::Identifier;
 use slab::Slab;
 use std::{cell::RefCell, sync::Arc};
 
 use crate::{
-    slab::{IndexedSlab, partitions::Partitions, topics::Topics},
+    slab::{Keyed, partitions::Partitions, topics::Topics},
     streaming::{
         partitions::partition2, stats::stats::StreamStats, streams::stream2, topics::topic2,
     },
@@ -12,14 +13,16 @@ use crate::{
 const CAPACITY: usize = 1024;
 
 pub struct Streams {
-    container: RefCell<IndexedSlab<stream2::Stream>>,
+    index: RefCell<AHashMap<<stream2::Stream as Keyed>::Key, usize>>,
+    container: RefCell<Slab<stream2::Stream>>,
     stats: RefCell<Slab<Arc<StreamStats>>>,
 }
 
 impl Streams {
     pub fn init() -> Self {
         Self {
-            container: RefCell::new(IndexedSlab::with_capacity(CAPACITY)),
+            index: RefCell::new(AHashMap::with_capacity(CAPACITY)),
+            container: RefCell::new(Slab::with_capacity(CAPACITY)),
             stats: RefCell::new(Slab::with_capacity(CAPACITY)),
         }
     }
@@ -59,20 +62,17 @@ impl Streams {
         f(&mut stats)
     }
 
-    pub async fn with_async<T>(
-        &self,
-        f: impl AsyncFnOnce(&IndexedSlab<stream2::Stream>) -> T,
-    ) -> T {
+    pub async fn with_async<T>(&self, f: impl AsyncFnOnce(&Slab<stream2::Stream>) -> T) -> T {
         let container = self.container.borrow();
         f(&container).await
     }
 
-    pub fn with<T>(&self, f: impl FnOnce(&IndexedSlab<stream2::Stream>) -> T) -> T {
+    pub fn with<T>(&self, f: impl FnOnce(&Slab<stream2::Stream>) -> T) -> T {
         let container = self.container.borrow();
         f(&container)
     }
 
-    pub fn with_mut<T>(&self, f: impl FnOnce(&mut IndexedSlab<stream2::Stream>) -> T) -> T {
+    pub fn with_mut<T>(&self, f: impl FnOnce(&mut Slab<stream2::Stream>) -> T) -> T {
         let mut container = self.container.borrow_mut();
         f(&mut container)
     }

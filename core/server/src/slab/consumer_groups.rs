@@ -1,4 +1,4 @@
-use crate::{slab::IndexedSlab, streaming::topics::consumer_group2};
+use crate::{slab::Keyed, streaming::topics::consumer_group2};
 use ahash::AHashMap;
 use arcshift::ArcShift;
 use iggy_common::Identifier;
@@ -9,17 +9,18 @@ const CAPACITY: usize = 1024;
 
 #[derive(Debug)]
 pub struct ConsumerGroups {
-    container: IndexedSlab<consumer_group2::ConsumerGroup>,
+    index: AHashMap<<consumer_group2::ConsumerGroup as Keyed>::Key, usize>,
+    container: Slab<consumer_group2::ConsumerGroup>,
 }
 
 impl ConsumerGroups {
-    pub fn with<T>(&self, f: impl FnOnce(&IndexedSlab<consumer_group2::ConsumerGroup>) -> T) -> T {
+    pub fn with<T>(&self, f: impl FnOnce(&Slab<consumer_group2::ConsumerGroup>) -> T) -> T {
         f(&self.container)
     }
 
     pub fn with_mut<T>(
         &mut self,
-        f: impl FnOnce(&mut IndexedSlab<consumer_group2::ConsumerGroup>) -> T,
+        f: impl FnOnce(&mut Slab<consumer_group2::ConsumerGroup>) -> T,
     ) -> T {
         f(&mut self.container)
     }
