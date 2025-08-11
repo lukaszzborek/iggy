@@ -26,9 +26,6 @@ pub struct Topic {
 
     partitions: Partitions,
     consumer_groups: ConsumerGroups,
-
-    consumer_offsets: Slab<AHashMap<usize, ConsumerOffset>>,
-    consumer_group_offsets: Slab<AHashMap<usize, ConsumerOffset>>,
 }
 
 impl Topic {
@@ -49,8 +46,6 @@ impl Topic {
             max_topic_size,
             partitions: Partitions::default(),
             consumer_groups: ConsumerGroups::default(),
-            consumer_offsets: Slab::with_capacity(PARTITIONS_CAPACITY),
-            consumer_group_offsets: Slab::with_capacity(PARTITIONS_CAPACITY),
         }
     }
 
@@ -119,22 +114,6 @@ impl Topic {
 
     pub fn consumer_groups_mut(&mut self) -> &mut ConsumerGroups {
         &mut self.consumer_groups
-    }
-
-    pub fn consumer_offsets(&self) -> &Slab<AHashMap<usize, ConsumerOffset>> {
-        &self.consumer_offsets
-    }
-
-    pub fn consumer_offsets_mut(&mut self) -> &mut Slab<AHashMap<usize, ConsumerOffset>> {
-        &mut self.consumer_offsets
-    }
-
-    pub fn consumer_group_offsets(&self) -> &Slab<AHashMap<usize, ConsumerOffset>> {
-        &self.consumer_group_offsets
-    }
-
-    pub fn consumer_group_offsets_mut(&mut self) -> &mut Slab<AHashMap<usize, ConsumerOffset>> {
-        &mut self.consumer_group_offsets
     }
 
     pub fn insert_into(self, container: &mut Slab<Self>) -> usize {

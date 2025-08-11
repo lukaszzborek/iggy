@@ -13,13 +13,13 @@ pub struct SharedPartition {
 }
 
 #[derive(Default, Debug)]
-pub struct Partition {
+pub struct PartitionInfo {
     id: usize,
     created_at: IggyTimestamp,
     should_increment_offset: bool,
 }
 
-impl Partition {
+impl PartitionInfo {
     pub fn new(created_at: IggyTimestamp, should_increment_offset: bool) -> Self {
         Self {
             id: 0,

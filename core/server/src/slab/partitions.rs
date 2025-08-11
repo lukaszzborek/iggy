@@ -1,12 +1,13 @@
 use crate::{
     slab::traits_ext::{
-        Borrow, Components, EntityComponentSystem, IndexComponents, IntoComponents,
+        Borrow, Components, Delete, EntityComponentSystem, EntityMarker, IndexComponents, Insert, IntoComponents, 
     },
     streaming::{
-        deduplication::message_deduplicator::MessageDeduplicator, partitions::partition2, segments,
+        deduplication::message_deduplicator::MessageDeduplicator, partitions::{partition::ConsumerOffset, partition2}, segments,
         stats::stats::PartitionStats,
     },
 };
+use ahash::AHashMap;
 use slab::Slab;
 use std::{
     ops::Index,
@@ -15,80 +16,146 @@ use std::{
 
 // TODO: This could be upper limit of partitions per topic, use that value to validate instead of whathever this thing is in `common` crate.
 pub const PARTITIONS_CAPACITY: usize = 16384;
-type Idx = usize;
+type Id = usize;
 
 #[derive(Debug)]
 pub struct Partitions {
-    container: Slab<partition2::Partition>,
+    info: Slab<partition2::PartitionInfo>,
     stats: Slab<Arc<PartitionStats>>,
     segments: Slab<Vec<segments::Segment2>>,
-    message_deduplicators: Slab<Option<MessageDeduplicator>>,
-    partition_offsets: Slab<Arc<AtomicU64>>,
+    message_deduplicator: Slab<Option<MessageDeduplicator>>,
+    offset: Slab<Arc<AtomicU64>>,
+
+    consumer_offset: Slab<AHashMap<usize, ConsumerOffset>>,
+    consumer_group_offset: Slab<AHashMap<usize, ConsumerOffset>>,
 }
 
-pub struct Part {
-    partition: partition2::Partition,
+impl Insert<Id> for Partitions {
+    type Item = Partition;
+
+    fn insert(&mut self, item: Self::Item) -> Id {
+        todo!();
+    }
 }
 
-impl IntoComponents for Part {
-    type Components = (partition2::Partition,);
+impl Delete<Id> for Partitions {
+    type Item = Partition;
+
+    fn delete(&mut self, id: Id) -> Self::Item {
+        todo!()
+    }
+}
+
+pub struct Partition {
+    info: partition2::PartitionInfo,
+    stats: Arc<PartitionStats>,
+    message_deduplicator: Option<MessageDeduplicator>,
+    offset: Arc<AtomicU64>,
+}
+
+impl EntityMarker for Partition {}
+
+impl IntoComponents for Partition {
+    type Components = (
+        partition2::PartitionInfo,
+        Arc<PartitionStats>,
+        Option<MessageDeduplicator>,
+        Arc<AtomicU64>,
+    );
 
     fn into_components(self) -> Self::Components {
-        (self.partition,)
+        (
+            self.info,
+            self.stats,
+            self.message_deduplicator,
+            self.offset,
+        )
     }
 }
 
-pub struct PartRef<'a> {
-    partition: &'a Slab<partition2::Partition>,
+pub struct PartitionRef<'a> {
+    info: &'a Slab<partition2::PartitionInfo>,
+    stats: &'a Slab<Arc<PartitionStats>>,
+    message_deduplicator: &'a Slab<Option<MessageDeduplicator>>,
+    offset: &'a Slab<Arc<AtomicU64>>,
 }
 
-pub struct PartItemRef<'a> {
-    partition: &'a partition2::Partition,
+impl<'a> From<&'a Partitions> for PartitionRef<'a> {
+    fn from(value: &'a Partitions) -> Self {
+        PartitionRef {
+            info: &value.info,
+            stats: &value.stats,
+            message_deduplicator: &value.message_deduplicator,
+            offset: &value.offset,
+        }
+    }
 }
 
-impl<'a> IntoComponents for PartRef<'a> {
-    type Components = (&'a Slab<partition2::Partition>,);
+impl<'a> IntoComponents for PartitionRef<'a> {
+    type Components = (
+        &'a Slab<partition2::PartitionInfo>,
+        &'a Slab<Arc<PartitionStats>>,
+        &'a Slab<Option<MessageDeduplicator>>,
+        &'a Slab<Arc<AtomicU64>>,
+    );
 
     fn into_components(self) -> Self::Components {
-        (self.partition,)
+        (
+            self.info,
+            self.stats,
+            self.message_deduplicator,
+            self.offset,
+        )
     }
 }
 
-impl<'a> IndexComponents<Idx> for PartRef<'a> {
-    type Output = (&'a partition2::Partition,);
+impl<'a> IndexComponents<Id> for PartitionRef<'a> {
+    type Output = (
+        &'a partition2::PartitionInfo,
+        &'a Arc<PartitionStats>,
+        &'a Option<MessageDeduplicator>,
+        &'a Arc<AtomicU64>,
+    );
 
-    fn index(&self, index: Idx) -> Self::Output {
-        (&self.partition[index],)
+    fn index(&self, index: Id) -> Self::Output {
+        (
+            &self.info[index],
+            &self.stats[index],
+            &self.message_deduplicator[index],
+            &self.offset[index],
+        )
     }
 }
 
-impl EntityComponentSystem<Idx, Borrow> for Partitions {
-    type Entity = Part;
-    type EntityRef<'a> = PartRef<'a>;
+impl EntityComponentSystem<Id, Borrow> for Partitions {
+    type Entity = Partition;
+    type EntityRef<'a> = PartitionRef<'a>;
 
     fn with<O, F>(&self, f: F) -> O
     where
         F: for<'a> FnOnce(Self::EntityRef<'a>) -> O,
     {
-        todo!()
+        f(self.into())
     }
 
     async fn with_async<O, F>(&self, f: F) -> O
     where
-        F: for<'a> FnOnce(Components<Self::EntityRef<'a>>) -> O,
+        F: for<'a> AsyncFnOnce(Self::EntityRef<'a>) -> O,
     {
-        todo!()
+        f(self.into()).await
     }
 }
 
 impl Default for Partitions {
     fn default() -> Self {
         Self {
-            container: Slab::with_capacity(PARTITIONS_CAPACITY),
+            info: Slab::with_capacity(PARTITIONS_CAPACITY),
             stats: Slab::with_capacity(PARTITIONS_CAPACITY),
             segments: Slab::with_capacity(PARTITIONS_CAPACITY),
-            message_deduplicators: Slab::with_capacity(PARTITIONS_CAPACITY),
-            partition_offsets: Slab::with_capacity(PARTITIONS_CAPACITY),
+            message_deduplicator: Slab::with_capacity(PARTITIONS_CAPACITY),
+            offset: Slab::with_capacity(PARTITIONS_CAPACITY),
+            consumer_offset: Slab::with_capacity(PARTITIONS_CAPACITY),
+            consumer_group_offset: Slab::with_capacity(PARTITIONS_CAPACITY),
         }
     }
 }
@@ -102,72 +169,6 @@ impl Partitions {
     pub fn with_stats_mut<T>(&mut self, f: impl FnOnce(&mut Slab<Arc<PartitionStats>>) -> T) -> T {
         let mut stats = &mut self.stats;
         f(&mut stats)
-    }
-
-    pub fn with_message_deduplicators<T>(
-        &self,
-        f: impl FnOnce(&Slab<Option<MessageDeduplicator>>) -> T,
-    ) -> T {
-        let message_deduplicators = &self.message_deduplicators;
-        f(message_deduplicators)
-    }
-
-    pub fn with_message_deduplicators_mut<T>(
-        &mut self,
-        f: impl FnOnce(&mut Slab<Option<MessageDeduplicator>>) -> T,
-    ) -> T {
-        let mut message_deduplicators = &mut self.message_deduplicators;
-        f(&mut message_deduplicators)
-    }
-
-    pub fn with_partition_offsets<T>(&self, f: impl FnOnce(&Slab<Arc<AtomicU64>>) -> T) -> T {
-        let partition_offsets = &self.partition_offsets;
-        f(partition_offsets)
-    }
-
-    pub fn with_partition_offsets_mut<T>(
-        &mut self,
-        f: impl FnOnce(&mut Slab<Arc<AtomicU64>>) -> T,
-    ) -> T {
-        let mut partition_offsets = &mut self.partition_offsets;
-        f(&mut partition_offsets)
-    }
-
-    pub async fn with_async<T>(&self, f: impl AsyncFnOnce(&Slab<partition2::Partition>) -> T) -> T {
-        let container = &self.container;
-        f(&container).await
-    }
-
-    pub fn with<T>(&self, f: impl FnOnce(&Slab<partition2::Partition>) -> T) -> T {
-        let container = &self.container;
-        f(&container)
-    }
-
-    pub fn with_mut<T>(&mut self, f: impl FnOnce(&mut Slab<partition2::Partition>) -> T) -> T {
-        let mut container = &mut self.container;
-        f(&mut container)
-    }
-
-    pub fn with_partition_id<T>(
-        &self,
-        partition_id: usize,
-        f: impl FnOnce(&partition2::Partition) -> T,
-    ) -> T {
-        self.with(|partitions| {
-            let partition = &partitions[partition_id];
-            f(partition)
-        })
-    }
-
-    pub fn with_partition_by_id_mut<T>(
-        &mut self,
-        partition_id: usize,
-        f: impl FnOnce(&mut partition2::Partition) -> T,
-    ) -> T {
-        self.with_mut(|partitions| {
-            let partition = &mut partitions[partition_id];
-            f(partition)
-        })
     }
 
     pub fn with_segments(&self, partition_id: usize, f: impl FnOnce(&Vec<segments::Segment2>)) {

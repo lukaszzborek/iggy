@@ -1,8 +1,24 @@
-use std::ops::Index;
-
 pub trait IntoComponents {
     type Components;
     fn into_components(self) -> Self::Components;
+}
+
+// Marker trait for the entity type.
+pub trait EntityMarker {}
+
+pub trait Insert<Idx> {
+    type Item: IntoComponents + EntityMarker;
+    fn insert(&mut self, item: Self::Item) -> Idx;
+}
+
+pub trait Delete<Idx> {
+    type Item: IntoComponents + EntityMarker;
+    fn delete(&mut self, id: Idx) -> Self::Item;
+}
+
+pub trait DeleteCell<Idx> {
+    type Item: IntoComponents + EntityMarker;
+    fn delete(&self, id: Idx) -> Self::Item;
 }
 
 pub trait IndexComponents<Idx: ?Sized> {
@@ -19,11 +35,6 @@ mod private {
 
 //TODO: Maybe two seperate traits for Ref and RefMut.
 pub trait ComponentsMapping<T>: private::Sealed {
-    type Ref<'a>;
-    type RefMut<'a>;
-}
-
-pub trait ComponentsMappingById<T>: private::Sealed {
     type Ref<'a>;
     type RefMut<'a>;
 }
@@ -116,12 +127,14 @@ type MappingMut<'a, E, T> = <<E as IntoComponents>::Components as ComponentsMapp
 
 type MappingById<'a, E, T> =
     <<E as IntoComponents>::Components as ComponentsByIdMapping<T>>::Ref<'a>;
+type MappingByIdMut<'a, E, T> =
+    <<E as IntoComponents>::Components as ComponentsByIdMapping<T>>::RefMut<'a>;
 
-// TODO: I think it's better to not use `Components` directly on the `with` methods.
+// I think it's better to *NOT* use `Components` directly on the `with` methods.
 // Instead use the `Self::EntityRef` type directly.
 // This way we can auto implement the `with_by_id` method.
 // But on the other hand, we need to call `into_components` on the value returned by the `with` method.
-// So we lack the abilit to immediately discard unnecessary components, which leads to less egonomic API.
+// So we lack the ability to immediately discard unnecessary components, which leads to less ergonomic API.
 // Damn tradeoffs.
 pub type Components<T> = <T as IntoComponents>::Components;
 pub type ComponentsById<Idx, T> = <T as IndexComponents<Idx>>::Output;
@@ -130,7 +143,7 @@ pub trait EntityComponentSystem<Idx, T>
 where
     <Self::Entity as IntoComponents>::Components: ComponentsMapping<T> + ComponentsByIdMapping<T>,
 {
-    type Entity: IntoComponents;
+    type Entity: IntoComponents + EntityMarker;
     type EntityRef<'a>: IntoComponents<Components = Mapping<'a, Self::Entity, T>>
         + IndexComponents<Idx, Output = MappingById<'a, Self::Entity, T>>
     where
@@ -141,7 +154,7 @@ where
 
     fn with_async<O, F>(&self, f: F) -> impl Future<Output = O>
     where
-        F: for<'a> FnOnce(Components<Self::EntityRef<'a>>) -> O;
+        F: for<'a> AsyncFnOnce(Self::EntityRef<'a>) -> O;
 
     fn with_by_id<O, F>(&self, id: Idx, f: F) -> O
     where
@@ -149,24 +162,47 @@ where
     {
         self.with(|components| f(components.index(id)))
     }
+
+    fn with_by_id_async<O, F>(&self, id: Idx, f: F) -> impl Future<Output = O>
+    where
+        F: for<'a> AsyncFnOnce(ComponentsById<Idx, Self::EntityRef<'a>>) -> O,
+    {
+        self.with_async(async |components| f(components.index(id)).await)
+    }
 }
 
 pub trait EntityComponentSystemMut<Idx>: EntityComponentSystem<Idx, Borrow> {
     type EntityRefMut<'a>: IntoComponents<Components = MappingMut<'a, Self::Entity, Borrow>>
+        + IndexComponents<Idx, Output = MappingByIdMut<'a, Self::Entity, Borrow>>
     where
         Self: 'a;
 
     fn with_mut<O, F>(&mut self, f: F) -> O
     where
-        F: for<'a> FnOnce(Components<Self::EntityRefMut<'a>>) -> O;
+        F: for<'a> FnOnce(Self::EntityRefMut<'a>) -> O;
+
+    fn with_by_id_mut<O, F>(&mut self, id: Idx, f: F) -> O
+    where
+        F: for<'a> FnOnce(ComponentsById<Idx, Self::EntityRefMut<'a>>) -> O,
+    {
+        self.with_mut(|components| f(components.index(id)))
+    }
 }
 
 pub trait EntityComponentSystemMutCell<Idx>: EntityComponentSystem<Idx, RefCell> {
     type EntityRefMut<'a>: IntoComponents<Components = MappingMut<'a, Self::Entity, RefCell>>
+        + IndexComponents<Idx, Output = MappingByIdMut<'a, Self::Entity, RefCell>>
     where
         Self: 'a;
 
     fn with_mut<O, F>(&mut self, f: F) -> O
     where
-        F: for<'a> FnOnce(Components<Self::EntityRefMut<'a>>) -> O;
+        F: for<'a> FnOnce(Self::EntityRefMut<'a>) -> O;
+
+    fn with_by_id_mut<O, F>(&mut self, id: Idx, f: F) -> O
+    where
+        F: for<'a> FnOnce(ComponentsById<Idx, Self::EntityRefMut<'a>>) -> O,
+    {
+        self.with_mut(|components| f(components.index(id)))
+    }
 }
