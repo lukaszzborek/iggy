@@ -65,19 +65,20 @@ impl<'a> IndexComponents<Idx> for PartRef<'a> {
 impl EntityComponentSystem<Idx, Borrow> for Partitions {
     type Entity = Part;
     type EntityRef<'a> = PartRef<'a>;
-    
+
     fn with<O, F>(&self, f: F) -> O
     where
-        F: for<'a> FnOnce(Self::EntityRef<'a>) -> O {
-        todo!()
-    }
-    
-    async fn with_async<O, F>(&self, f: F) -> O
-    where
-        F: for<'a> FnOnce(Components<Self::EntityRef<'a>>) -> O {
+        F: for<'a> FnOnce(Self::EntityRef<'a>) -> O,
+    {
         todo!()
     }
 
+    async fn with_async<O, F>(&self, f: F) -> O
+    where
+        F: for<'a> FnOnce(Components<Self::EntityRef<'a>>) -> O,
+    {
+        todo!()
+    }
 }
 
 impl Default for Partitions {

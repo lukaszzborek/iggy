@@ -23,9 +23,16 @@ pub trait ComponentsMapping<T>: private::Sealed {
     type RefMut<'a>;
 }
 
+pub trait ComponentsMappingById<T>: private::Sealed {
+    type Ref<'a>;
+    type RefMut<'a>;
+}
+
 pub trait ComponentsByIdMapping<T>: private::Sealed {
     // TODO: We will need this to contrain the `EntityRef` and `EntityRefMut` types, so after decomposing they have proper mapping.
     // Similar mechanism to trait from above, but for (T1, T2) -> (&T1, &T2) mapping rather than (T1, T2) -> (&Slab<T>, &Slab<T2>).
+    type Ref<'a>;
+    type RefMut<'a>;
 }
 
 macro_rules! impl_components_for_slab_as_refs {
@@ -44,6 +51,20 @@ macro_rules! impl_components_for_slab_as_refs {
         {
             type Ref<'a> = (::std::cell::Ref<'a, ::slab::Slab<$T>>,);
             type RefMut<'a> = (::std::cell::RefMut<'a, ::slab::Slab<$T>>,);
+        }
+
+        impl<$T> ComponentsByIdMapping<Borrow> for ($T,)
+        where for<'a> $T: 'a
+        {
+            type Ref<'a> = (&'a $T,);
+            type RefMut<'a> = (&'a mut $T,);
+        }
+
+        impl<$T> ComponentsByIdMapping<RefCell> for ($T,)
+        where for<'a> $T: 'a
+        {
+            type Ref<'a> = (::std::cell::Ref<'a, $T>,);
+            type RefMut<'a> = (::std::cell::RefMut<'a, $T>,);
         }
     };
 
@@ -67,6 +88,24 @@ macro_rules! impl_components_for_slab_as_refs {
             type Ref<'a> = (std::cell::Ref<'a, ::slab::Slab<$T>>, $(::std::cell::Ref<'a, ::slab::Slab<$rest>>),+);
             type RefMut<'a> = (std::cell::RefMut<'a, ::slab::Slab<$T>>, $(::std::cell::RefMut<'a, ::slab::Slab<$rest>>),+);
         }
+
+        impl<$T, $($rest),+> ComponentsByIdMapping<Borrow> for ($T, $($rest),+)
+        where
+            for<'a> $T: 'a,
+            $(for<'a> $rest: 'a),+
+        {
+            type Ref<'a> = (&'a $T, $(&'a $rest),+);
+            type RefMut<'a> = (&'a mut $T, $(&'a mut $rest),+);
+        }
+
+        impl<$T, $($rest),+> ComponentsByIdMapping<RefCell> for ($T, $($rest),+)
+        where
+            for<'a> $T: 'a,
+            $(for<'a> $rest: 'a),+
+        {
+            type Ref<'a> = (std::cell::Ref<'a, $T>, $(::std::cell::Ref<'a, $rest>),+);
+            type RefMut<'a> = (std::cell::RefMut<'a, $T>, $(::std::cell::RefMut<'a, $rest>),+);
+        }
         impl_components_for_slab_as_refs!($($rest),+);
     };
 }
@@ -74,6 +113,9 @@ impl_components_for_slab_as_refs!(T1, T2, T3, T4, T5, T6, T7, T8);
 
 type Mapping<'a, E, T> = <<E as IntoComponents>::Components as ComponentsMapping<T>>::Ref<'a>;
 type MappingMut<'a, E, T> = <<E as IntoComponents>::Components as ComponentsMapping<T>>::RefMut<'a>;
+
+type MappingById<'a, E, T> =
+    <<E as IntoComponents>::Components as ComponentsByIdMapping<T>>::Ref<'a>;
 
 // TODO: I think it's better to not use `Components` directly on the `with` methods.
 // Instead use the `Self::EntityRef` type directly.
@@ -86,12 +128,11 @@ pub type ComponentsById<Idx, T> = <T as IndexComponents<Idx>>::Output;
 
 pub trait EntityComponentSystem<Idx, T>
 where
-    <Self::Entity as IntoComponents>::Components: ComponentsMapping<T>,
+    <Self::Entity as IntoComponents>::Components: ComponentsMapping<T> + ComponentsByIdMapping<T>,
 {
     type Entity: IntoComponents;
     type EntityRef<'a>: IntoComponents<Components = Mapping<'a, Self::Entity, T>>
-        + IndexComponents<Idx>
-        //+ IndexComponents<Idx, Output = usize>
+        + IndexComponents<Idx, Output = MappingById<'a, Self::Entity, T>>
     where
         Self: 'a;
     fn with<O, F>(&self, f: F) -> O
@@ -104,11 +145,10 @@ where
 
     fn with_by_id<O, F>(&self, id: Idx, f: F) -> O
     where
-        F: for<'a> FnOnce(ComponentsById<Idx, Self::EntityRef<'a>>) -> O {
-            self.with(|components| {
-                f(components.index(id))
-            })
-        }
+        F: for<'a> FnOnce(ComponentsById<Idx, Self::EntityRef<'a>>) -> O,
+    {
+        self.with(|components| f(components.index(id)))
+    }
 }
 
 pub trait EntityComponentSystemMut<Idx>: EntityComponentSystem<Idx, Borrow> {
