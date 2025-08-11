@@ -424,7 +424,7 @@ impl IggyShard {
         compression_algorithm: CompressionAlgorithm,
         max_topic_size: MaxTopicSize,
         replication_factor: Option<u8>,
-    ) {
+    ) -> Result<(), IggyError> {
         self.update_topic_base2(
             stream_id,
             topic_id,
@@ -434,6 +434,7 @@ impl IggyShard {
             max_topic_size,
             replication_factor.unwrap_or(1),
         );
+        Ok(())
     }
 
     pub fn update_topic_base2(
@@ -458,13 +459,15 @@ impl IggyShard {
                     (old_name, name)
                     // TODO: Set message expiry for all partitions and segments.
                 });
-        self.streams2.with_topics(stream_id, |topics| {
-            topics.with_mut_index(|index| {
-                // Rename the key inside of hashmap
-                let idx = index.remove(&old_name).expect("Rename key: key not found");
-                index.insert(new_name, idx);
-            })
-        });
+        if old_name != new_name {
+            self.streams2.with_topics(stream_id, |topics| {
+                topics.with_mut_index(|index| {
+                    // Rename the key inside of hashmap
+                    let idx = index.remove(&old_name).expect("Rename key: key not found");
+                    index.insert(new_name, idx);
+                })
+            });
+        }
     }
 
     #[allow(clippy::too_many_arguments)]

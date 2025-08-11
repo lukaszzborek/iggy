@@ -77,6 +77,22 @@ impl Streams {
         f(&container).await
     }
 
+    pub fn with_index<T>(
+        &self,
+        f: impl FnOnce(&AHashMap<<stream2::Stream as Keyed>::Key, usize>) -> T,
+    ) -> T {
+        let index = self.index.borrow();
+        f(&index)
+    }
+
+    pub fn with_index_mut<T>(
+        &self,
+        f: impl FnOnce(&mut AHashMap<<stream2::Stream as Keyed>::Key, usize>) -> T,
+    ) -> T {
+        let mut index = self.index.borrow_mut();
+        f(&mut index)
+    }
+
     pub fn with<T>(&self, f: impl FnOnce(&Slab<stream2::Stream>) -> T) -> T {
         let container = self.container.borrow();
         f(&container)
