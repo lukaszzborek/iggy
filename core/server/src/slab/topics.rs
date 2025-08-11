@@ -126,17 +126,6 @@ impl Topics {
             .await
     }
 
-    pub fn with_partition_by_id(
-        &self,
-        id: &Identifier,
-        partition_id: usize,
-        f: impl FnOnce(&partition2::Partition),
-    ) {
-        self.with_partitions(id, |partitions| {
-            partitions.with_partition_id(partition_id, f);
-        });
-    }
-
     pub fn with_stats<T>(&self, f: impl FnOnce(&Slab<Arc<TopicStats>>) -> T) -> T {
         let stats = self.stats.borrow();
         f(&stats)

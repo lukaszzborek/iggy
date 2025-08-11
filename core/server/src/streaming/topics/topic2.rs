@@ -5,10 +5,8 @@ use crate::{
         consumer_groups::ConsumerGroups,
         partitions::{PARTITIONS_CAPACITY, Partitions},
     },
-    streaming::partitions::partition::ConsumerOffset,
+    streaming::partitions::consumer_offset,
 };
-use ahash::AHashMap;
-use dashmap::DashMap;
 use iggy_common::{CompressionAlgorithm, IggyExpiry, IggyTimestamp, MaxTopicSize};
 use slab::Slab;
 use std::sync::Arc;

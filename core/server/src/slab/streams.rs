@@ -205,18 +205,6 @@ impl Streams {
         .await
     }
 
-    pub fn with_partition_by_id(
-        &self,
-        stream_id: &Identifier,
-        topic_id: &Identifier,
-        partition_id: usize,
-        f: impl FnOnce(&partition2::Partition),
-    ) {
-        self.with_partitions(stream_id, topic_id, |partitions| {
-            partitions.with_partition_id(partition_id, f);
-        });
-    }
-
     pub fn len(&self) -> usize {
         self.container.borrow().len()
     }

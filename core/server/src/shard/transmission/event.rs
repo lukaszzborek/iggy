@@ -14,7 +14,7 @@ use crate::{
     shard::namespace::IggyNamespace,
     streaming::{
         clients::client_manager::Transport,
-        partitions::{partition::ConsumerOffset, partition2::SharedPartition},
+        partitions::{partition::ConsumerOffset, partition2},
         personal_access_tokens::personal_access_token::PersonalAccessToken,
         polling_consumer::PollingConsumer,
         stats::stats::{PartitionStats, StreamStats, TopicStats},
@@ -65,8 +65,7 @@ pub enum ShardEvent {
     CreatedPartitions2 {
         stream_id: Identifier,
         topic_id: Identifier,
-        created_at: IggyTimestamp,
-        shared_partitions: Vec<SharedPartition>,
+        partitions: Vec<partition2::Partition>,
     },
     CreatedPartitions {
         stream_id: Identifier,
@@ -81,6 +80,7 @@ pub enum ShardEvent {
     DeletedPartitions2 {
         stream_id: Identifier,
         topic_id: Identifier,
+        partition_count: u32,
         partition_ids: Vec<u32>,
     },
     CreatedTopic {

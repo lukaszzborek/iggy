@@ -1,22 +1,30 @@
 use crate::{
     slab::traits_ext::{
-        Borrow, Components, Delete, EntityComponentSystem, EntityMarker, IndexComponents, Insert, IntoComponents, 
+        Borrow, Components, Delete, EntityComponentSystem, EntityMarker, IndexComponents, Insert,
+        IntoComponents,
     },
     streaming::{
-        deduplication::message_deduplicator::MessageDeduplicator, partitions::{partition::ConsumerOffset, partition2}, segments,
+        deduplication::message_deduplicator::MessageDeduplicator,
+        partitions::{
+            consumer_offset,
+            partition::ConsumerOffset,
+            partition2::{self, Partition, PartitionRef},
+        },
+        segments,
         stats::stats::PartitionStats,
     },
 };
 use ahash::AHashMap;
 use slab::Slab;
-use std::{
-    ops::Index,
-    sync::{Arc, atomic::AtomicU64},
-};
+use std::sync::{Arc, atomic::AtomicU64};
 
 // TODO: This could be upper limit of partitions per topic, use that value to validate instead of whathever this thing is in `common` crate.
 pub const PARTITIONS_CAPACITY: usize = 16384;
-type Id = usize;
+pub type SlabId = usize;
+
+struct PartitionOffset {
+    offset: u64,
+}
 
 #[derive(Debug)]
 pub struct Partitions {
@@ -26,108 +34,40 @@ pub struct Partitions {
     message_deduplicator: Slab<Option<MessageDeduplicator>>,
     offset: Slab<Arc<AtomicU64>>,
 
-    consumer_offset: Slab<AHashMap<usize, ConsumerOffset>>,
-    consumer_group_offset: Slab<AHashMap<usize, ConsumerOffset>>,
-}
-
-impl Insert<Id> for Partitions {
-    type Item = Partition;
-
-    fn insert(&mut self, item: Self::Item) -> Id {
-        todo!();
-    }
-}
-
-impl Delete<Id> for Partitions {
-    type Item = Partition;
-
-    fn delete(&mut self, id: Id) -> Self::Item {
-        todo!()
-    }
-}
-
-pub struct Partition {
-    info: partition2::PartitionInfo,
-    stats: Arc<PartitionStats>,
-    message_deduplicator: Option<MessageDeduplicator>,
-    offset: Arc<AtomicU64>,
-}
-
-impl EntityMarker for Partition {}
-
-impl IntoComponents for Partition {
-    type Components = (
-        partition2::PartitionInfo,
-        Arc<PartitionStats>,
-        Option<MessageDeduplicator>,
-        Arc<AtomicU64>,
-    );
-
-    fn into_components(self) -> Self::Components {
-        (
-            self.info,
-            self.stats,
-            self.message_deduplicator,
-            self.offset,
-        )
-    }
-}
-
-pub struct PartitionRef<'a> {
-    info: &'a Slab<partition2::PartitionInfo>,
-    stats: &'a Slab<Arc<PartitionStats>>,
-    message_deduplicator: &'a Slab<Option<MessageDeduplicator>>,
-    offset: &'a Slab<Arc<AtomicU64>>,
+    consumer_offset: Slab<Arc<papaya::HashMap<usize, consumer_offset::ConsumerOffset>>>,
+    consumer_group_offset: Slab<Arc<papaya::HashMap<usize, consumer_offset::ConsumerOffset>>>,
 }
 
 impl<'a> From<&'a Partitions> for PartitionRef<'a> {
     fn from(value: &'a Partitions) -> Self {
-        PartitionRef {
-            info: &value.info,
-            stats: &value.stats,
-            message_deduplicator: &value.message_deduplicator,
-            offset: &value.offset,
-        }
-    }
-}
-
-impl<'a> IntoComponents for PartitionRef<'a> {
-    type Components = (
-        &'a Slab<partition2::PartitionInfo>,
-        &'a Slab<Arc<PartitionStats>>,
-        &'a Slab<Option<MessageDeduplicator>>,
-        &'a Slab<Arc<AtomicU64>>,
-    );
-
-    fn into_components(self) -> Self::Components {
-        (
-            self.info,
-            self.stats,
-            self.message_deduplicator,
-            self.offset,
+        PartitionRef::new(
+            &value.info,
+            &value.stats,
+            &value.message_deduplicator,
+            &value.offset,
+            &value.consumer_offset,
+            &value.consumer_group_offset,
         )
     }
 }
 
-impl<'a> IndexComponents<Id> for PartitionRef<'a> {
-    type Output = (
-        &'a partition2::PartitionInfo,
-        &'a Arc<PartitionStats>,
-        &'a Option<MessageDeduplicator>,
-        &'a Arc<AtomicU64>,
-    );
+impl Insert<SlabId> for Partitions {
+    type Item = Partition;
 
-    fn index(&self, index: Id) -> Self::Output {
-        (
-            &self.info[index],
-            &self.stats[index],
-            &self.message_deduplicator[index],
-            &self.offset[index],
-        )
+    fn insert(&mut self, item: Self::Item) -> SlabId {
+        todo!();
     }
 }
 
-impl EntityComponentSystem<Id, Borrow> for Partitions {
+impl Delete<SlabId> for Partitions {
+    type Item = Partition;
+
+    fn delete(&mut self, id: SlabId) -> Self::Item {
+        todo!()
+    }
+}
+
+impl EntityComponentSystem<SlabId, Borrow> for Partitions {
     type Entity = Partition;
     type EntityRef<'a> = PartitionRef<'a>;
 
@@ -161,6 +101,10 @@ impl Default for Partitions {
 }
 
 impl Partitions {
+    pub fn count(&self) -> usize {
+        self.info.len()
+    }
+
     pub fn with_stats<T>(&self, f: impl FnOnce(&Slab<Arc<PartitionStats>>) -> T) -> T {
         let stats = &self.stats;
         f(stats)

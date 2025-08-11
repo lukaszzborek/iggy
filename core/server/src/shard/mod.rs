@@ -627,10 +627,10 @@ impl IggyShard {
             ShardEvent::DeletedPartitions2 {
                 stream_id,
                 topic_id,
+                partition_count,
                 partition_ids,
             } => {
-                self.delete_partitions2_bypass_auth(stream_id, topic_id, &partition_ids)
-                    .await?;
+                self.delete_partitions2_bypass_auth(stream_id, topic_id, &partition_ids)?;
                 Ok(())
             }
             ShardEvent::DeletedPartitions {

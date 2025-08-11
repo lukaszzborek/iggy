@@ -20,6 +20,8 @@ use std::cell::Ref;
 
 use super::COMPONENT;
 use crate::shard::IggyShard;
+use crate::slab::traits_ext::EntityComponentSystem;
+use crate::slab::traits_ext::IntoComponents;
 use crate::streaming::session::Session;
 use crate::streaming::streams::stream::Stream;
 use crate::streaming::topics::consumer_group::ConsumerGroup;
@@ -151,8 +153,8 @@ impl IggyShard {
             .streams2
             .with_topic_by_id_mut(stream_id, topic_id, |topic| {
                 let partitions = topic.partitions().with(|partitions| {
-                    partitions
-                        .iter()
+                    let (info, _, _, _, _, _) = partitions.into_components();
+                    info.iter()
                         .map(|(_, partition)| partition.id())
                         .collect::<Vec<_>>()
                 });

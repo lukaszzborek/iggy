@@ -16,11 +16,17 @@
  * under the License.
  */
 
+use std::sync::Arc;
+
 use super::COMPONENT;
+use crate::configs::system::SystemConfig;
 use crate::shard::IggyShard;
+use crate::slab::traits_ext::Delete;
+use crate::slab::traits_ext::EntityComponentSystem;
+use crate::slab::traits_ext::Insert;
 use crate::streaming::deduplication::message_deduplicator::MessageDeduplicator;
+use crate::streaming::partitions::partition::Partition;
 use crate::streaming::partitions::partition2;
-use crate::streaming::partitions::partition2::SharedPartition;
 use crate::streaming::partitions::storage2::create_partition_file_hierarchy;
 use crate::streaming::session::Session;
 use crate::streaming::stats::stats::PartitionStats;
@@ -29,50 +35,12 @@ use error_set::ErrContext;
 use iggy_common::Identifier;
 use iggy_common::IggyError;
 use iggy_common::IggyTimestamp;
+use iggy_common::delete_partitions;
 use iggy_common::locking::IggyRwLockFn;
-use std::sync::Arc;
+use serde::de;
 use std::sync::atomic::AtomicU64;
 
 impl IggyShard {
-    fn create_shared_partition(
-        &self,
-        created_at: IggyTimestamp,
-        topic_stats: Arc<TopicStats>,
-    ) -> (partition2::Partition, SharedPartition) {
-        let partition = partition2::Partition::new(created_at, false);
-        let partition_stats = Arc::new(PartitionStats::new(topic_stats));
-
-        let shared_partition = SharedPartition {
-            id: partition.id(),
-            stats: partition_stats,
-            current_offset: Arc::new(AtomicU64::new(0)),
-            consumer_group_offset: Arc::new(()),
-            consumer_offset: Arc::new(()),
-        };
-
-        (partition, shared_partition)
-    }
-
-    fn create_message_deduplicator(&self) -> Option<MessageDeduplicator> {
-        if !self.config.system.message_deduplication.enabled {
-            return None;
-        }
-
-        let max_entries = if self.config.system.message_deduplication.max_entries > 0 {
-            Some(self.config.system.message_deduplication.max_entries)
-        } else {
-            None
-        };
-
-        let expiry = if !self.config.system.message_deduplication.expiry.is_zero() {
-            Some(self.config.system.message_deduplication.expiry)
-        } else {
-            None
-        };
-
-        Some(MessageDeduplicator::new(max_entries, expiry))
-    }
-
     fn validate_partition_permissions(
         &self,
         session: &Session,
@@ -97,47 +65,13 @@ impl IggyShard {
         })
     }
 
-    fn insert_partition_resources(
-        &self,
-        stream_id: &Identifier,
-        topic_id: &Identifier,
-        partition: partition2::Partition,
-        shared_partition: &SharedPartition,
-    ) -> usize {
-        self.streams2
-            .with_topic_by_id_mut(stream_id, topic_id, |topic| {
-                let partition_id = topic
-                    .partitions_mut()
-                    .with_mut(|partitions| partition.insert_into(partitions));
-
-                topic
-                    .partitions_mut()
-                    .with_stats_mut(|stats| stats.insert(shared_partition.stats.clone()));
-
-                let message_deduplicator = self.create_message_deduplicator();
-                topic
-                    .partitions_mut()
-                    .with_message_deduplicators_mut(|deduplicators| {
-                        deduplicators.insert(message_deduplicator);
-                    });
-
-                topic
-                    .partitions_mut()
-                    .with_partition_offsets_mut(|offsets| {
-                        offsets.insert(shared_partition.current_offset.clone());
-                    });
-
-                partition_id
-            })
-    }
-
     pub async fn create_partitions2(
         &self,
         session: &Session,
         stream_id: &Identifier,
         topic_id: &Identifier,
         partitions_count: u32,
-    ) -> Result<(Vec<SharedPartition>, IggyTimestamp), IggyError> {
+    ) -> Result<Vec<partition2::Partition>, IggyError> {
         self.ensure_authenticated(session)?;
         let numeric_stream_id =
             self.streams2
@@ -153,38 +87,18 @@ impl IggyShard {
             "create",
         )?;
 
-        let topic_stats = self.streams2.with_stream_by_id(stream_id, |stream| {
+        let parent_stats = self.streams2.with_stream_by_id(stream_id, |stream| {
             stream
                 .topics()
                 .with_topic_stats_by_id(topic_id, |stats| stats)
         });
-
-        let created_at = IggyTimestamp::now();
-        let shared_partitions = (0..partitions_count)
-            .map(|_| {
-                let partition = partition2::Partition::new(created_at, false);
-                let partition_stats = Arc::new(PartitionStats::new(topic_stats.clone()));
-
-                let mut shared_partition = SharedPartition {
-                    id: partition.id(),
-                    stats: partition_stats,
-                    current_offset: Arc::new(AtomicU64::new(0)),
-                    consumer_group_offset: Arc::new(()),
-                    consumer_offset: Arc::new(()),
-                };
-                let partition_id = self.insert_partition_resources(
-                    stream_id,
-                    topic_id,
-                    partition,
-                    &shared_partition,
-                );
-
-                shared_partition.id = partition_id;
-                shared_partition
-            })
-            .collect::<Vec<SharedPartition>>();
-
-        for partition_id in shared_partitions.iter().map(|p| p.id) {
+        let partitions = self.create_and_insert_partitions_mem(
+            stream_id,
+            topic_id,
+            parent_stats,
+            partitions_count,
+        );
+        for partition_id in partitions.iter().map(|p| p.id()) {
             create_partition_file_hierarchy(
                 self.id,
                 numeric_stream_id as usize,
@@ -194,33 +108,92 @@ impl IggyShard {
             )
             .await?;
         }
-
-        Ok((shared_partitions, created_at))
+        Ok(partitions)
     }
 
-    pub async fn create_partitions2_bypass_auth(
+    fn create_and_insert_partitions_mem(
         &self,
         stream_id: &Identifier,
         topic_id: &Identifier,
-        created_at: IggyTimestamp,
-        shared_partitions: &Vec<SharedPartition>,
-    ) -> Result<(), IggyError> {
-        for shared_partition in shared_partitions {
-            let partition = partition2::Partition::new(created_at, false);
-            let partition_id =
-                self.insert_partition_resources(stream_id, topic_id, partition, shared_partition);
-
-            if partition_id != shared_partition.id {
-                return Err(IggyError::PartitionNotFound(
-                    partition_id as u32,
-                    self.streams2.with_stream_by_id(stream_id, |s| s.id()) as u32,
-                    self.streams2
-                        .with_topic_by_id(stream_id, topic_id, |t| t.id())
-                        as u32,
-                ));
+        parent_stats: Arc<TopicStats>,
+        partitions_count: u32,
+    ) -> Vec<partition2::Partition> {
+        fn create_message_deduplicator(config: &SystemConfig) -> Option<MessageDeduplicator> {
+            if !config.message_deduplication.enabled {
+                return None;
             }
+
+            let max_entries = if config.message_deduplication.max_entries > 0 {
+                Some(config.message_deduplication.max_entries)
+            } else {
+                None
+            };
+
+            let expiry = if !config.message_deduplication.expiry.is_zero() {
+                Some(config.message_deduplication.expiry)
+            } else {
+                None
+            };
+            Some(MessageDeduplicator::new(max_entries, expiry))
         }
 
+        let range = 0..partitions_count as usize;
+        let created_at = IggyTimestamp::now();
+        range
+            .map(|_| {
+                // Areczkuuuu.
+                let stats = Arc::new(PartitionStats::new(parent_stats.clone()));
+                let info = partition2::PartitionInfo::new(created_at, false);
+                let deduplicator = create_message_deduplicator(&self.config.system);
+                let offset = Arc::new(AtomicU64::new(0));
+                let consumer_offset = Arc::new(papaya::HashMap::with_capacity(2137));
+                let consumer_group_offset = Arc::new(papaya::HashMap::with_capacity(2137));
+
+                let mut partition = partition2::Partition::new(
+                    info,
+                    stats,
+                    deduplicator,
+                    offset,
+                    consumer_offset,
+                    consumer_group_offset,
+                );
+                let id = self.insert_partition_mem(
+                    stream_id,
+                    topic_id,
+                    partition.clone(create_message_deduplicator(&self.config.system)),
+                );
+                partition.update_id(id);
+                partition
+            })
+            .collect()
+    }
+
+    fn insert_partition_mem(
+        &self,
+        stream_id: &Identifier,
+        topic_id: &Identifier,
+        partition: partition2::Partition,
+    ) -> usize {
+        self.streams2
+            .with_topic_by_id_mut(stream_id, topic_id, |topic| {
+                topic.partitions_mut().insert(partition)
+            })
+    }
+
+    pub fn create_partitions2_bypass_auth(
+        &self,
+        stream_id: &Identifier,
+        topic_id: &Identifier,
+        partitions: Vec<partition2::Partition>,
+    ) -> Result<(), IggyError> {
+        for partition in partitions {
+            let actual_id = partition.id();
+            let id = self.insert_partition_mem(stream_id, topic_id, partition);
+            assert_eq!(
+                id, actual_id,
+                "create_partitions_bypass_auth: partition mismatch ID, wrong creation order ?!"
+            );
+        }
         Ok(())
     }
 
@@ -306,79 +279,56 @@ impl IggyShard {
             numeric_topic_id,
             "delete",
         )?;
-
         let deleted_partition_ids =
-            self.streams2
-                .with_topic_by_id_mut(stream_id, topic_id, |topic| {
-                    let current_count = topic.partitions().with(|p| p.len()) as u32;
-
-                    if current_count == 0 || partitions_count == 0 {
-                        return Vec::new();
-                    }
-
-                    let partitions_to_delete = partitions_count.min(current_count);
-                    let start_idx = (current_count - partitions_to_delete) as usize;
-                    let mut deleted_ids = Vec::with_capacity(partitions_to_delete as usize);
-
-                    for idx in (start_idx..current_count as usize).rev() {
-                        topic
-                            .partitions_mut()
-                            .with_mut(|partitions| partitions.try_remove(idx));
-
-                        topic
-                            .partitions_mut()
-                            .with_stats_mut(|stats| stats.try_remove(idx));
-
-                        topic
-                            .partitions_mut()
-                            .with_message_deduplicators_mut(|deduplicators| {
-                                deduplicators.try_remove(idx)
-                            });
-
-                        topic
-                            .partitions_mut()
-                            .with_partition_offsets_mut(|offsets| offsets.try_remove(idx));
-
-                        deleted_ids.push(idx as u32);
-                    }
-
-                    deleted_ids
-                });
+            self.delete_partitions_base2(stream_id, topic_id, partitions_count);
 
         Ok(deleted_partition_ids)
     }
 
-    pub async fn delete_partitions2_bypass_auth(
+    fn delete_partitions_base2(
         &self,
         stream_id: &Identifier,
         topic_id: &Identifier,
-        partition_ids: &[u32],
+        partitions_count: u32,
+    ) -> Vec<u32> {
+        let deleted_partition_ids =
+            self.streams2
+                .with_topic_by_id_mut(stream_id, topic_id, |topic| {
+                    let partitions = topic.partitions_mut();
+                    let current_count = partitions.count() as u32;
+                    let partitions_to_delete = partitions_count.min(current_count);
+                    let start_idx = (current_count - partitions_to_delete) as usize;
+                    let mut deleted_ids = Vec::with_capacity(partitions_to_delete as usize);
+                    for idx in (start_idx..current_count as usize) {
+                        let partition = topic.partitions_mut().delete(idx);
+                        assert_eq!(partition.id(), idx);
+                        deleted_ids.push(partition.id() as u32);
+                    }
+                    deleted_ids
+                });
+        deleted_partition_ids
+    }
+
+    pub fn delete_partitions2_bypass_auth(
+        &self,
+        stream_id: &Identifier,
+        topic_id: &Identifier,
+        partitions_count: u32,
+        partition_ids: Vec<u32>,
     ) -> Result<(), IggyError> {
-        self.streams2
-            .with_topic_by_id_mut(stream_id, topic_id, |topic| {
-                for &partition_id in partition_ids {
-                    let idx = partition_id as usize;
+        assert_eq!(partitions_count as usize, partition_ids.len());
 
-                    topic
-                        .partitions_mut()
-                        .with_mut(|partitions| partitions.try_remove(idx));
-
-                    topic
-                        .partitions_mut()
-                        .with_stats_mut(|stats| stats.try_remove(idx));
-
-                    topic
-                        .partitions_mut()
-                        .with_message_deduplicators_mut(|deduplicators| {
-                            deduplicators.try_remove(idx)
-                        });
-
-                    topic
-                        .partitions_mut()
-                        .with_partition_offsets_mut(|offsets| offsets.try_remove(idx));
-                }
-            });
-
+        let deleted_partition_ids =
+            self.delete_partitions_base2(stream_id, topic_id, partitions_count);
+        for (deleted_partition_id, actual_deleted_partition_id) in deleted_partition_ids
+            .into_iter()
+            .zip(partition_ids.into_iter())
+        {
+            assert_eq!(
+                deleted_partition_id, actual_deleted_partition_id,
+                "delete_partitions2_bypass_auth: partition mismatch ID"
+            );
+        }
         Ok(())
     }
 
