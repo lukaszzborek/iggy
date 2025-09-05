@@ -1,10 +1,7 @@
 # C# SDK for [Iggy](https://github.com/apache/iggy)
 
-<div align="center">
 
-[![Nuget (with prereleases)](https://img.shields.io/nuget/vpre/Iggy)](https://www.nuget.org/packages/Iggy)
-
-</div>
+[![Nuget (with prereleases)](https://img.shields.io/nuget/v/Apache.Iggy)](https://www.nuget.org/packages/Apache.Iggy)
 
 ## Getting Started
 

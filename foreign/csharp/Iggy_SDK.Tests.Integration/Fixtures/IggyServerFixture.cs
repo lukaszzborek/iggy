@@ -21,6 +21,7 @@ using Apache.Iggy.Factory;
 using Apache.Iggy.IggyClient;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
+using DotNet.Testcontainers.Images;
 using Microsoft.Extensions.Logging.Abstractions;
 using TUnit.Core.Interfaces;
 
@@ -28,7 +29,16 @@ namespace Apache.Iggy.Tests.Integrations.Fixtures;
 
 public class IggyServerFixture : IAsyncInitializer, IAsyncDisposable
 {
-    private readonly IContainer _httpContainer = new ContainerBuilder().WithImage("apache/iggy:edge")
+    private static readonly IFutureDockerImage IggyImage = new ImageFromDockerfileBuilder()
+        .WithDockerfileDirectory(CommonDirectoryPath.GetGitDirectory(), string.Empty)
+        .WithDockerfile("Dockerfile")
+        .WithName("iggy-test")
+        .WithDeleteIfExists(true)
+        .Build();
+    
+    private readonly IContainer _httpContainer = new ContainerBuilder()
+        //.WithImage(IggyImage)
+        .WithImage("apache/iggy:edge")
         // Container name is just to be used locally for debbuging effects
         //.WithName($"SutIggyContainerHTTP")
         .WithPortBinding(3000, true)
@@ -41,7 +51,9 @@ public class IggyServerFixture : IAsyncInitializer, IAsyncDisposable
         .WithCleanUp(true)
         .Build();
 
-    private readonly IContainer _tcpContainer = new ContainerBuilder().WithImage("apache/iggy:edge")
+    private readonly IContainer _tcpContainer = new ContainerBuilder()
+        //.WithImage(IggyImage)
+        .WithImage("apache/iggy:edge")
         // Container name is just to be used locally for debbuging effects
         //.WithName($"SutIggyContainerTCP")
         .WithPortBinding(3000, true)
@@ -77,6 +89,8 @@ public class IggyServerFixture : IAsyncInitializer, IAsyncDisposable
 
     public virtual async Task InitializeAsync()
     {
+        //await IggyImage.CreateAsync();
+        
         await Task.WhenAll(_tcpContainer.StartAsync(), _httpContainer.StartAsync());
 
         await CreateTcpClient();
@@ -119,13 +133,19 @@ public class IggyServerFixture : IAsyncInitializer, IAsyncDisposable
             ? $"127.0.0.1:{port}"
             : $"http://127.0.0.1:{port}";
 
-        return MessageStreamFactory.CreateMessageStream(options =>
+        return IggyClientFactory.CreateClient(new IggyClientConfigurator()
         {
-            options.BaseAdress = address;
-            options.Protocol = protocol;
-            options.MessageBatchingSettings = BatchingSettings;
-            options.MessagePollingSettings = PollingSettings;
-        }, NullLoggerFactory.Instance);
+            BaseAdress = address,
+            Protocol = protocol
+        });
+
+        // return MessageStreamFactory.CreateMessageStream(new MessageStreamConfigurator
+        // {
+        //     BaseAdress = address,
+        //     Protocol = protocol,
+        //     MessageBatchingSettings = BatchingSettings,
+        //     MessagePollingSettings = PollingSettings
+        // });
     }
 
     public static IEnumerable<Func<Protocol>> ProtocolData()

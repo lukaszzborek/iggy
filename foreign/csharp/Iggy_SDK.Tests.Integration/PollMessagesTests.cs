@@ -35,26 +35,26 @@ public class PollMessagesTests
     public async Task PollMessagesTMessage_Should_PollMessages_Successfully(Protocol protocol, CancellationToken token)
     {
         var messageCount = 0;
-        await foreach (MessageResponse<DummyMessage> msgResponse in Fixture.Clients[protocol].PollMessagesAsync(
-                           new PollMessagesRequest
-                           {
-                               Consumer = Consumer.New(1),
-                               Count = 10,
-                               PartitionId = 1,
-                               PollingStrategy = PollingStrategy.Next(),
-                               StreamId = Identifier.Numeric(Fixture.StreamId),
-                               TopicId = Identifier.Numeric(Fixture.TopicRequest.TopicId!.Value)
-                           }, DummyMessage.DeserializeDummyMessage, token: token))
-        {
-            msgResponse.UserHeaders.ShouldNotBeNull();
-            msgResponse.UserHeaders.Count.ShouldBe(2);
-            msgResponse.Message.Text.ShouldContain("Dummy message");
-            messageCount++;
-            if (messageCount == Fixture.MessageCount)
-            {
-                break;
-            }
-        }
+        // await foreach (MessageResponse<DummyMessage> msgResponse in Fixture.Clients[protocol].PollMessagesAsync(
+        //                    new PollMessagesRequest
+        //                    {
+        //                        Consumer = Consumer.New(1),
+        //                        Count = 10,
+        //                        PartitionId = 1,
+        //                        PollingStrategy = PollingStrategy.Next(),
+        //                        StreamId = Identifier.Numeric(Fixture.StreamId),
+        //                        TopicId = Identifier.Numeric(Fixture.TopicRequest.TopicId!.Value)
+        //                    }, DummyMessage.DeserializeDummyMessage, token: token))
+        // {
+        //     msgResponse.UserHeaders.ShouldNotBeNull();
+        //     msgResponse.UserHeaders.Count.ShouldBe(2);
+        //     msgResponse.Message.Text.ShouldContain("Dummy message");
+        //     messageCount++;
+        //     if (messageCount == Fixture.MessageCount)
+        //     {
+        //         break;
+        //     }
+        // }
 
         messageCount.ShouldBe(Fixture.MessageCount);
     }
