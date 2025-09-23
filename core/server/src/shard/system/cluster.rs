@@ -16,25 +16,33 @@
  * under the License.
  */
 
-/*
+use crate::shard::IggyShard;
 use crate::streaming::session::Session;
-use crate::streaming::systems::system::System;
-use iggy_common::IggyError;
-use iggy_common::metadata::ClusterMetadata;
-use iggy_common::node::ClusterNode;
-use iggy_common::role::ClusterNodeRole;
-use iggy_common::status::ClusterNodeStatus;
+use iggy_common::{ClusterMetadata, ClusterNode, ClusterNodeRole, ClusterNodeStatus, IggyError, TransportProtocol};
+use std::str::FromStr;
 use tracing::trace;
 
-impl System {
+impl IggyShard {
     pub fn get_cluster_metadata(&self, session: &Session) -> Result<ClusterMetadata, IggyError> {
         trace!("Getting cluster metadata for session: {session}");
+
+        if !self.config.cluster.enabled {
+            return Err(IggyError::FeatureUnavailable);
+        }
 
         // TODO(hubcio): Clustering is not yet implemented
         // The leader/follower as well as node status are currently placeholder implementations.
 
+        let name = self.config.cluster.name.clone();
+        let id = self.config.cluster.id;
+
+        // Parse transport string to TransportProtocol enum
+        let transport = TransportProtocol::from_str(&self.config.cluster.transport)
+            .map_err(|_| IggyError::InvalidConfiguration)?;
+
         let nodes: Vec<ClusterNode> = self
-            .cluster_config
+            .config
+            .cluster
             .nodes
             .iter()
             .map(|node_config| {
@@ -44,11 +52,7 @@ impl System {
                     ClusterNodeRole::Follower
                 };
 
-                let status = if self.cluster_config.enabled {
-                    ClusterNodeStatus::Healthy
-                } else {
-                    ClusterNodeStatus::Stopping
-                };
+                let status = ClusterNodeStatus::Healthy;
 
                 ClusterNode {
                     id: node_config.id,
@@ -61,11 +65,10 @@ impl System {
             .collect();
 
         Ok(ClusterMetadata {
-            name: self.cluster_config.name.clone(),
-            id: self.cluster_config.id,
-            transport: self.cluster_config.transport.clone(),
+            name,
+            id,
+            transport,
             nodes,
         })
     }
 }
-    */
