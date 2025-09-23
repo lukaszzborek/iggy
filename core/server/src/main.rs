@@ -351,26 +351,25 @@ async fn main() -> Result<(), ServerError> {
         handles.push(handle);
     }
 
-    let shutdown_handles_for_signal = shutdown_handles.clone();
-    /*
-        ::set_handler(move || {
-            info!("Received shutdown signal (SIGTERM/SIGINT), initiating graceful shutdown...");
-
-            for (shard_id, stop_sender) in &shutdown_handles_for_signal {
-                info!("Sending shutdown signal to shard {}", shard_id);
-                if let Err(e) = stop_sender.send_blocking(()) {
-                    error!(
-                        "Failed to send shutdown signal to shard {}: {}",
-                        shard_id, e
-                    );
-                }
+    // Set up signal handler to directly trigger shard shutdowns
+    ctrlc::set_handler(move || {
+        info!("Received shutdown signal (SIGTERM/SIGINT), initiating graceful shutdown...");
+        for (shard_id, stop_sender) in &shutdown_handles {
+            info!("Sending shutdown signal to shard {}", shard_id);
+            if let Err(e) = stop_sender.try_send(()) {
+                error!(
+                    "Failed to send shutdown signal to shard {}: {}",
+                    shard_id, e
+                );
             }
-        })
-        .expect("Error setting Ctrl-C handler");
-    */
+        }
+    })
+    .expect("Error setting Ctrl-C handler");
 
     info!("Iggy server is running. Press Ctrl+C or send SIGTERM to shutdown.");
-    for (idx, handle) in handles.into_iter().enumerate() {
+
+    // Wait for all shard threads to complete
+    for handle in handles {
         handle.join().expect("Failed to join shard thread");
     }
 

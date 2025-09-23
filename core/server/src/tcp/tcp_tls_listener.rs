@@ -20,7 +20,6 @@ use crate::binary::sender::SenderKind;
 use crate::configs::tcp::TcpSocketConfig;
 use crate::shard::IggyShard;
 use crate::shard::transmission::event::ShardEvent;
-use crate::tcp::connection_handler::{handle_connection, handle_error};
 use crate::{shard_error, shard_info, shard_warn};
 use compio::net::{TcpListener, TcpOpts};
 use compio_tls::TlsAcceptor;
@@ -219,44 +218,41 @@ async fn accept_loop(
 
                         // Perform TLS handshake in a separate task to avoid blocking the accept loop
                         let task_shard = shard_clone.clone();
-                        task_shard.task_registry.spawn_tracked(async move {
+                        compio::runtime::spawn(async move {
                             match acceptor.accept(stream).await {
                                 Ok(tls_stream) => {
                                     // TLS handshake successful, now create session
-                                    shard_info!(shard_clone.id, "TLS handshake successful, adding TCP client: {}", address);
+                                    shard_info!(task_shard.id, "TLS handshake successful, adding TCP client: {}", address);
                                     let transport = TransportProtocol::Tcp;
-                                    let session = shard_clone.add_client(&address, transport);
-                                    shard_info!(shard_clone.id, "Added {} client with session: {} for IP address: {}", transport, session, address);
+                                    let session = task_shard.add_client(&address, transport);
+                                    shard_info!(task_shard.id, "Added {} client with session: {} for IP address: {}", transport, session, address);
                                     //TODO: Those can be shared with other shards.
-                                    shard_clone.add_active_session(session.clone());
+                                    task_shard.add_active_session(session.clone());
                                     // Broadcast session to all shards.
                                     let event = ShardEvent::NewSession { address, transport };
                                     // TODO: Fixme look inside of broadcast_event_to_all_shards method.
-                                    let _responses = shard_clone.broadcast_event_to_all_shards(event.into()).await;
+                                    let _responses = task_shard.broadcast_event_to_all_shards(event.into()).await;
 
                                     let client_id = session.client_id;
-                                    shard_info!(shard_clone.id, "Created new session: {}", session);
+                                    shard_info!(task_shard.id, "Created new session: {}", session);
 
-                                    let conn_stop_receiver = shard_clone.task_registry.add_connection(client_id);
-                                    let shard_for_conn = shard_clone.clone();
-                                    let mut sender = SenderKind::get_tcp_tls_sender(tls_stream);
-                                    if let Err(error) = handle_connection(&session, &mut sender, &shard_for_conn, conn_stop_receiver).await {
-                                        handle_error(error);
-                                    }
-                                    shard_for_conn.task_registry.remove_connection(&client_id);
+                                    let sender = SenderKind::get_tcp_tls_sender(tls_stream);
 
-                                    if let Err(error) = sender.shutdown().await {
-                                        shard_error!(shard.id, "Failed to shutdown TCP TLS stream for client: {}, address: {}. {}", client_id, address, error);
-                                    } else {
-                                        shard_info!(shard.id, "Successfully closed TCP TLS stream for client: {}, address: {}.", client_id, address);
-                                    }
+                                    // TODO: Update to use new TaskManager system
+                                    // use crate::shard::task::connection::tcp_connection_task;
+                                    // let task = tcp_connection_task(session, sender, task_shard.clone());
+                                    // task_shard.task_registry.spawn_connection(
+                                    //     client_id,
+                                    //     transport,
+                                    //     task,
+                                    // );
                                 }
                                 Err(e) => {
-                                    shard_error!(shard_clone.id, "Failed to accept TLS connection from '{}': {}", address, e);
+                                    shard_error!(task_shard.id, "Failed to accept TLS connection from '{}': {}", address, e);
                                     // No session was created, so no cleanup needed
                                 }
                             }
-                        });
+                        }).detach();
                     }
                     Err(error) => shard_error!(shard.id, "Unable to accept TCP TLS socket. {}", error),
                 }

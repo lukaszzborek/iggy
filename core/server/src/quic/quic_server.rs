@@ -36,9 +36,8 @@ use crate::quic::{COMPONENT, listener, quic_socket};
 use crate::server_error::QuicError;
 use crate::shard::IggyShard;
 
-/// Starts the QUIC server.
-/// Returns the address the server is listening on.
-pub async fn span_quic_server(shard: Rc<IggyShard>) -> Result<(), iggy_common::IggyError> {
+/// Creates a QUIC endpoint for the shard
+pub async fn create_endpoint(shard: &Rc<IggyShard>) -> Result<Endpoint, iggy_common::IggyError> {
     // Ensure rustls crypto provider is installed (thread-safe, idempotent)
     if rustls::crypto::CryptoProvider::get_default().is_none() {
         if let Err(e) = default_provider().install_default() {
@@ -92,9 +91,17 @@ pub async fn span_quic_server(shard: Rc<IggyShard>) -> Result<(), iggy_common::I
             iggy_common::IggyError::QuicError
         })?;
 
+    Ok(endpoint)
+}
+
+/// Starts the QUIC server.
+/// Returns the address the server is listening on.
+pub async fn span_quic_server(shard: Rc<IggyShard>) -> Result<(), iggy_common::IggyError> {
+    let endpoint = create_endpoint(&shard).await?;
+
     let actual_addr = endpoint.local_addr().map_err(|e| {
         error!("Failed to get local address: {e}");
-        iggy_common::IggyError::CannotBindToSocket(addr.to_string())
+        iggy_common::IggyError::CannotBindToSocket("QUIC".to_string())
     })?;
 
     info!(

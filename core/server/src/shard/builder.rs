@@ -30,7 +30,7 @@ use tracing::info;
 use crate::{
     configs::server::ServerConfig,
     io::storage::Storage,
-    shard::{Shard, ShardInfo, namespace::IggyNamespace, task_registry::TaskRegistry},
+    shard::{Shard, ShardInfo, namespace::IggyNamespace},
     slab::streams::Streams,
     state::{StateKind, system::SystemState},
     streaming::{
@@ -160,7 +160,6 @@ impl IggyShardBuilder {
             stop_sender: stop_sender,
             messages_receiver: Cell::new(Some(frame_receiver)),
             metrics: metrics,
-            task_registry: TaskRegistry::new(),
             is_shutting_down: AtomicBool::new(false),
             tcp_bound_address: Cell::new(None),
             quic_bound_address: Cell::new(None),

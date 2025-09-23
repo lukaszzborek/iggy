@@ -476,6 +476,9 @@ pub enum IggyError {
 
     #[error("Cannot bind to socket with addr: {0}")]
     CannotBindToSocket(String) = 12000,
+
+    #[error("Task shutdown failed")]
+    TaskShutdownError = 13000,
 }
 
 impl IggyError {

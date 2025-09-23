@@ -20,7 +20,6 @@ use crate::binary::sender::SenderKind;
 use crate::configs::tcp::TcpSocketConfig;
 use crate::shard::IggyShard;
 use crate::shard::transmission::event::ShardEvent;
-use crate::tcp::connection_handler::{handle_connection, handle_error};
 use crate::{shard_error, shard_info};
 use compio::net::{TcpListener, TcpOpts};
 use error_set::ErrContext;
@@ -178,23 +177,16 @@ async fn accept_loop(
 
                         let client_id = session.client_id;
                         shard_info!(shard.id, "Created new session: {}", session);
-                        let mut sender = SenderKind::get_tcp_sender(stream);
+                        let sender = SenderKind::get_tcp_sender(stream);
 
-                        let conn_stop_receiver = shard_clone.task_registry.add_connection(client_id);
-
-                        let shard_for_conn = shard_clone.clone();
-                        shard_clone.task_registry.spawn_tracked(async move {
-                            if let Err(error) = handle_connection(&session, &mut sender, &shard_for_conn, conn_stop_receiver).await {
-                                handle_error(error);
-                            }
-                            shard_for_conn.task_registry.remove_connection(&client_id);
-
-                            if let Err(error) = sender.shutdown().await {
-                                shard_error!(shard.id, "Failed to shutdown TCP stream for client: {}, address: {}. {}", client_id, address, error);
-                            } else {
-                                shard_info!(shard.id, "Successfully closed TCP stream for client: {}, address: {}.", client_id, address);
-                            }
-                        });
+                        // TODO: Update to use new TaskManager system
+                        // use crate::shard::task::connection::tcp_connection_task;
+                        // let task = tcp_connection_task(session, sender, shard_clone.clone());
+                        // shard_clone.task_registry.spawn_connection(
+                        //     client_id,
+                        //     transport,
+                        //     task,
+                        // );
                     }
                     Err(error) => shard_error!(shard.id, "Unable to accept TCP socket. {}", error),
                 }
