@@ -19,9 +19,10 @@
 use crate::binary::sender::SenderKind;
 use crate::configs::tcp::TcpSocketConfig;
 use crate::shard::IggyShard;
+use crate::shard::task_registry::task_registry;
 use crate::shard::transmission::event::ShardEvent;
 use crate::tcp::connection_handler::{handle_connection, handle_error};
-use crate::{shard_error, shard_info};
+use crate::{shard_debug, shard_error, shard_info};
 use compio::net::{TcpListener, TcpOpts};
 use error_set::ErrContext;
 use futures::FutureExt;
@@ -140,21 +141,14 @@ async fn accept_loop(
     listener: TcpListener,
     shard: Rc<IggyShard>,
 ) -> Result<(), IggyError> {
+    let shutdown = crate::shard::task_registry::task_registry().shutdown_token();
+
     loop {
         let shard = shard.clone();
-        let shutdown_check = async {
-            loop {
-                if shard.is_shutting_down() {
-                    return;
-                }
-                compio::time::sleep(Duration::from_millis(100)).await;
-            }
-        };
-
         let accept_future = listener.accept();
         futures::select! {
-            _ = shutdown_check.fuse() => {
-                shard_info!(shard.id, "{} detected shutdown flag, no longer accepting connections", server_name);
+            _ = shutdown.wait().fuse() => {
+                shard_debug!(shard.id, "{} received shutdown signal, no longer accepting connections", server_name);
                 break;
             }
             result = accept_future.fuse() => {
@@ -180,14 +174,14 @@ async fn accept_loop(
                         shard_info!(shard.id, "Created new session: {}", session);
                         let mut sender = SenderKind::get_tcp_sender(stream);
 
-                        let conn_stop_receiver = shard_clone.task_registry.add_connection(client_id);
+                        let conn_stop_receiver = task_registry().add_connection(client_id);
 
                         let shard_for_conn = shard_clone.clone();
-                        shard_clone.task_registry.spawn_tracked(async move {
+                        task_registry().spawn_connection(async move {
                             if let Err(error) = handle_connection(&session, &mut sender, &shard_for_conn, conn_stop_receiver).await {
                                 handle_error(error);
                             }
-                            shard_for_conn.task_registry.remove_connection(&client_id);
+                            task_registry().remove_connection(&client_id);
 
                             if let Err(error) = sender.shutdown().await {
                                 shard_error!(shard.id, "Failed to shutdown TCP stream for client: {}, address: {}. {}", client_id, address, error);

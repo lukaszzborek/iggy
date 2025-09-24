@@ -38,7 +38,7 @@ use crate::shard::IggyShard;
 
 /// Starts the QUIC server.
 /// Returns the address the server is listening on.
-pub async fn span_quic_server(shard: Rc<IggyShard>) -> Result<(), iggy_common::IggyError> {
+pub async fn spawn_quic_server(shard: Rc<IggyShard>) -> Result<(), iggy_common::IggyError> {
     // Ensure rustls crypto provider is installed (thread-safe, idempotent)
     if rustls::crypto::CryptoProvider::get_default().is_none() {
         if let Err(e) = default_provider().install_default() {

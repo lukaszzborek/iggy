@@ -19,15 +19,15 @@
 use crate::configs::http::{HttpConfig, HttpCorsConfig};
 use crate::http::diagnostics::request_diagnostics;
 use crate::http::http_shard_wrapper::HttpSafeShard;
-use crate::http::jwt::cleaner::start_expired_tokens_cleaner;
 use crate::http::jwt::jwt_manager::JwtManager;
 use crate::http::jwt::middleware::jwt_auth;
 use crate::http::metrics::metrics;
 use crate::http::shared::AppState;
 use crate::http::*;
 use crate::shard::IggyShard;
+use crate::shard::task_registry::{TaskScope, task_registry};
+use crate::shard::tasks::periodic::ClearJwtTokens;
 use crate::streaming::persistence::persister::PersisterKind;
-// use crate::streaming::systems::system::SharedSystem;
 use axum::extract::DefaultBodyLimit;
 use axum::extract::connect_info::Connected;
 use axum::http::Method;
@@ -41,6 +41,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tracing::{error, info};
+
+const JWT_TOKENS_CLEANER_PERIOD: std::time::Duration = std::time::Duration::from_secs(300);
 
 #[derive(Debug, Clone, Copy)]
 pub struct CompioSocketAddr(pub SocketAddr);
@@ -66,7 +68,11 @@ impl<'a> Connected<cyper_axum::IncomingStream<'a, TcpListener>> for CompioSocket
 
 /// Starts the HTTP API server.
 /// Returns the address the server is listening on.
-pub async fn start(config: HttpConfig, persister: Arc<PersisterKind>, shard: Rc<IggyShard>) -> Result<(), IggyError> {
+pub async fn start_http_server(
+    config: HttpConfig,
+    persister: Arc<PersisterKind>,
+    shard: Rc<IggyShard>,
+) -> Result<(), IggyError> {
     if shard.id != 0 {
         info!(
             "HTTP server disabled for shard {} (only runs on shard 0)",
@@ -81,7 +87,7 @@ pub async fn start(config: HttpConfig, persister: Arc<PersisterKind>, shard: Rc<
         "HTTP API"
     };
 
-    let app_state = build_app_state(&config, persister, shard).await;
+    let app_state = build_app_state(&config, persister, shard.clone()).await;
     let mut app = Router::new()
         .merge(system::router(app_state.clone(), &config.metrics))
         .merge(personal_access_tokens::router(app_state.clone()))
@@ -105,7 +111,16 @@ pub async fn start(config: HttpConfig, persister: Arc<PersisterKind>, shard: Rc<
         app = app.layer(middleware::from_fn_with_state(app_state.clone(), metrics));
     }
 
-    start_expired_tokens_cleaner(app_state.clone());
+    {
+        task_registry().spawn_periodic(
+            shard.clone(),
+            Box::new(ClearJwtTokens::new(
+                app_state.clone(),
+                JWT_TOKENS_CLEANER_PERIOD,
+            )),
+        );
+    }
+
     app = app.layer(middleware::from_fn(request_diagnostics));
 
     if !config.tls.enabled {
@@ -116,6 +131,7 @@ pub async fn start(config: HttpConfig, persister: Arc<PersisterKind>, shard: Rc<
             .local_addr()
             .expect("Failed to get local address for HTTP server");
         info!("Started {api_name} on: {address}");
+        // TODO(hubcio): investigate if we can use TaskRegistry::spawn_connection here
         compio::runtime::spawn(async move {
             if let Err(error) = cyper_axum::serve(
                 listener,
@@ -158,7 +174,11 @@ pub async fn start(config: HttpConfig, persister: Arc<PersisterKind>, shard: Rc<
     }
 }
 
-async fn build_app_state(config: &HttpConfig, persister: Arc<PersisterKind>,  shard: Rc<IggyShard>) -> Arc<AppState> {
+async fn build_app_state(
+    config: &HttpConfig,
+    persister: Arc<PersisterKind>,
+    shard: Rc<IggyShard>,
+) -> Arc<AppState> {
     let tokens_path;
     {
         tokens_path = shard.config.system.get_state_tokens_path();

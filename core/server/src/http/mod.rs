@@ -23,7 +23,7 @@ mod http_shard_wrapper;
 pub mod jwt;
 mod mapper;
 pub mod metrics;
-mod shared;
+pub mod shared;
 
 pub mod consumer_groups;
 pub mod consumer_offsets;

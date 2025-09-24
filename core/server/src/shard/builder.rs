@@ -16,21 +16,10 @@
  * under the License.
  */
 
-use std::{
-    cell::{Cell, RefCell},
-    rc::Rc,
-    sync::{Arc, atomic::AtomicBool},
-};
-
-use ahash::HashMap;
-use dashmap::DashMap;
-use iggy_common::{Aes256GcmEncryptor, EncryptorKind, UserId};
-use tracing::info;
-
 use crate::{
     configs::server::ServerConfig,
     io::storage::Storage,
-    shard::{Shard, ShardInfo, namespace::IggyNamespace, task_registry::TaskRegistry},
+    shard::{Shard, ShardInfo, namespace::IggyNamespace},
     slab::streams::Streams,
     state::{StateKind, system::SystemState},
     streaming::{
@@ -39,6 +28,15 @@ use crate::{
     },
     versioning::SemanticVersion,
 };
+use ahash::HashMap;
+use dashmap::DashMap;
+use iggy_common::{Aes256GcmEncryptor, EncryptorKind, UserId};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+    sync::{Arc, atomic::AtomicBool},
+};
+use tracing::info;
 
 use super::{IggyShard, transmission::connector::ShardConnector, transmission::frame::ShardFrame};
 
@@ -151,7 +149,6 @@ impl IggyShardBuilder {
             stop_sender: stop_sender,
             messages_receiver: Cell::new(Some(frame_receiver)),
             metrics: metrics,
-            task_registry: TaskRegistry::new(),
             is_shutting_down: AtomicBool::new(false),
             tcp_bound_address: Cell::new(None),
             quic_bound_address: Cell::new(None),

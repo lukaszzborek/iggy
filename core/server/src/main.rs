@@ -20,7 +20,7 @@ use std::collections::HashSet;
 use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use anyhow::Result;
 use clap::Parser;
@@ -42,10 +42,7 @@ use server::configs::config_provider::{self};
 use server::configs::server::ServerConfig;
 use server::configs::sharding::CpuAllocation;
 use server::io::fs_utils;
-#[cfg(not(feature = "tokio-console"))]
 use server::log::logger::Logging;
-#[cfg(feature = "tokio-console")]
-use server::log::tokio_console::Logging;
 use server::server_error::{ConfigError, ServerError};
 use server::shard::namespace::IggyNamespace;
 use server::shard::system::info::SystemInfo;
@@ -69,6 +66,8 @@ use tracing::{error, info, instrument, warn};
 
 const COMPONENT: &str = "MAIN";
 const SHARDS_TABLE_CAPACITY: usize = 16384;
+
+static SHUTDOWN_START_TIME: AtomicU64 = AtomicU64::new(0);
 
 #[instrument(skip_all, name = "trace_start_server")]
 #[compio::main]
@@ -354,29 +353,51 @@ async fn main() -> Result<(), ServerError> {
     }
 
     let shutdown_handles_for_signal = shutdown_handles.clone();
-    /*
-        ::set_handler(move || {
-            info!("Received shutdown signal (SIGTERM/SIGINT), initiating graceful shutdown...");
 
-            for (shard_id, stop_sender) in &shutdown_handles_for_signal {
-                info!("Sending shutdown signal to shard {}", shard_id);
-                if let Err(e) = stop_sender.send_blocking(()) {
-                    error!(
-                        "Failed to send shutdown signal to shard {}: {}",
-                        shard_id, e
-                    );
-                }
+    ctrlc::set_handler(move || {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+        SHUTDOWN_START_TIME.store(now, Ordering::SeqCst);
+
+        info!("Received shutdown signal (SIGTERM/SIGINT), initiating graceful shutdown...");
+
+        for (shard_id, stop_sender) in &shutdown_handles_for_signal {
+            if let Err(e) = stop_sender.try_send(()) {
+                error!(
+                    "Failed to send shutdown signal to shard {}: {}",
+                    shard_id, e
+                );
             }
-        })
-        .expect("Error setting Ctrl-C handler");
-    */
+        }
+    })
+    .expect("Error setting Ctrl-C handler");
 
     info!("Iggy server is running. Press Ctrl+C or send SIGTERM to shutdown.");
+
     for (idx, handle) in handles.into_iter().enumerate() {
         handle.join().expect("Failed to join shard thread");
     }
 
-    info!("All shards have shut down. Iggy server is exiting.");
+    let shutdown_duration_msg = {
+        let start_time = SHUTDOWN_START_TIME.load(Ordering::SeqCst);
+        if start_time > 0 {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as u64;
+            let elapsed = now - start_time;
+            format!(" (shutdown took {} ms)", elapsed)
+        } else {
+            String::new()
+        }
+    };
+
+    info!(
+        "All shards have shut down. Iggy server is exiting.{}",
+        shutdown_duration_msg
+    );
 
     /*
     #[cfg(feature = "disable-mimalloc")]

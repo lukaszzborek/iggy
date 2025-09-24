@@ -1,3 +1,5 @@
+use crate::shard::task_registry::tls::task_registry;
+use crate::streaming::partitions as streaming_partitions;
 use crate::{
     binary::handlers::messages::poll_messages_handler::IggyPollMetadata,
     configs::{cache_indexes::CacheIndexesConfig, system::SystemConfig},
@@ -43,10 +45,7 @@ use std::{
     cell::RefCell,
     sync::{Arc, atomic::Ordering},
 };
-use tracing::trace;
-
-// Import streaming partitions helpers for the persist_messages method
-use crate::streaming::partitions as streaming_partitions;
+use tracing::{error, trace};
 
 const CAPACITY: usize = 1024;
 pub type ContainerId = usize;
@@ -241,7 +240,7 @@ impl MainOps for Streams {
             );
 
             let _batch_count = self
-                .persist_messages(shard_id, stream_id, topic_id, partition_id, reason, config)
+                .persist_messages(shard_id, stream_id, topic_id, partition_id, &reason, config)
                 .await?;
 
             if is_full {
@@ -735,15 +734,29 @@ impl Streams {
                 (msg.unwrap(), index.unwrap())
             });
 
-        compio::runtime::spawn(async move {
-            let _ = log_writer.fsync().await;
-        })
-        .detach();
-        compio::runtime::spawn(async move {
-            let _ = index_writer.fsync().await;
-            drop(index_writer)
-        })
-        .detach();
+        task_registry().spawn_oneshot_future("fsync:segment-close-log", true, async move {
+            match log_writer.fsync().await {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    error!("Failed to fsync log writer on segment close: {}", e);
+                    Err(e)
+                }
+            }
+        });
+
+        task_registry().spawn_oneshot_future("fsync:segment-close-index", true, async move {
+            match index_writer.fsync().await {
+                Ok(_) => {
+                    drop(index_writer);
+                    Ok(())
+                }
+                Err(e) => {
+                    error!("Failed to fsync index writer on segment close: {}", e);
+                    drop(index_writer);
+                    Err(e)
+                }
+            }
+        });
 
         let (start_offset, size, end_offset) =
             self.with_partition_by_id(stream_id, topic_id, partition_id, |(.., log)| {
@@ -796,7 +809,7 @@ impl Streams {
         stream_id: &Identifier,
         topic_id: &Identifier,
         partition_id: usize,
-        reason: String,
+        reason: &str,
         config: &SystemConfig,
     ) -> Result<u32, IggyError> {
         let is_empty = self.with_partition_by_id(stream_id, topic_id, partition_id, |(.., log)| {
@@ -824,7 +837,7 @@ impl Streams {
                     topic_id,
                     partition_id,
                     batches,
-                    reason,
+                    reason.to_string(),
                 ),
             )
             .await?;
