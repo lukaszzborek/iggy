@@ -19,7 +19,7 @@
 use crate::binary::sender::SenderKind;
 use crate::configs::tcp::TcpSocketConfig;
 use crate::shard::IggyShard;
-use crate::shard::task_registry::task_registry;
+use crate::shard::task_registry::{ShutdownToken, task_registry};
 use crate::shard::transmission::event::ShardEvent;
 use crate::tcp::connection_handler::{handle_connection, handle_error};
 use crate::{shard_debug, shard_error, shard_info};
@@ -69,6 +69,7 @@ pub async fn start(
     mut addr: SocketAddr,
     config: &TcpSocketConfig,
     shard: Rc<IggyShard>,
+    shutdown: ShutdownToken,
 ) -> Result<(), IggyError> {
     //TODO: Fix me, this needs to take into account that first shard id potentially can be greater than 0.
     if shard.id != 0 && addr.port() == 0 {
@@ -100,7 +101,6 @@ pub async fn start(
         actual_addr
     );
 
-    //TODO: Fix me, this needs to take into account that first shard id potentially can be greater than 0.
     if shard.id == 0 {
         if addr.port() == 0 {
             let event = ShardEvent::TcpBound {
@@ -133,16 +133,15 @@ pub async fn start(
         }
     }
 
-    accept_loop(server_name, listener, shard).await
+    accept_loop(server_name, listener, shard, shutdown).await
 }
 
 async fn accept_loop(
     server_name: &'static str,
     listener: TcpListener,
     shard: Rc<IggyShard>,
+    shutdown: ShutdownToken,
 ) -> Result<(), IggyError> {
-    let shutdown = crate::shard::task_registry::task_registry().shutdown_token();
-
     loop {
         let shard = shard.clone();
         let accept_future = listener.accept();

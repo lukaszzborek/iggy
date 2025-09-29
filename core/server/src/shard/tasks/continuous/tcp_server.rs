@@ -55,8 +55,9 @@ impl TaskMeta for TcpServer {
 }
 
 impl ContinuousTask for TcpServer {
-    fn run(self: Box<Self>, _ctx: TaskCtx) -> TaskFuture {
+    fn run(self: Box<Self>, ctx: TaskCtx) -> TaskFuture {
         let shard = self.shard.clone();
-        Box::pin(async move { spawn_tcp_server(shard).await })
+        let shutdown = ctx.shutdown;
+        Box::pin(async move { spawn_tcp_server(shard, shutdown).await })
     }
 }

@@ -20,7 +20,7 @@ use crate::binary::command::{ServerCommand, ServerCommandHandler};
 use crate::binary::sender::SenderKind;
 use crate::server_error::ConnectionError;
 use crate::shard::IggyShard;
-use crate::shard::task_registry::task_registry;
+use crate::shard::task_registry::{ShutdownToken, task_registry};
 use crate::shard::transmission::event::ShardEvent;
 use crate::streaming::session::Session;
 use crate::{shard_debug, shard_info};
@@ -34,9 +34,11 @@ use tracing::{error, info, trace};
 
 const INITIAL_BYTES_LENGTH: usize = 4;
 
-pub async fn start(endpoint: Endpoint, shard: Rc<IggyShard>) -> Result<(), IggyError> {
-    let shutdown = task_registry().shutdown_token();
-
+pub async fn start(
+    endpoint: Endpoint,
+    shard: Rc<IggyShard>,
+    shutdown: ShutdownToken,
+) -> Result<(), IggyError> {
     loop {
         let accept_future = endpoint.wait_incoming();
 
@@ -58,7 +60,7 @@ pub async fn start(endpoint: Endpoint, shard: Rc<IggyShard>) -> Result<(), IggyE
                         trace!("Incoming connection from client: {}", remote_addr);
                         let shard_for_conn = shard.clone();
 
-                        compio::runtime::spawn(async move {
+                        task_registry().spawn_connection(async move {
                             trace!("Accepting connection from {}", remote_addr);
                             match incoming_conn.await {
                                 Ok(connection) => {
@@ -74,7 +76,7 @@ pub async fn start(endpoint: Endpoint, shard: Rc<IggyShard>) -> Result<(), IggyE
                                     );
                                 }
                             }
-                        }).detach();
+                        });
                     }
                     None => {
                         info!("QUIC endpoint closed for shard {}", shard.id);
@@ -112,7 +114,7 @@ async fn handle_connection(
     };
 
     // TODO(hubcio): unused?
-    let _responses = shard.broadcast_event_to_all_shards(event.into()).await;
+    let _responses = shard.broadcast_event_to_all_shards(event).await;
 
     let conn_stop_receiver = task_registry().add_connection(client_id);
 

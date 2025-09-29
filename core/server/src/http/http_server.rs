@@ -111,15 +111,13 @@ pub async fn start_http_server(
         app = app.layer(middleware::from_fn_with_state(app_state.clone(), metrics));
     }
 
-    {
-        task_registry().spawn_periodic(
-            shard.clone(),
-            Box::new(ClearJwtTokens::new(
-                app_state.clone(),
-                JWT_TOKENS_CLEANER_PERIOD,
-            )),
-        );
-    }
+    task_registry().spawn_periodic(
+        shard.clone(),
+        Box::new(ClearJwtTokens::new(
+            app_state.clone(),
+            JWT_TOKENS_CLEANER_PERIOD,
+        )),
+    );
 
     app = app.layer(middleware::from_fn(request_diagnostics));
 
@@ -131,6 +129,7 @@ pub async fn start_http_server(
             .local_addr()
             .expect("Failed to get local address for HTTP server");
         info!("Started {api_name} on: {address}");
+
         // TODO(hubcio): investigate if we can use TaskRegistry::spawn_connection here
         compio::runtime::spawn(async move {
             if let Err(error) = cyper_axum::serve(
@@ -160,7 +159,8 @@ pub async fn start_http_server(
 
         info!("Started {api_name} on: {address}");
 
-        tokio::task::spawn(async move {
+        // TODO(hubcio): investigate if we can use TaskRegistry::spawn_connection here
+        compio::runtime::spawn(async move {
             if let Err(error) = axum_server::from_tcp_rustls(listener, tls_config)
                 .serve(app.into_make_service_with_connect_info::<SocketAddr>())
                 .await
