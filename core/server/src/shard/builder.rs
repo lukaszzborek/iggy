@@ -160,7 +160,6 @@ impl IggyShardBuilder {
             tcp_bound_address: Cell::new(None),
             quic_bound_address: Cell::new(None),
             task_registry,
-
             permissioner: Default::default(),
             client_manager: Default::default(),
             active_sessions: Default::default(),

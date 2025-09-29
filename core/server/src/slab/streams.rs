@@ -744,7 +744,7 @@ impl Streams {
                 (msg.unwrap(), index.unwrap())
             });
 
-        registry.spawn_oneshot_future("fsync:segment-close-log", true, async move {
+        registry.spawn_oneshot("fsync:segment-close-log", true, async move {
             match log_writer.fsync().await {
                 Ok(_) => Ok(()),
                 Err(e) => {
@@ -754,7 +754,7 @@ impl Streams {
             }
         });
 
-        registry.spawn_oneshot_future("fsync:segment-close-index", true, async move {
+        registry.spawn_oneshot("fsync:segment-close-index", true, async move {
             match index_writer.fsync().await {
                 Ok(_) => {
                     drop(index_writer);

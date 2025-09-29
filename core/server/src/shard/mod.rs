@@ -24,6 +24,7 @@ pub mod task_registry;
 pub mod tasks;
 pub mod transmission;
 
+use self::tasks::{continuous, periodic};
 use ahash::{AHashMap, AHashSet, HashMap};
 use builder::IggyShardBuilder;
 use dashmap::DashMap;
@@ -179,8 +180,6 @@ impl IggyShard {
     }
 
     fn init_tasks(self: &Rc<Self>) {
-        use self::tasks::{continuous, periodic};
-
         self.task_registry
             .spawn_continuous(self.clone(), continuous::MessagePump::new(self.clone()));
 

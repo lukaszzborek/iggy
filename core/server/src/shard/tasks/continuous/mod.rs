@@ -16,10 +16,10 @@
  * under the License.
  */
 
-pub mod http_server;
-pub mod message_pump;
-pub mod quic_server;
-pub mod tcp_server;
+mod http_server;
+mod message_pump;
+mod quic_server;
+mod tcp_server;
 
 pub use http_server::HttpServer;
 pub use message_pump::MessagePump;

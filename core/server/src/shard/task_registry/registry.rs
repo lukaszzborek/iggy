@@ -161,41 +161,21 @@ impl TaskRegistry {
         });
     }
 
-    pub fn spawn_oneshot<T>(&self, shard: Rc<IggyShard>, mut task: T)
+    pub fn spawn_oneshot<F>(&self, name: &'static str, critical: bool, f: F)
     where
-        T: OneShotTask,
+        F: Future<Output = Result<(), IggyError>> + 'static,
     {
         if *self.shutting_down.borrow() {
             warn!(
-                "Attempted to spawn oneshot task '{}' during shutdown",
-                task.name()
+                "Attempted to spawn oneshot future '{}' during shutdown",
+                name
             );
             return;
         }
-        if !task.scope().should_run(&shard) {
-            return;
-        }
-        task.on_start();
-        let name = task.name();
-        let is_critical = task.is_critical();
-        let timeout = task.timeout();
-        let ctx = TaskCtx {
-            shard,
-            shutdown: self.shutdown_token.clone(),
-        };
         let shard_id = self.shard_id;
-
         let handle = compio::runtime::spawn(async move {
             trace!("oneshot '{}' starting on shard {}", name, shard_id);
-            let fut = task.run_once(ctx);
-            let r = if let Some(d) = timeout {
-                match compio::time::timeout(d, fut).await {
-                    Ok(r) => r,
-                    Err(_) => Err(IggyError::TaskTimeout),
-                }
-            } else {
-                fut.await
-            };
+            let r = f.await;
             match &r {
                 Ok(()) => trace!("oneshot '{}' completed on shard {}", name, shard_id),
                 Err(e) => error!("oneshot '{}' failed on shard {}: {}", name, shard_id, e),
@@ -207,7 +187,7 @@ impl TaskRegistry {
             name: name.into(),
             kind: Kind::OneShot,
             handle,
-            critical: is_critical,
+            critical,
         });
     }
 
@@ -346,36 +326,6 @@ impl TaskRegistry {
     {
         compio::runtime::spawn(future).detach();
     }
-
-    pub fn spawn_oneshot_future<F>(&self, name: &'static str, critical: bool, f: F)
-    where
-        F: Future<Output = Result<(), IggyError>> + 'static,
-    {
-        if *self.shutting_down.borrow() {
-            warn!(
-                "Attempted to spawn oneshot future '{}' during shutdown",
-                name
-            );
-            return;
-        }
-        let shard_id = self.shard_id;
-        let handle = compio::runtime::spawn(async move {
-            trace!("oneshot '{}' starting on shard {}", name, shard_id);
-            let r = f.await;
-            match &r {
-                Ok(()) => trace!("oneshot '{}' completed on shard {}", name, shard_id),
-                Err(e) => error!("oneshot '{}' failed on shard {}: {}", name, shard_id, e),
-            }
-            r
-        });
-
-        self.oneshots.borrow_mut().push(TaskHandle {
-            name: name.into(),
-            kind: Kind::OneShot,
-            handle,
-            critical,
-        });
-    }
 }
 
 #[cfg(test)]
@@ -421,12 +371,12 @@ mod tests {
         let registry = TaskRegistry::new(1);
 
         // Spawn a failing non-critical task
-        registry.spawn_oneshot_future("failing_non_critical", false, async {
+        registry.spawn_oneshot("failing_non_critical", false, async {
             Err(IggyError::Error)
         });
 
         // Spawn a successful task
-        registry.spawn_oneshot_future("successful", false, async { Ok(()) });
+        registry.spawn_oneshot("successful", false, async { Ok(()) });
 
         // Wait for all tasks
         let all_ok = registry.await_all(registry.oneshots.take()).await;
@@ -440,7 +390,7 @@ mod tests {
         let registry = TaskRegistry::new(1);
 
         // Spawn a failing critical task
-        registry.spawn_oneshot_future("failing_critical", true, async { Err(IggyError::Error) });
+        registry.spawn_oneshot("failing_critical", true, async { Err(IggyError::Error) });
 
         // Wait for all tasks
         let all_ok = registry.await_all(registry.oneshots.take()).await;
@@ -459,7 +409,7 @@ mod tests {
         let initial_count = registry.oneshots.borrow().len();
 
         // Try to spawn after shutdown
-        registry.spawn_oneshot_future("should_not_spawn", false, async { Ok(()) });
+        registry.spawn_oneshot("should_not_spawn", false, async { Ok(()) });
 
         // Task should not be added
         assert_eq!(registry.oneshots.borrow().len(), initial_count);
