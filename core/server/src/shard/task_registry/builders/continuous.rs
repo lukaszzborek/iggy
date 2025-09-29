@@ -4,16 +4,19 @@ use crate::shard::task_registry::specs::{
     ContinuousTask, TaskCtx, TaskMeta, TaskResult, TaskScope,
 };
 use iggy_common::IggyError;
-use std::{fmt::Debug, future::Future, marker::PhantomData, rc::Rc};
+use std::fmt::Debug;
+use std::future::Future;
+use std::marker::PhantomData;
+use std::rc::Rc;
 
-pub struct ContinuousBuilder<'a, F = (), Fut = ()> {
+pub struct ContinuousBuilder<'a, RunFn = (), RunFuture = ()> {
     reg: &'a TaskRegistry,
     name: &'static str,
     scope: TaskScope,
     critical: bool,
     shard: Option<Rc<IggyShard>>,
-    run: Option<F>,
-    _p: PhantomData<Fut>,
+    run: Option<RunFn>,
+    _p: PhantomData<RunFuture>,
 }
 
 impl<'a> ContinuousBuilder<'a, (), ()> {
@@ -47,7 +50,7 @@ impl<'a> ContinuousBuilder<'a, (), ()> {
     pub fn run<F, Fut>(self, f: F) -> ContinuousBuilder<'a, F, Fut>
     where
         F: FnOnce(TaskCtx) -> Fut + 'static,
-        Fut: std::future::Future<Output = Result<(), IggyError>> + 'static,
+        Fut: Future<Output = Result<(), IggyError>> + 'static,
     {
         ContinuousBuilder {
             reg: self.reg,
@@ -61,10 +64,10 @@ impl<'a> ContinuousBuilder<'a, (), ()> {
     }
 }
 
-impl<'a, F, Fut> ContinuousBuilder<'a, F, Fut>
+impl<'a, RunFn, RunFuture> ContinuousBuilder<'a, RunFn, RunFuture>
 where
-    F: FnOnce(TaskCtx) -> Fut + 'static,
-    Fut: std::future::Future<Output = Result<(), IggyError>> + 'static,
+    RunFn: FnOnce(TaskCtx) -> RunFuture + 'static,
+    RunFuture: Future<Output = Result<(), IggyError>> + 'static,
 {
     pub fn spawn(self) {
         let shard = self.shard.expect("shard required");
@@ -81,14 +84,14 @@ where
     }
 }
 
-struct ClosureContinuous<F> {
+struct ClosureContinuous<RunFn> {
     name: &'static str,
     scope: TaskScope,
     critical: bool,
-    run: F,
+    run: RunFn,
 }
 
-impl<F> Debug for ClosureContinuous<F> {
+impl<RunFn> Debug for ClosureContinuous<RunFn> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ClosureContinuous")
             .field("name", &self.name)
@@ -98,7 +101,7 @@ impl<F> Debug for ClosureContinuous<F> {
     }
 }
 
-impl<F: 'static> TaskMeta for ClosureContinuous<F> {
+impl<RunFn: 'static> TaskMeta for ClosureContinuous<RunFn> {
     fn name(&self) -> &'static str {
         self.name
     }
@@ -112,10 +115,10 @@ impl<F: 'static> TaskMeta for ClosureContinuous<F> {
     }
 }
 
-impl<F, Fut> ContinuousTask for ClosureContinuous<F>
+impl<RunFn, RunFuture> ContinuousTask for ClosureContinuous<RunFn>
 where
-    F: FnOnce(TaskCtx) -> Fut + 'static,
-    Fut: Future<Output = TaskResult> + 'static,
+    RunFn: FnOnce(TaskCtx) -> RunFuture + 'static,
+    RunFuture: Future<Output = TaskResult> + 'static,
 {
     fn run(self, ctx: TaskCtx) -> impl Future<Output = TaskResult> + 'static {
         (self.run)(ctx)

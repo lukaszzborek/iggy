@@ -1,7 +1,10 @@
 use crate::shard::IggyShard;
 use crate::shard::task_registry::ShutdownToken;
 use iggy_common::IggyError;
-use std::{fmt::Debug, future::Future, rc::Rc, time::Duration};
+use std::fmt::Debug;
+use std::future::Future;
+use std::rc::Rc;
+use std::time::Duration;
 
 pub type TaskResult = Result<(), IggyError>;
 

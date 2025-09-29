@@ -6,7 +6,11 @@ use crate::shard::IggyShard;
 use compio::runtime::JoinHandle;
 use futures::future::join_all;
 use iggy_common::IggyError;
-use std::{cell::RefCell, collections::HashMap, rc::Rc, time::Duration};
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::future::Future;
+use std::rc::Rc;
+use std::time::{Duration, Instant};
 use tracing::{debug, error, trace, warn};
 
 enum Kind {
@@ -210,8 +214,6 @@ impl TaskRegistry {
     }
 
     pub async fn graceful_shutdown(&self, timeout: Duration) -> bool {
-        use std::time::Instant;
-
         let start = Instant::now();
         *self.shutting_down.borrow_mut() = true;
         self.shutdown_connections();
@@ -342,14 +344,14 @@ impl TaskRegistry {
     /// These handlers have their own shutdown mechanism via connection channels.
     pub fn spawn_connection<F>(&self, future: F)
     where
-        F: futures::Future<Output = ()> + 'static,
+        F: Future<Output = ()> + 'static,
     {
         compio::runtime::spawn(future).detach();
     }
 
     pub fn spawn_oneshot_future<F>(&self, name: &'static str, critical: bool, f: F)
     where
-        F: futures::Future<Output = Result<(), IggyError>> + 'static,
+        F: Future<Output = Result<(), IggyError>> + 'static,
     {
         if *self.shutting_down.borrow() {
             warn!(
@@ -401,7 +403,7 @@ mod tests {
     }
 
     impl OneShotTask for TestOneShotTask {
-        fn run_once(self, _ctx: TaskCtx) -> impl std::future::Future<Output = TaskResult> {
+        fn run_once(self, _ctx: TaskCtx) -> impl Future<Output = TaskResult> {
             async move {
                 if self.should_fail {
                     Err(IggyError::Error)

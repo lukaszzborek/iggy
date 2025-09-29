@@ -2,17 +2,21 @@ use crate::shard::IggyShard;
 use crate::shard::task_registry::registry::TaskRegistry;
 use crate::shard::task_registry::specs::{OneShotTask, TaskCtx, TaskMeta, TaskResult, TaskScope};
 use iggy_common::IggyError;
-use std::{fmt::Debug, future::Future, marker::PhantomData, rc::Rc, time::Duration};
+use std::fmt::Debug;
+use std::future::Future;
+use std::marker::PhantomData;
+use std::rc::Rc;
+use std::time::Duration;
 
-pub struct OneShotBuilder<'a, F = (), Fut = ()> {
+pub struct OneShotBuilder<'a, OnceFn = (), OnceFuture = ()> {
     reg: &'a TaskRegistry,
     name: &'static str,
     scope: TaskScope,
     critical: bool,
     shard: Option<Rc<IggyShard>>,
     timeout: Option<Duration>,
-    run: Option<F>,
-    _p: PhantomData<Fut>,
+    run: Option<OnceFn>,
+    _p: PhantomData<OnceFuture>,
 }
 
 impl<'a> OneShotBuilder<'a, (), ()> {
@@ -52,7 +56,7 @@ impl<'a> OneShotBuilder<'a, (), ()> {
     pub fn run<F, Fut>(self, f: F) -> OneShotBuilder<'a, F, Fut>
     where
         F: FnOnce(TaskCtx) -> Fut + 'static,
-        Fut: std::future::Future<Output = Result<(), IggyError>> + 'static,
+        Fut: Future<Output = Result<(), IggyError>> + 'static,
     {
         OneShotBuilder {
             reg: self.reg,
@@ -67,10 +71,10 @@ impl<'a> OneShotBuilder<'a, (), ()> {
     }
 }
 
-impl<'a, F, Fut> OneShotBuilder<'a, F, Fut>
+impl<'a, OnceFn, OnceFuture> OneShotBuilder<'a, OnceFn, OnceFuture>
 where
-    F: FnOnce(TaskCtx) -> Fut + 'static,
-    Fut: std::future::Future<Output = Result<(), IggyError>> + 'static,
+    OnceFn: FnOnce(TaskCtx) -> OnceFuture + 'static,
+    OnceFuture: Future<Output = Result<(), IggyError>> + 'static,
 {
     pub fn spawn(self) {
         let shard = self.shard.expect("shard required");
@@ -88,15 +92,15 @@ where
     }
 }
 
-struct ClosureOneShot<F> {
+struct ClosureOneShot<OnceFn> {
     name: &'static str,
     scope: TaskScope,
     critical: bool,
     timeout: Option<Duration>,
-    run: F,
+    run: OnceFn,
 }
 
-impl<F> Debug for ClosureOneShot<F> {
+impl<OnceFn> Debug for ClosureOneShot<OnceFn> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ClosureOneShot")
             .field("name", &self.name)
@@ -107,7 +111,7 @@ impl<F> Debug for ClosureOneShot<F> {
     }
 }
 
-impl<F: 'static> TaskMeta for ClosureOneShot<F> {
+impl<OnceFn: 'static> TaskMeta for ClosureOneShot<OnceFn> {
     fn name(&self) -> &'static str {
         self.name
     }
@@ -121,10 +125,10 @@ impl<F: 'static> TaskMeta for ClosureOneShot<F> {
     }
 }
 
-impl<F, Fut> OneShotTask for ClosureOneShot<F>
+impl<OnceFn, OnceFuture> OneShotTask for ClosureOneShot<OnceFn>
 where
-    F: FnOnce(TaskCtx) -> Fut + 'static,
-    Fut: Future<Output = TaskResult> + 'static,
+    OnceFn: FnOnce(TaskCtx) -> OnceFuture + 'static,
+    OnceFuture: Future<Output = TaskResult> + 'static,
 {
     fn run_once(self, ctx: TaskCtx) -> impl Future<Output = TaskResult> + 'static {
         (self.run)(ctx)

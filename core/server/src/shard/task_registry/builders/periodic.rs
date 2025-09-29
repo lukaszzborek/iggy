@@ -2,9 +2,13 @@ use crate::shard::IggyShard;
 use crate::shard::task_registry::registry::TaskRegistry;
 use crate::shard::task_registry::specs::{PeriodicTask, TaskCtx, TaskMeta, TaskResult, TaskScope};
 use iggy_common::IggyError;
-use std::{fmt::Debug, future::Future, marker::PhantomData, rc::Rc, time::Duration};
+use std::fmt::Debug;
+use std::future::Future;
+use std::marker::PhantomData;
+use std::rc::Rc;
+use std::time::Duration;
 
-pub struct PeriodicBuilder<'a, F = (), Fut = ()> {
+pub struct PeriodicBuilder<'a, TickFn = (), TickFuture = ()> {
     reg: &'a TaskRegistry,
     name: &'static str,
     scope: TaskScope,
@@ -12,8 +16,8 @@ pub struct PeriodicBuilder<'a, F = (), Fut = ()> {
     shard: Option<Rc<IggyShard>>,
     period: Option<Duration>,
     last_on_shutdown: bool,
-    tick: Option<F>,
-    _p: PhantomData<Fut>,
+    tick: Option<TickFn>,
+    _p: PhantomData<TickFuture>,
 }
 
 impl<'a> PeriodicBuilder<'a, (), ()> {
@@ -59,7 +63,7 @@ impl<'a> PeriodicBuilder<'a, (), ()> {
     pub fn tick<F, Fut>(self, f: F) -> PeriodicBuilder<'a, F, Fut>
     where
         F: FnMut(&TaskCtx) -> Fut + 'static,
-        Fut: std::future::Future<Output = Result<(), IggyError>> + 'static,
+        Fut: Future<Output = Result<(), IggyError>> + 'static,
     {
         PeriodicBuilder {
             reg: self.reg,
@@ -75,10 +79,10 @@ impl<'a> PeriodicBuilder<'a, (), ()> {
     }
 }
 
-impl<'a, F, Fut> PeriodicBuilder<'a, F, Fut>
+impl<'a, TickFn, TickFuture> PeriodicBuilder<'a, TickFn, TickFuture>
 where
-    F: FnMut(&TaskCtx) -> Fut + 'static,
-    Fut: std::future::Future<Output = Result<(), IggyError>> + 'static,
+    TickFn: FnMut(&TaskCtx) -> TickFuture + 'static,
+    TickFuture: Future<Output = Result<(), IggyError>> + 'static,
 {
     pub fn spawn(self) {
         let shard = self.shard.expect("shard required");
@@ -98,16 +102,16 @@ where
     }
 }
 
-struct ClosurePeriodic<F> {
+struct ClosurePeriodic<TickFn> {
     name: &'static str,
     scope: TaskScope,
     critical: bool,
     period: Duration,
     last_on_shutdown: bool,
-    tick: F,
+    tick: TickFn,
 }
 
-impl<F> Debug for ClosurePeriodic<F> {
+impl<TickFn> Debug for ClosurePeriodic<TickFn> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ClosurePeriodic")
             .field("name", &self.name)
@@ -119,7 +123,7 @@ impl<F> Debug for ClosurePeriodic<F> {
     }
 }
 
-impl<F: 'static> TaskMeta for ClosurePeriodic<F> {
+impl<TickFn: 'static> TaskMeta for ClosurePeriodic<TickFn> {
     fn name(&self) -> &'static str {
         self.name
     }
@@ -133,10 +137,10 @@ impl<F: 'static> TaskMeta for ClosurePeriodic<F> {
     }
 }
 
-impl<F, Fut> PeriodicTask for ClosurePeriodic<F>
+impl<TickFn, TickFuture> PeriodicTask for ClosurePeriodic<TickFn>
 where
-    F: FnMut(&TaskCtx) -> Fut + 'static,
-    Fut: Future<Output = TaskResult> + 'static,
+    TickFn: FnMut(&TaskCtx) -> TickFuture + 'static,
+    TickFuture: Future<Output = TaskResult> + 'static,
 {
     fn period(&self) -> Duration {
         self.period
