@@ -17,9 +17,10 @@
  */
 
 use crate::http::shared::AppState;
-use crate::shard::task_registry::{PeriodicTask, TaskCtx, TaskFuture, TaskMeta, TaskScope};
+use crate::shard::task_registry::{PeriodicTask, TaskCtx, TaskMeta, TaskResult, TaskScope};
 use iggy_common::IggyTimestamp;
 use std::fmt::Debug;
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{error, info, trace};
@@ -65,10 +66,10 @@ impl PeriodicTask for ClearJwtTokens {
         self.period
     }
 
-    fn tick(&mut self, _ctx: &TaskCtx) -> TaskFuture {
+    fn tick(&mut self, _ctx: &TaskCtx) -> impl Future<Output = TaskResult> + '_ {
         let app_state = self.app_state.clone();
 
-        Box::pin(async move {
+        async move {
             trace!("Checking for expired revoked JWT tokens...");
 
             let now = IggyTimestamp::now().to_secs();
@@ -87,6 +88,6 @@ impl PeriodicTask for ClearJwtTokens {
             }
 
             Ok(())
-        })
+        }
     }
 }

@@ -1,11 +1,9 @@
 use crate::shard::IggyShard;
 use crate::shard::task_registry::ShutdownToken;
-use futures::future::LocalBoxFuture;
 use iggy_common::IggyError;
-use std::{fmt::Debug, rc::Rc, time::Duration};
+use std::{fmt::Debug, future::Future, rc::Rc, time::Duration};
 
 pub type TaskResult = Result<(), IggyError>;
-pub type TaskFuture = LocalBoxFuture<'static, TaskResult>;
 
 #[derive(Clone, Debug)]
 pub enum TaskScope {
@@ -42,22 +40,21 @@ pub trait TaskMeta: 'static + Debug {
     fn on_start(&self) {}
 }
 
-pub trait ContinuousTask: TaskMeta {
-    fn run(self: Box<Self>, ctx: TaskCtx) -> TaskFuture;
+pub trait ContinuousTask: TaskMeta + Sized {
+    fn run(self, ctx: TaskCtx) -> impl Future<Output = TaskResult> + 'static;
 }
 
 pub trait PeriodicTask: TaskMeta {
     fn period(&self) -> Duration;
-
-    fn tick(&mut self, ctx: &TaskCtx) -> TaskFuture;
+    fn tick(&mut self, ctx: &TaskCtx) -> impl Future<Output = TaskResult> + '_;
 
     fn last_tick_on_shutdown(&self) -> bool {
         false
     }
 }
 
-pub trait OneShotTask: TaskMeta {
-    fn run_once(self: Box<Self>, ctx: TaskCtx) -> TaskFuture;
+pub trait OneShotTask: TaskMeta + Sized {
+    fn run_once(self, ctx: TaskCtx) -> impl Future<Output = TaskResult> + 'static;
 
     fn timeout(&self) -> Option<Duration> {
         None

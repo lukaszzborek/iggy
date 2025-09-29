@@ -17,12 +17,11 @@
  */
 
 use crate::shard::IggyShard;
-use crate::shard::task_registry::{
-    PeriodicTask, TaskCtx, TaskFuture, TaskMeta, TaskResult, TaskScope,
-};
+use crate::shard::task_registry::{PeriodicTask, TaskCtx, TaskMeta, TaskResult, TaskScope};
 use crate::shard_info;
 use iggy_common::Identifier;
 use std::fmt::Debug;
+use std::future::Future;
 use std::rc::Rc;
 use std::time::Duration;
 use tracing::{error, info, trace};
@@ -70,9 +69,9 @@ impl PeriodicTask for SaveMessages {
         self.period
     }
 
-    fn tick(&mut self, ctx: &TaskCtx) -> TaskFuture {
+    fn tick(&mut self, ctx: &TaskCtx) -> impl Future<Output = TaskResult> + '_ {
         let shard = ctx.shard.clone();
-        Box::pin(async move {
+        async move {
             trace!("Saving buffered messages...");
 
             let namespaces = shard.get_current_shard_namespaces();
@@ -116,7 +115,7 @@ impl PeriodicTask for SaveMessages {
                 );
             }
             Ok(())
-        })
+        }
     }
 
     fn last_tick_on_shutdown(&self) -> bool {

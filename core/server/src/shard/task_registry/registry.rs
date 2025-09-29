@@ -50,7 +50,10 @@ impl TaskRegistry {
         self.shutdown_token.clone()
     }
 
-    pub fn spawn_continuous(&self, shard: Rc<IggyShard>, mut task: Box<dyn ContinuousTask>) {
+    pub fn spawn_continuous<T>(&self, shard: Rc<IggyShard>, mut task: T)
+    where
+        T: ContinuousTask,
+    {
         if *self.shutting_down.borrow() {
             warn!(
                 "Attempted to spawn continuous task '{}' during shutdown",
@@ -88,7 +91,10 @@ impl TaskRegistry {
         });
     }
 
-    pub fn spawn_periodic(&self, shard: Rc<IggyShard>, mut task: Box<dyn PeriodicTask>) {
+    pub fn spawn_periodic<T>(&self, shard: Rc<IggyShard>, mut task: T)
+    where
+        T: PeriodicTask + 'static,
+    {
         if *self.shutting_down.borrow() {
             warn!(
                 "Attempted to spawn periodic task '{}' during shutdown",
@@ -153,7 +159,10 @@ impl TaskRegistry {
         });
     }
 
-    pub fn spawn_oneshot(&self, shard: Rc<IggyShard>, mut task: Box<dyn OneShotTask>) {
+    pub fn spawn_oneshot<T>(&self, shard: Rc<IggyShard>, mut task: T)
+    where
+        T: OneShotTask,
+    {
         if *self.shutting_down.borrow() {
             warn!(
                 "Attempted to spawn oneshot task '{}' during shutdown",
@@ -372,7 +381,7 @@ impl TaskRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shard::task_registry::specs::{OneShotTask, TaskCtx, TaskFuture, TaskMeta};
+    use crate::shard::task_registry::specs::{OneShotTask, TaskCtx, TaskMeta, TaskResult};
     use std::fmt::Debug;
 
     #[derive(Debug)]
@@ -392,14 +401,14 @@ mod tests {
     }
 
     impl OneShotTask for TestOneShotTask {
-        fn run_once(self: Box<Self>, _ctx: TaskCtx) -> TaskFuture {
-            Box::pin(async move {
+        fn run_once(self, _ctx: TaskCtx) -> impl std::future::Future<Output = TaskResult> {
+            async move {
                 if self.should_fail {
                     Err(IggyError::Error)
                 } else {
                     Ok(())
                 }
-            })
+            }
         }
 
         fn timeout(&self) -> Option<Duration> {

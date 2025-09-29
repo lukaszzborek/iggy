@@ -113,10 +113,7 @@ pub async fn start_http_server(
 
     task_registry().spawn_periodic(
         shard.clone(),
-        Box::new(ClearJwtTokens::new(
-            app_state.clone(),
-            JWT_TOKENS_CLEANER_PERIOD,
-        )),
+        ClearJwtTokens::new(app_state.clone(), JWT_TOKENS_CLEANER_PERIOD),
     );
 
     app = app.layer(middleware::from_fn(request_diagnostics));

@@ -24,37 +24,25 @@ use crate::shard::task_registry::TaskRegistry;
 use std::rc::Rc;
 
 pub fn register_tasks(reg: &TaskRegistry, shard: Rc<IggyShard>) {
-    reg.spawn_continuous(
-        shard.clone(),
-        Box::new(continuous::MessagePump::new(shard.clone())),
-    );
+    reg.spawn_continuous(shard.clone(), continuous::MessagePump::new(shard.clone()));
 
     if shard.config.tcp.enabled {
-        reg.spawn_continuous(
-            shard.clone(),
-            Box::new(continuous::TcpServer::new(shard.clone())),
-        );
+        reg.spawn_continuous(shard.clone(), continuous::TcpServer::new(shard.clone()));
     }
 
     if shard.config.http.enabled {
-        reg.spawn_continuous(
-            shard.clone(),
-            Box::new(continuous::HttpServer::new(shard.clone())),
-        );
+        reg.spawn_continuous(shard.clone(), continuous::HttpServer::new(shard.clone()));
     }
 
     if shard.config.quic.enabled {
-        reg.spawn_continuous(
-            shard.clone(),
-            Box::new(continuous::QuicServer::new(shard.clone())),
-        );
+        reg.spawn_continuous(shard.clone(), continuous::QuicServer::new(shard.clone()));
     }
 
     if shard.config.message_saver.enabled {
         let period = shard.config.message_saver.interval.get_duration();
         reg.spawn_periodic(
             shard.clone(),
-            Box::new(periodic::SaveMessages::new(shard.clone(), period)),
+            periodic::SaveMessages::new(shard.clone(), period),
         );
     }
 
@@ -62,7 +50,7 @@ pub fn register_tasks(reg: &TaskRegistry, shard: Rc<IggyShard>) {
         let period = shard.config.heartbeat.interval.get_duration();
         reg.spawn_periodic(
             shard.clone(),
-            Box::new(periodic::VerifyHeartbeats::new(shard.clone(), period)),
+            periodic::VerifyHeartbeats::new(shard.clone(), period),
         );
     }
 
@@ -75,10 +63,7 @@ pub fn register_tasks(reg: &TaskRegistry, shard: Rc<IggyShard>) {
             .get_duration();
         reg.spawn_periodic(
             shard.clone(),
-            Box::new(periodic::ClearPersonalAccessTokens::new(
-                shard.clone(),
-                period,
-            )),
+            periodic::ClearPersonalAccessTokens::new(shard.clone(), period),
         );
     }
 
@@ -98,7 +83,7 @@ pub fn register_tasks(reg: &TaskRegistry, shard: Rc<IggyShard>) {
             .get_duration();
         reg.spawn_periodic(
             shard.clone(),
-            Box::new(periodic::PrintSysinfo::new(shard.clone(), period)),
+            periodic::PrintSysinfo::new(shard.clone(), period),
         );
     }
 }

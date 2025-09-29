@@ -18,8 +18,9 @@
 
 use crate::quic::quic_server::{self, spawn_quic_server};
 use crate::shard::IggyShard;
-use crate::shard::task_registry::{ContinuousTask, TaskCtx, TaskFuture, TaskMeta, TaskScope};
+use crate::shard::task_registry::{ContinuousTask, TaskCtx, TaskMeta, TaskResult, TaskScope};
 use std::fmt::Debug;
+use std::future::Future;
 use std::rc::Rc;
 
 pub struct QuicServer {
@@ -55,9 +56,9 @@ impl TaskMeta for QuicServer {
 }
 
 impl ContinuousTask for QuicServer {
-    fn run(self: Box<Self>, ctx: TaskCtx) -> TaskFuture {
-        let shard = self.shard.clone();
+    fn run(self, ctx: TaskCtx) -> impl Future<Output = TaskResult> + 'static {
+        let shard = self.shard;
         let shutdown = ctx.shutdown;
-        Box::pin(async move { spawn_quic_server(shard, shutdown).await })
+        async move { spawn_quic_server(shard, shutdown).await }
     }
 }

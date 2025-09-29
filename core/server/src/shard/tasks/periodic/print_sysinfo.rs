@@ -17,11 +17,12 @@
  */
 
 use crate::shard::IggyShard;
-use crate::shard::task_registry::{PeriodicTask, TaskCtx, TaskFuture, TaskMeta, TaskScope};
+use crate::shard::task_registry::{PeriodicTask, TaskCtx, TaskMeta, TaskResult, TaskScope};
 use crate::streaming::utils::memory_pool;
 use human_repr::HumanCount;
 use iggy_common::IggyError;
 use std::fmt::Debug;
+use std::future::Future;
 use std::rc::Rc;
 use std::time::Duration;
 use tracing::{error, info, trace};
@@ -68,9 +69,9 @@ impl PeriodicTask for PrintSysinfo {
         self.period
     }
 
-    fn tick(&mut self, _ctx: &TaskCtx) -> TaskFuture {
+    fn tick(&mut self, _ctx: &TaskCtx) -> impl Future<Output = TaskResult> + '_ {
         let shard = self.shard.clone();
-        Box::pin(print_sys_info(shard))
+        print_sys_info(shard)
     }
 }
 

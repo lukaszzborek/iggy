@@ -1,25 +1,22 @@
 use crate::shard::IggyShard;
 use crate::shard::task_registry::registry::TaskRegistry;
 use crate::shard::task_registry::specs::{
-    ContinuousTask, TaskCtx, TaskFuture, TaskMeta, TaskScope,
+    ContinuousTask, TaskCtx, TaskMeta, TaskResult, TaskScope,
 };
-use futures::future::LocalBoxFuture;
 use iggy_common::IggyError;
-use std::{fmt::Debug, marker::PhantomData, rc::Rc};
+use std::{fmt::Debug, future::Future, marker::PhantomData, rc::Rc};
 
-use crate::shard::task_registry::builders::{HasTask, NoTask};
-
-pub struct ContinuousBuilder<'a, S = NoTask> {
+pub struct ContinuousBuilder<'a, F = (), Fut = ()> {
     reg: &'a TaskRegistry,
     name: &'static str,
     scope: TaskScope,
     critical: bool,
     shard: Option<Rc<IggyShard>>,
-    run: Option<Box<dyn FnOnce(TaskCtx) -> LocalBoxFuture<'static, Result<(), IggyError>>>>,
-    _p: PhantomData<S>,
+    run: Option<F>,
+    _p: PhantomData<Fut>,
 }
 
-impl<'a> ContinuousBuilder<'a, NoTask> {
+impl<'a> ContinuousBuilder<'a, (), ()> {
     pub fn new(reg: &'a TaskRegistry, name: &'static str) -> Self {
         Self {
             reg,
@@ -47,7 +44,7 @@ impl<'a> ContinuousBuilder<'a, NoTask> {
         self
     }
 
-    pub fn run<F, Fut>(self, f: F) -> ContinuousBuilder<'a, HasTask>
+    pub fn run<F, Fut>(self, f: F) -> ContinuousBuilder<'a, F, Fut>
     where
         F: FnOnce(TaskCtx) -> Fut + 'static,
         Fut: std::future::Future<Output = Result<(), IggyError>> + 'static,
@@ -58,36 +55,40 @@ impl<'a> ContinuousBuilder<'a, NoTask> {
             scope: self.scope,
             critical: self.critical,
             shard: self.shard,
-            run: Some(Box::new(move |ctx| Box::pin(f(ctx)))),
+            run: Some(f),
             _p: PhantomData,
         }
     }
 }
 
-impl<'a> ContinuousBuilder<'a, HasTask> {
+impl<'a, F, Fut> ContinuousBuilder<'a, F, Fut>
+where
+    F: FnOnce(TaskCtx) -> Fut + 'static,
+    Fut: std::future::Future<Output = Result<(), IggyError>> + 'static,
+{
     pub fn spawn(self) {
         let shard = self.shard.expect("shard required");
         if !self.scope.should_run(&shard) {
             return;
         }
-        let spec = Box::new(ClosureContinuous {
+        let spec = ClosureContinuous {
             name: self.name,
             scope: self.scope,
             critical: self.critical,
             run: self.run.expect("run required"),
-        });
+        };
         self.reg.spawn_continuous(shard, spec);
     }
 }
 
-struct ClosureContinuous {
+struct ClosureContinuous<F> {
     name: &'static str,
     scope: TaskScope,
     critical: bool,
-    run: Box<dyn FnOnce(TaskCtx) -> LocalBoxFuture<'static, Result<(), IggyError>>>,
+    run: F,
 }
 
-impl Debug for ClosureContinuous {
+impl<F> Debug for ClosureContinuous<F> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ClosureContinuous")
             .field("name", &self.name)
@@ -97,7 +98,7 @@ impl Debug for ClosureContinuous {
     }
 }
 
-impl TaskMeta for ClosureContinuous {
+impl<F: 'static> TaskMeta for ClosureContinuous<F> {
     fn name(&self) -> &'static str {
         self.name
     }
@@ -111,8 +112,12 @@ impl TaskMeta for ClosureContinuous {
     }
 }
 
-impl ContinuousTask for ClosureContinuous {
-    fn run(self: Box<Self>, ctx: TaskCtx) -> TaskFuture {
+impl<F, Fut> ContinuousTask for ClosureContinuous<F>
+where
+    F: FnOnce(TaskCtx) -> Fut + 'static,
+    Fut: Future<Output = TaskResult> + 'static,
+{
+    fn run(self, ctx: TaskCtx) -> impl Future<Output = TaskResult> + 'static {
         (self.run)(ctx)
     }
 }

@@ -1,24 +1,21 @@
 use crate::shard::IggyShard;
 use crate::shard::task_registry::registry::TaskRegistry;
-use crate::shard::task_registry::specs::{OneShotTask, TaskCtx, TaskFuture, TaskMeta, TaskScope};
-use futures::future::LocalBoxFuture;
+use crate::shard::task_registry::specs::{OneShotTask, TaskCtx, TaskMeta, TaskResult, TaskScope};
 use iggy_common::IggyError;
-use std::{fmt::Debug, marker::PhantomData, rc::Rc, time::Duration};
+use std::{fmt::Debug, future::Future, marker::PhantomData, rc::Rc, time::Duration};
 
-use crate::shard::task_registry::builders::{HasTask, NoTask};
-
-pub struct OneShotBuilder<'a, S = NoTask> {
+pub struct OneShotBuilder<'a, F = (), Fut = ()> {
     reg: &'a TaskRegistry,
     name: &'static str,
     scope: TaskScope,
     critical: bool,
     shard: Option<Rc<IggyShard>>,
     timeout: Option<Duration>,
-    run: Option<Box<dyn FnOnce(TaskCtx) -> LocalBoxFuture<'static, Result<(), IggyError>>>>,
-    _p: PhantomData<S>,
+    run: Option<F>,
+    _p: PhantomData<Fut>,
 }
 
-impl<'a> OneShotBuilder<'a, NoTask> {
+impl<'a> OneShotBuilder<'a, (), ()> {
     pub fn new(reg: &'a TaskRegistry, name: &'static str) -> Self {
         Self {
             reg,
@@ -52,7 +49,7 @@ impl<'a> OneShotBuilder<'a, NoTask> {
         self
     }
 
-    pub fn run<F, Fut>(self, f: F) -> OneShotBuilder<'a, HasTask>
+    pub fn run<F, Fut>(self, f: F) -> OneShotBuilder<'a, F, Fut>
     where
         F: FnOnce(TaskCtx) -> Fut + 'static,
         Fut: std::future::Future<Output = Result<(), IggyError>> + 'static,
@@ -64,38 +61,42 @@ impl<'a> OneShotBuilder<'a, NoTask> {
             critical: self.critical,
             shard: self.shard,
             timeout: self.timeout,
-            run: Some(Box::new(move |ctx| Box::pin(f(ctx)))),
+            run: Some(f),
             _p: PhantomData,
         }
     }
 }
 
-impl<'a> OneShotBuilder<'a, HasTask> {
+impl<'a, F, Fut> OneShotBuilder<'a, F, Fut>
+where
+    F: FnOnce(TaskCtx) -> Fut + 'static,
+    Fut: std::future::Future<Output = Result<(), IggyError>> + 'static,
+{
     pub fn spawn(self) {
         let shard = self.shard.expect("shard required");
         if !self.scope.should_run(&shard) {
             return;
         }
-        let spec = Box::new(ClosureOneShot {
+        let spec = ClosureOneShot {
             name: self.name,
             scope: self.scope,
             critical: self.critical,
             timeout: self.timeout,
             run: self.run.expect("run required"),
-        });
+        };
         self.reg.spawn_oneshot(shard, spec);
     }
 }
 
-struct ClosureOneShot {
+struct ClosureOneShot<F> {
     name: &'static str,
     scope: TaskScope,
     critical: bool,
     timeout: Option<Duration>,
-    run: Box<dyn FnOnce(TaskCtx) -> LocalBoxFuture<'static, Result<(), IggyError>>>,
+    run: F,
 }
 
-impl Debug for ClosureOneShot {
+impl<F> Debug for ClosureOneShot<F> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ClosureOneShot")
             .field("name", &self.name)
@@ -106,7 +107,7 @@ impl Debug for ClosureOneShot {
     }
 }
 
-impl TaskMeta for ClosureOneShot {
+impl<F: 'static> TaskMeta for ClosureOneShot<F> {
     fn name(&self) -> &'static str {
         self.name
     }
@@ -120,10 +121,15 @@ impl TaskMeta for ClosureOneShot {
     }
 }
 
-impl OneShotTask for ClosureOneShot {
-    fn run_once(self: Box<Self>, ctx: TaskCtx) -> TaskFuture {
+impl<F, Fut> OneShotTask for ClosureOneShot<F>
+where
+    F: FnOnce(TaskCtx) -> Fut + 'static,
+    Fut: Future<Output = TaskResult> + 'static,
+{
+    fn run_once(self, ctx: TaskCtx) -> impl Future<Output = TaskResult> + 'static {
         (self.run)(ctx)
     }
+
     fn timeout(&self) -> Option<Duration> {
         self.timeout
     }

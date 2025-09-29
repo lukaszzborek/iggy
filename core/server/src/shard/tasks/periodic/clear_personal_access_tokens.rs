@@ -17,9 +17,10 @@
  */
 
 use crate::shard::IggyShard;
-use crate::shard::task_registry::{PeriodicTask, TaskCtx, TaskFuture, TaskMeta, TaskScope};
+use crate::shard::task_registry::{PeriodicTask, TaskCtx, TaskMeta, TaskResult, TaskScope};
 use iggy_common::IggyTimestamp;
 use std::fmt::Debug;
+use std::future::Future;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -67,10 +68,10 @@ impl PeriodicTask for ClearPersonalAccessTokens {
         self.period
     }
 
-    fn tick(&mut self, _ctx: &TaskCtx) -> TaskFuture {
+    fn tick(&mut self, _ctx: &TaskCtx) -> impl Future<Output = TaskResult> + '_ {
         let shard = self.shard.clone();
 
-        Box::pin(async move {
+        async move {
             trace!("Checking for expired personal access tokens...");
 
             let now = IggyTimestamp::now();
@@ -101,6 +102,6 @@ impl PeriodicTask for ClearPersonalAccessTokens {
             }
 
             Ok(())
-        })
+        }
     }
 }

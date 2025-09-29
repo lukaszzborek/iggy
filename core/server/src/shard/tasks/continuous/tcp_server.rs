@@ -17,9 +17,10 @@
  */
 
 use crate::shard::IggyShard;
-use crate::shard::task_registry::{ContinuousTask, TaskCtx, TaskFuture, TaskMeta, TaskScope};
+use crate::shard::task_registry::{ContinuousTask, TaskCtx, TaskMeta, TaskResult, TaskScope};
 use crate::tcp::tcp_server::spawn_tcp_server;
 use std::fmt::Debug;
+use std::future::Future;
 use std::rc::Rc;
 
 pub struct TcpServer {
@@ -55,9 +56,9 @@ impl TaskMeta for TcpServer {
 }
 
 impl ContinuousTask for TcpServer {
-    fn run(self: Box<Self>, ctx: TaskCtx) -> TaskFuture {
-        let shard = self.shard.clone();
+    fn run(self, ctx: TaskCtx) -> impl Future<Output = TaskResult> + 'static {
+        let shard = self.shard;
         let shutdown = ctx.shutdown;
-        Box::pin(async move { spawn_tcp_server(shard, shutdown).await })
+        async move { spawn_tcp_server(shard, shutdown).await }
     }
 }

@@ -96,8 +96,6 @@ pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 
 static USER_ID: AtomicU32 = AtomicU32::new(1);
 
-type Task = Pin<Box<dyn Future<Output = Result<(), IggyError>>>>;
-
 pub(crate) struct Shard {
     id: u16,
     connection: ShardConnector<ShardFrame>,

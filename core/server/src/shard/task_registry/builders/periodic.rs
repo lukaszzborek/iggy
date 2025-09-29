@@ -1,13 +1,10 @@
 use crate::shard::IggyShard;
 use crate::shard::task_registry::registry::TaskRegistry;
-use crate::shard::task_registry::specs::{PeriodicTask, TaskCtx, TaskFuture, TaskMeta, TaskScope};
-use futures::future::LocalBoxFuture;
+use crate::shard::task_registry::specs::{PeriodicTask, TaskCtx, TaskMeta, TaskResult, TaskScope};
 use iggy_common::IggyError;
-use std::{fmt::Debug, marker::PhantomData, rc::Rc, time::Duration};
+use std::{fmt::Debug, future::Future, marker::PhantomData, rc::Rc, time::Duration};
 
-use crate::shard::task_registry::builders::{HasTask, NoTask};
-
-pub struct PeriodicBuilder<'a, S = NoTask> {
+pub struct PeriodicBuilder<'a, F = (), Fut = ()> {
     reg: &'a TaskRegistry,
     name: &'static str,
     scope: TaskScope,
@@ -15,11 +12,11 @@ pub struct PeriodicBuilder<'a, S = NoTask> {
     shard: Option<Rc<IggyShard>>,
     period: Option<Duration>,
     last_on_shutdown: bool,
-    tick: Option<Box<dyn FnMut(&TaskCtx) -> LocalBoxFuture<'static, Result<(), IggyError>>>>,
-    _p: PhantomData<S>,
+    tick: Option<F>,
+    _p: PhantomData<Fut>,
 }
 
-impl<'a> PeriodicBuilder<'a, NoTask> {
+impl<'a> PeriodicBuilder<'a, (), ()> {
     pub fn new(reg: &'a TaskRegistry, name: &'static str) -> Self {
         Self {
             reg,
@@ -59,12 +56,11 @@ impl<'a> PeriodicBuilder<'a, NoTask> {
         self
     }
 
-    pub fn tick<F, Fut>(self, f: F) -> PeriodicBuilder<'a, HasTask>
+    pub fn tick<F, Fut>(self, f: F) -> PeriodicBuilder<'a, F, Fut>
     where
         F: FnMut(&TaskCtx) -> Fut + 'static,
         Fut: std::future::Future<Output = Result<(), IggyError>> + 'static,
     {
-        let mut g = f;
         PeriodicBuilder {
             reg: self.reg,
             name: self.name,
@@ -73,41 +69,45 @@ impl<'a> PeriodicBuilder<'a, NoTask> {
             shard: self.shard,
             period: self.period,
             last_on_shutdown: self.last_on_shutdown,
-            tick: Some(Box::new(move |ctx| Box::pin(g(ctx)))),
+            tick: Some(f),
             _p: PhantomData,
         }
     }
 }
 
-impl<'a> PeriodicBuilder<'a, HasTask> {
+impl<'a, F, Fut> PeriodicBuilder<'a, F, Fut>
+where
+    F: FnMut(&TaskCtx) -> Fut + 'static,
+    Fut: std::future::Future<Output = Result<(), IggyError>> + 'static,
+{
     pub fn spawn(self) {
         let shard = self.shard.expect("shard required");
         let period = self.period.expect("period required");
         if !self.scope.should_run(&shard) {
             return;
         }
-        let spec = Box::new(ClosurePeriodic {
+        let spec = ClosurePeriodic {
             name: self.name,
             scope: self.scope,
             critical: self.critical,
             period,
             last_on_shutdown: self.last_on_shutdown,
             tick: self.tick.expect("tick required"),
-        });
+        };
         self.reg.spawn_periodic(shard, spec);
     }
 }
 
-struct ClosurePeriodic {
+struct ClosurePeriodic<F> {
     name: &'static str,
     scope: TaskScope,
     critical: bool,
     period: Duration,
     last_on_shutdown: bool,
-    tick: Box<dyn FnMut(&TaskCtx) -> LocalBoxFuture<'static, Result<(), IggyError>>>,
+    tick: F,
 }
 
-impl Debug for ClosurePeriodic {
+impl<F> Debug for ClosurePeriodic<F> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ClosurePeriodic")
             .field("name", &self.name)
@@ -119,7 +119,7 @@ impl Debug for ClosurePeriodic {
     }
 }
 
-impl TaskMeta for ClosurePeriodic {
+impl<F: 'static> TaskMeta for ClosurePeriodic<F> {
     fn name(&self) -> &'static str {
         self.name
     }
@@ -133,12 +133,16 @@ impl TaskMeta for ClosurePeriodic {
     }
 }
 
-impl PeriodicTask for ClosurePeriodic {
+impl<F, Fut> PeriodicTask for ClosurePeriodic<F>
+where
+    F: FnMut(&TaskCtx) -> Fut + 'static,
+    Fut: Future<Output = TaskResult> + 'static,
+{
     fn period(&self) -> Duration {
         self.period
     }
 
-    fn tick(&mut self, ctx: &TaskCtx) -> TaskFuture {
+    fn tick(&mut self, ctx: &TaskCtx) -> impl Future<Output = TaskResult> + '_ {
         (self.tick)(ctx)
     }
 

@@ -17,11 +17,12 @@
  */
 
 use crate::shard::IggyShard;
-use crate::shard::task_registry::{ContinuousTask, TaskCtx, TaskFuture, TaskMeta, TaskScope};
+use crate::shard::task_registry::{ContinuousTask, TaskCtx, TaskMeta, TaskResult, TaskScope};
 use crate::shard::transmission::frame::ShardFrame;
 use crate::{shard_debug, shard_info};
 use futures::{FutureExt, StreamExt};
 use std::fmt::Debug;
+use std::future::Future;
 use std::rc::Rc;
 
 pub struct MessagePump {
@@ -57,8 +58,8 @@ impl TaskMeta for MessagePump {
 }
 
 impl ContinuousTask for MessagePump {
-    fn run(self: Box<Self>, ctx: TaskCtx) -> TaskFuture {
-        Box::pin(async move {
+    fn run(self, ctx: TaskCtx) -> impl Future<Output = TaskResult> + 'static {
+        async move {
             let Some(mut messages_receiver) = self.shard.messages_receiver.take() else {
                 shard_info!(
                     self.shard.id,
@@ -94,6 +95,6 @@ impl ContinuousTask for MessagePump {
             }
 
             Ok(())
-        })
+        }
     }
 }

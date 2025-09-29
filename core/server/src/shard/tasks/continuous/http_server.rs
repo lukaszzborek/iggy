@@ -19,8 +19,9 @@
 use crate::bootstrap::resolve_persister;
 use crate::http::http_server::{self, start_http_server};
 use crate::shard::IggyShard;
-use crate::shard::task_registry::{ContinuousTask, TaskCtx, TaskFuture, TaskMeta, TaskScope};
+use crate::shard::task_registry::{ContinuousTask, TaskCtx, TaskMeta, TaskResult, TaskScope};
 use std::fmt::Debug;
+use std::future::Future;
 use std::rc::Rc;
 use tracing::info;
 
@@ -57,12 +58,12 @@ impl TaskMeta for HttpServer {
 }
 
 impl ContinuousTask for HttpServer {
-    fn run(self: Box<Self>, _ctx: TaskCtx) -> TaskFuture {
-        let shard = self.shard.clone();
-        Box::pin(async move {
+    fn run(self, _ctx: TaskCtx) -> impl Future<Output = TaskResult> + 'static {
+        let shard = self.shard;
+        async move {
             info!("Starting HTTP server on shard: {}", shard.id);
             let persister = resolve_persister(shard.config.system.partition.enforce_fsync);
             start_http_server(shard.config.http.clone(), persister, shard).await
-        })
+        }
     }
 }

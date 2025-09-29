@@ -17,9 +17,10 @@
  */
 
 use crate::shard::IggyShard;
-use crate::shard::task_registry::{PeriodicTask, TaskCtx, TaskFuture, TaskMeta, TaskScope};
+use crate::shard::task_registry::{PeriodicTask, TaskCtx, TaskMeta, TaskResult, TaskScope};
 use iggy_common::{IggyDuration, IggyTimestamp};
 use std::fmt::Debug;
+use std::future::Future;
 use std::rc::Rc;
 use std::time::Duration;
 use tracing::{debug, info, trace, warn};
@@ -76,11 +77,11 @@ impl PeriodicTask for VerifyHeartbeats {
         self.period
     }
 
-    fn tick(&mut self, _ctx: &TaskCtx) -> TaskFuture {
+    fn tick(&mut self, _ctx: &TaskCtx) -> impl Future<Output = TaskResult> + '_ {
         let shard = self.shard.clone();
         let max_interval = self.max_interval;
 
-        Box::pin(async move {
+        async move {
             trace!("Verifying heartbeats...");
 
             let clients = {
@@ -121,6 +122,6 @@ impl PeriodicTask for VerifyHeartbeats {
             info!("Removed {count} stale clients.");
 
             Ok(())
-        })
+        }
     }
 }
