@@ -25,35 +25,6 @@ pub mod tasks;
 pub mod transmission;
 
 use self::tasks::{continuous, periodic};
-use ahash::{AHashMap, AHashSet, HashMap};
-use builder::IggyShardBuilder;
-use dashmap::DashMap;
-use error_set::ErrContext;
-use futures::future::try_join_all;
-use hash32::{Hasher, Murmur3Hasher};
-use iggy_common::{
-    EncryptorKind, IdKind, Identifier, IggyError, IggyTimestamp, Permissions, PollingKind, UserId,
-    UserStatus,
-    defaults::{DEFAULT_ROOT_PASSWORD, DEFAULT_ROOT_USERNAME},
-    locking::IggyRwLockFn,
-};
-use std::hash::Hasher as _;
-use std::{
-    cell::{Cell, RefCell},
-    future::Future,
-    net::SocketAddr,
-    ops::Deref,
-    pin::Pin,
-    rc::Rc,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicU32, Ordering},
-    },
-    time::{Duration, Instant},
-};
-use tracing::{debug, error, info, instrument, trace, warn};
-use transmission::connector::{Receiver, ShardConnector, StopReceiver, StopSender};
-
 use crate::{
     binary::handlers::messages::poll_messages_handler::IggyPollMetadata,
     configs::server::ServerConfig,
@@ -90,6 +61,34 @@ use crate::{
     },
     versioning::SemanticVersion,
 };
+use ahash::{AHashMap, AHashSet, HashMap};
+use builder::IggyShardBuilder;
+use dashmap::DashMap;
+use error_set::ErrContext;
+use futures::future::try_join_all;
+use hash32::{Hasher, Murmur3Hasher};
+use iggy_common::{
+    EncryptorKind, IdKind, Identifier, IggyError, IggyTimestamp, Permissions, PollingKind, UserId,
+    UserStatus,
+    defaults::{DEFAULT_ROOT_PASSWORD, DEFAULT_ROOT_USERNAME},
+    locking::IggyRwLockFn,
+};
+use std::hash::Hasher as _;
+use std::{
+    cell::{Cell, RefCell},
+    future::Future,
+    net::SocketAddr,
+    ops::Deref,
+    pin::Pin,
+    rc::Rc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicU32, Ordering},
+    },
+    time::{Duration, Instant},
+};
+use tracing::{debug, error, info, instrument, trace, warn};
+use transmission::connector::{Receiver, ShardConnector, StopReceiver, StopSender};
 
 pub const COMPONENT: &str = "SHARD";
 pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
@@ -180,51 +179,32 @@ impl IggyShard {
     }
 
     fn init_tasks(self: &Rc<Self>) {
-        self.task_registry
-            .spawn_continuous(self.clone(), continuous::MessagePump::new(self.clone()));
+        continuous::spawn_message_pump(self.clone());
 
         if self.config.tcp.enabled {
-            self.task_registry
-                .spawn_continuous(self.clone(), continuous::TcpServer::new(self.clone()));
+            continuous::spawn_tcp_server(self.clone());
         }
 
-        if self.config.http.enabled {
-            self.task_registry
-                .spawn_continuous(self.clone(), continuous::HttpServer::new(self.clone()));
+        if self.config.http.enabled && self.id == 0 {
+            continuous::spawn_http_server(self.clone());
         }
+
+        // JWT token cleaner task is spawned inside HTTP server because it needs `AppState`.
 
         if self.config.quic.enabled {
-            self.task_registry
-                .spawn_continuous(self.clone(), continuous::QuicServer::new(self.clone()));
+            continuous::spawn_quic_server(self.clone());
         }
 
         if self.config.message_saver.enabled {
-            let period = self.config.message_saver.interval.get_duration();
-            self.task_registry.spawn_periodic(
-                self.clone(),
-                periodic::SaveMessages::new(self.clone(), period),
-            );
+            periodic::spawn_save_messages(self.clone());
         }
 
         if self.config.heartbeat.enabled {
-            let period = self.config.heartbeat.interval.get_duration();
-            self.task_registry.spawn_periodic(
-                self.clone(),
-                periodic::VerifyHeartbeats::new(self.clone(), period),
-            );
+            periodic::spawn_verify_heartbeats(self.clone());
         }
 
         if self.config.personal_access_token.cleaner.enabled {
-            let period = self
-                .config
-                .personal_access_token
-                .cleaner
-                .interval
-                .get_duration();
-            self.task_registry.spawn_periodic(
-                self.clone(),
-                periodic::ClearPersonalAccessTokens::new(self.clone(), period),
-            );
+            periodic::spawn_clear_personal_access_tokens(self.clone());
         }
 
         if self
@@ -234,17 +214,9 @@ impl IggyShard {
             .sysinfo_print_interval
             .as_micros()
             > 0
+            && self.id == 0
         {
-            let period = self
-                .config
-                .system
-                .logging
-                .sysinfo_print_interval
-                .get_duration();
-            self.task_registry.spawn_periodic(
-                self.clone(),
-                periodic::PrintSysinfo::new(self.clone(), period),
-            );
+            periodic::spawn_print_sysinfo(self.clone());
         }
     }
 

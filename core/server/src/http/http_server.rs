@@ -25,8 +25,7 @@ use crate::http::metrics::metrics;
 use crate::http::shared::AppState;
 use crate::http::*;
 use crate::shard::IggyShard;
-use crate::shard::task_registry::TaskScope;
-use crate::shard::tasks::periodic::ClearJwtTokens;
+use crate::shard::tasks::periodic::spawn_clear_jwt_tokens;
 use crate::streaming::persistence::persister::PersisterKind;
 use axum::extract::DefaultBodyLimit;
 use axum::extract::connect_info::Connected;
@@ -41,8 +40,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tracing::{error, info};
-
-const JWT_TOKENS_CLEANER_PERIOD: std::time::Duration = std::time::Duration::from_secs(300);
 
 #[derive(Debug, Clone, Copy)]
 pub struct CompioSocketAddr(pub SocketAddr);
@@ -111,10 +108,7 @@ pub async fn start_http_server(
         app = app.layer(middleware::from_fn_with_state(app_state.clone(), metrics));
     }
 
-    shard.task_registry.spawn_periodic(
-        shard.clone(),
-        ClearJwtTokens::new(app_state.clone(), JWT_TOKENS_CLEANER_PERIOD),
-    );
+    spawn_clear_jwt_tokens(shard.clone(), app_state.clone());
 
     app = app.layer(middleware::from_fn(request_diagnostics));
 

@@ -1,5 +1,4 @@
 use super::shutdown::{Shutdown, ShutdownToken};
-use super::specs::{ContinuousTask, OneShotTask, PeriodicTask, TaskCtx, TaskMeta, TaskResult};
 use crate::shard::IggyShard;
 use compio::runtime::JoinHandle;
 use futures::future::join_all;
@@ -20,12 +19,12 @@ enum Kind {
 struct TaskHandle {
     name: String,
     kind: Kind,
-    handle: JoinHandle<TaskResult>,
+    handle: JoinHandle<Result<(), IggyError>>,
     critical: bool,
 }
 
 pub struct TaskRegistry {
-    pub(crate) shard_id: u16,
+    shard_id: u16,
     shutdown: Shutdown,
     shutdown_token: ShutdownToken,
     long_running: RefCell<Vec<TaskHandle>>,
@@ -52,36 +51,45 @@ impl TaskRegistry {
         self.shutdown_token.clone()
     }
 
-    pub fn spawn_continuous<T>(&self, shard: Rc<IggyShard>, mut task: T)
-    where
-        T: ContinuousTask,
+    // New closure-based spawn methods for builders
+    pub(crate) fn spawn_continuous_closure<RunFn, RunFut, ShutdownFn, ShutdownFut>(
+        &self,
+        name: &'static str,
+        critical: bool,
+        f: RunFn,
+        on_shutdown: Option<ShutdownFn>,
+    ) where
+        RunFn: FnOnce(ShutdownToken) -> RunFut + 'static,
+        RunFut: Future<Output = Result<(), IggyError>> + 'static,
+        ShutdownFn: FnOnce(Result<(), IggyError>) -> ShutdownFut + 'static,
+        ShutdownFut: Future<Output = ()> + 'static,
     {
         if *self.shutting_down.borrow() {
             warn!(
                 "Attempted to spawn continuous task '{}' during shutdown",
-                task.name()
+                name
             );
             return;
         }
-        if !task.scope().should_run(&shard) {
-            return;
-        }
-        task.on_start();
-        let name = task.name();
-        let is_critical = task.is_critical();
-        let ctx = TaskCtx {
-            shard,
-            shutdown: self.shutdown_token.clone(),
-        };
+
+        let shutdown = self.shutdown_token.clone();
         let shard_id = self.shard_id;
 
         let handle = compio::runtime::spawn(async move {
             trace!("continuous '{}' starting on shard {}", name, shard_id);
-            let r = task.run(ctx).await;
+            let fut = f(shutdown);
+            let r = fut.await;
             match &r {
                 Ok(()) => debug!("continuous '{}' completed on shard {}", name, shard_id),
                 Err(e) => error!("continuous '{}' failed on shard {}: {}", name, shard_id, e),
             }
+
+            // Execute on_shutdown callback if provided
+            if let Some(shutdown_fn) = on_shutdown {
+                trace!("continuous '{}' executing on_shutdown callback", name);
+                shutdown_fn(r.clone()).await;
+            }
+
             r
         });
 
@@ -89,33 +97,34 @@ impl TaskRegistry {
             name: name.into(),
             kind: Kind::Continuous,
             handle,
-            critical: is_critical,
+            critical,
         });
     }
 
-    pub fn spawn_periodic<T>(&self, shard: Rc<IggyShard>, mut task: T)
-    where
-        T: PeriodicTask + 'static,
+    pub(crate) fn spawn_periodic_closure<TickFn, TickFut, ShutdownFn, ShutdownFut>(
+        &self,
+        name: &'static str,
+        period: Duration,
+        critical: bool,
+        last_on_shutdown: bool,
+        tick_fn: TickFn,
+        on_shutdown: Option<ShutdownFn>,
+    ) where
+        TickFn: Fn(ShutdownToken) -> TickFut + 'static,
+        TickFut: Future<Output = Result<(), IggyError>> + 'static,
+        ShutdownFn: FnOnce(Result<(), IggyError>) -> ShutdownFut + 'static,
+        ShutdownFut: Future<Output = ()> + 'static,
     {
         if *self.shutting_down.borrow() {
             warn!(
                 "Attempted to spawn periodic task '{}' during shutdown",
-                task.name()
+                name
             );
             return;
         }
-        if !task.scope().should_run(&shard) {
-            return;
-        }
-        let period = task.period();
-        task.on_start();
-        let name = task.name();
-        let is_critical = task.is_critical();
-        let ctx = TaskCtx {
-            shard,
-            shutdown: self.shutdown_token.clone(),
-        };
+
         let shutdown = self.shutdown_token.clone();
+        let shutdown_for_task = self.shutdown_token.clone();
         let shard_id = self.shard_id;
 
         let handle = compio::runtime::spawn(async move {
@@ -123,24 +132,29 @@ impl TaskRegistry {
                 "periodic '{}' every {:?} on shard {}",
                 name, period, shard_id
             );
+
             loop {
                 if !shutdown.sleep_or_shutdown(period).await {
                     break;
                 }
-                if let Err(e) = task.tick(&ctx).await {
+
+                let fut = tick_fn(shutdown_for_task.clone());
+                if let Err(e) = fut.await {
                     error!(
                         "periodic '{}' tick failed on shard {}: {}",
                         name, shard_id, e
                     );
                 }
             }
-            if task.last_tick_on_shutdown() {
+
+            if last_on_shutdown {
                 const FINAL_TICK_TIMEOUT: Duration = Duration::from_secs(5);
                 trace!(
                     "periodic '{}' executing final tick on shutdown (timeout: {:?})",
                     name, FINAL_TICK_TIMEOUT
                 );
-                let fut = task.tick(&ctx);
+
+                let fut = tick_fn(shutdown_for_task);
                 match compio::time::timeout(FINAL_TICK_TIMEOUT, fut).await {
                     Ok(Ok(())) => trace!("periodic '{}' final tick completed", name),
                     Ok(Err(e)) => error!("periodic '{}' final tick failed: {}", name, e),
@@ -150,36 +164,67 @@ impl TaskRegistry {
                     ),
                 }
             }
-            Ok(())
+
+            let result = Ok(());
+
+            if let Some(on_shutdown) = on_shutdown {
+                on_shutdown(result.clone()).await;
+            }
+
+            result
         });
 
         self.long_running.borrow_mut().push(TaskHandle {
             name: name.into(),
             kind: Kind::Periodic(period),
             handle,
-            critical: is_critical,
+            critical,
         });
     }
 
-    pub fn spawn_oneshot<F>(&self, name: &'static str, critical: bool, f: F)
-    where
-        F: Future<Output = Result<(), IggyError>> + 'static,
+    pub(crate) fn spawn_oneshot_closure<TaskFn, TaskFut, ShutdownFn, ShutdownFut>(
+        &self,
+        name: &'static str,
+        critical: bool,
+        timeout: Option<Duration>,
+        f: TaskFn,
+        on_shutdown: Option<ShutdownFn>,
+    ) where
+        TaskFn: FnOnce(ShutdownToken) -> TaskFut + 'static,
+        TaskFut: Future<Output = Result<(), IggyError>> + 'static,
+        ShutdownFn: FnOnce(Result<(), IggyError>) -> ShutdownFut + 'static,
+        ShutdownFut: Future<Output = ()> + 'static,
     {
         if *self.shutting_down.borrow() {
-            warn!(
-                "Attempted to spawn oneshot future '{}' during shutdown",
-                name
-            );
+            warn!("Attempted to spawn oneshot task '{}' during shutdown", name);
             return;
         }
+
+        let shutdown = self.shutdown_token.clone();
         let shard_id = self.shard_id;
+
         let handle = compio::runtime::spawn(async move {
             trace!("oneshot '{}' starting on shard {}", name, shard_id);
-            let r = f.await;
+            let fut = f(shutdown);
+
+            let r = if let Some(d) = timeout {
+                match compio::time::timeout(d, fut).await {
+                    Ok(r) => r,
+                    Err(_) => Err(IggyError::TaskTimeout),
+                }
+            } else {
+                fut.await
+            };
+
             match &r {
                 Ok(()) => trace!("oneshot '{}' completed on shard {}", name, shard_id),
                 Err(e) => error!("oneshot '{}' failed on shard {}: {}", name, shard_id, e),
             }
+
+            if let Some(on_shutdown) = on_shutdown {
+                on_shutdown(r.clone()).await;
+            }
+
             r
         });
 
@@ -331,52 +376,22 @@ impl TaskRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shard::task_registry::specs::{OneShotTask, TaskCtx, TaskMeta, TaskResult};
-    use std::fmt::Debug;
-
-    #[derive(Debug)]
-    struct TestOneShotTask {
-        should_fail: bool,
-        is_critical: bool,
-    }
-
-    impl TaskMeta for TestOneShotTask {
-        fn name(&self) -> &'static str {
-            "test_oneshot"
-        }
-
-        fn is_critical(&self) -> bool {
-            self.is_critical
-        }
-    }
-
-    impl OneShotTask for TestOneShotTask {
-        fn run_once(self, _ctx: TaskCtx) -> impl Future<Output = TaskResult> {
-            async move {
-                if self.should_fail {
-                    Err(IggyError::Error)
-                } else {
-                    Ok(())
-                }
-            }
-        }
-
-        fn timeout(&self) -> Option<Duration> {
-            Some(Duration::from_millis(100))
-        }
-    }
 
     #[compio::test]
     async fn test_oneshot_completion_detection() {
         let registry = TaskRegistry::new(1);
 
         // Spawn a failing non-critical task
-        registry.spawn_oneshot("failing_non_critical", false, async {
-            Err(IggyError::Error)
-        });
+        registry
+            .oneshot("failing_non_critical")
+            .run(|_shutdown| async { Err(IggyError::Error) })
+            .spawn();
 
         // Spawn a successful task
-        registry.spawn_oneshot("successful", false, async { Ok(()) });
+        registry
+            .oneshot("successful")
+            .run(|_shutdown| async { Ok(()) })
+            .spawn();
 
         // Wait for all tasks
         let all_ok = registry.await_all(registry.oneshots.take()).await;
@@ -390,7 +405,11 @@ mod tests {
         let registry = TaskRegistry::new(1);
 
         // Spawn a failing critical task
-        registry.spawn_oneshot("failing_critical", true, async { Err(IggyError::Error) });
+        registry
+            .oneshot("failing_critical")
+            .critical(true)
+            .run(|_shutdown| async { Err(IggyError::Error) })
+            .spawn();
 
         // Wait for all tasks
         let all_ok = registry.await_all(registry.oneshots.take()).await;
@@ -409,7 +428,10 @@ mod tests {
         let initial_count = registry.oneshots.borrow().len();
 
         // Try to spawn after shutdown
-        registry.spawn_oneshot("should_not_spawn", false, async { Ok(()) });
+        registry
+            .oneshot("should_not_spawn")
+            .run(|_shutdown| async { Ok(()) })
+            .spawn();
 
         // Task should not be added
         assert_eq!(registry.oneshots.borrow().len(), initial_count);

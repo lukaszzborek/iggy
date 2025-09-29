@@ -16,49 +16,22 @@
  * under the License.
  */
 
-use crate::quic::quic_server::{self, spawn_quic_server};
+use crate::quic::quic_server;
 use crate::shard::IggyShard;
-use crate::shard::task_registry::{ContinuousTask, TaskCtx, TaskMeta, TaskResult, TaskScope};
-use std::fmt::Debug;
-use std::future::Future;
+use crate::shard::task_registry::ShutdownToken;
+use iggy_common::IggyError;
 use std::rc::Rc;
 
-pub struct QuicServer {
-    shard: Rc<IggyShard>,
+pub fn spawn_quic_server(shard: Rc<IggyShard>) {
+    let shard_clone = shard.clone();
+    shard
+        .task_registry
+        .continuous("quic_server")
+        .critical(true)
+        .run(move |shutdown| quic_server_task(shard_clone, shutdown))
+        .spawn();
 }
 
-impl Debug for QuicServer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("QuicServer")
-            .field("shard_id", &self.shard.id)
-            .finish()
-    }
-}
-
-impl QuicServer {
-    pub fn new(shard: Rc<IggyShard>) -> Self {
-        Self { shard }
-    }
-}
-
-impl TaskMeta for QuicServer {
-    fn name(&self) -> &'static str {
-        "quic_server"
-    }
-
-    fn scope(&self) -> TaskScope {
-        TaskScope::AllShards
-    }
-
-    fn is_critical(&self) -> bool {
-        true
-    }
-}
-
-impl ContinuousTask for QuicServer {
-    fn run(self, ctx: TaskCtx) -> impl Future<Output = TaskResult> + 'static {
-        let shard = self.shard;
-        let shutdown = ctx.shutdown;
-        async move { spawn_quic_server(shard, shutdown).await }
-    }
+async fn quic_server_task(shard: Rc<IggyShard>, shutdown: ShutdownToken) -> Result<(), IggyError> {
+    quic_server::spawn_quic_server(shard, shutdown).await
 }

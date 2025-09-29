@@ -17,65 +17,32 @@
  */
 
 use crate::shard::IggyShard;
-use crate::shard::task_registry::{PeriodicTask, TaskCtx, TaskMeta, TaskResult, TaskScope};
-use crate::streaming::utils::memory_pool;
 use human_repr::HumanCount;
 use iggy_common::IggyError;
-use std::fmt::Debug;
-use std::future::Future;
 use std::rc::Rc;
-use std::time::Duration;
 use tracing::{error, info, trace};
 
-pub struct PrintSysinfo {
-    shard: Rc<IggyShard>,
-    period: Duration,
+pub fn spawn_print_sysinfo(shard: Rc<IggyShard>) {
+    let period = shard
+        .config
+        .system
+        .logging
+        .sysinfo_print_interval
+        .get_duration();
+    info!(
+        "System info logger is enabled, OS info will be printed every: {:?}",
+        period
+    );
+    let shard_clone = shard.clone();
+    shard
+        .task_registry
+        .periodic("print_sysinfo")
+        .every(period)
+        .tick(move |_shutdown| print_sysinfo(shard_clone.clone()))
+        .spawn();
 }
 
-impl Debug for PrintSysinfo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PrintSysinfo")
-            .field("shard_id", &self.shard.id)
-            .field("period", &self.period)
-            .finish()
-    }
-}
-
-impl PrintSysinfo {
-    pub fn new(shard: Rc<IggyShard>, period: Duration) -> Self {
-        Self { shard, period }
-    }
-}
-
-impl TaskMeta for PrintSysinfo {
-    fn name(&self) -> &'static str {
-        "print_sysinfo"
-    }
-
-    fn scope(&self) -> TaskScope {
-        TaskScope::SpecificShard(0)
-    }
-
-    fn on_start(&self) {
-        info!(
-            "System info logger is enabled, OS info will be printed every: {:?}",
-            self.period
-        );
-    }
-}
-
-impl PeriodicTask for PrintSysinfo {
-    fn period(&self) -> Duration {
-        self.period
-    }
-
-    fn tick(&mut self, _ctx: &TaskCtx) -> impl Future<Output = TaskResult> + '_ {
-        let shard = self.shard.clone();
-        print_sys_info(shard)
-    }
-}
-
-pub async fn print_sys_info(shard: Rc<IggyShard>) -> Result<(), IggyError> {
+async fn print_sysinfo(shard: Rc<IggyShard>) -> Result<(), IggyError> {
     trace!("Printing system information...");
 
     let stats = match shard.get_stats().await {
@@ -91,20 +58,18 @@ pub async fn print_sys_info(shard: Rc<IggyShard>) -> Result<(), IggyError> {
         * 100f64;
 
     info!(
-        "CPU: {:.2}%/{:.2}% (IggyUsage/Total), Mem: {:.2}%/{}/{}/{} (Free/IggyUsage/TotalUsed/Total), Clients: {}, Messages processed: {}, Read: {}, Written: {}, Uptime: {}",
+        "CPU: {:.2}%/{:.2}% (IggyUsage/Total), Mem: {:.2}%/{}/{}/{} (Free/IggyUsage/TotalUsed/Total), Clients: {}, Messages: {}, Read: {}, Written: {}",
         stats.cpu_usage,
         stats.total_cpu_usage,
         free_memory_percent,
         stats.memory_usage,
         stats.total_memory - stats.available_memory,
         stats.total_memory,
-        stats.clients_count,
-        stats.messages_count.human_count_bare(),
+        stats.clients_count.human_count_bare().to_string(),
+        stats.messages_count.human_count_bare().to_string(),
         stats.read_bytes,
         stats.written_bytes,
-        stats.run_time
     );
 
-    memory_pool().log_stats();
     Ok(())
 }

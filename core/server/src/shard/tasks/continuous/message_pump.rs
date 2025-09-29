@@ -17,84 +17,56 @@
  */
 
 use crate::shard::IggyShard;
-use crate::shard::task_registry::{ContinuousTask, TaskCtx, TaskMeta, TaskResult, TaskScope};
+use crate::shard::task_registry::ShutdownToken;
 use crate::shard::transmission::frame::ShardFrame;
 use crate::{shard_debug, shard_info};
 use futures::{FutureExt, StreamExt};
-use std::fmt::Debug;
-use std::future::Future;
 use std::rc::Rc;
 
-pub struct MessagePump {
+pub fn spawn_message_pump(shard: Rc<IggyShard>) {
+    let shard_clone = shard.clone();
+    shard
+        .task_registry
+        .continuous("message_pump")
+        .critical(true)
+        .run(move |shutdown| message_pump(shard_clone, shutdown))
+        .spawn();
+}
+
+async fn message_pump(
     shard: Rc<IggyShard>,
-}
+    shutdown: ShutdownToken,
+) -> Result<(), iggy_common::IggyError> {
+    let Some(mut messages_receiver) = shard.messages_receiver.take() else {
+        shard_info!(shard.id, "Message receiver already taken; pump not started");
+        return Ok(());
+    };
 
-impl Debug for MessagePump {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("MessagePump")
-            .field("shard_id", &self.shard.id)
-            .finish()
-    }
-}
+    shard_info!(shard.id, "Starting message passing task");
 
-impl MessagePump {
-    pub fn new(shard: Rc<IggyShard>) -> Self {
-        Self { shard }
-    }
-}
-
-impl TaskMeta for MessagePump {
-    fn name(&self) -> &'static str {
-        "message_pump"
-    }
-
-    fn scope(&self) -> TaskScope {
-        TaskScope::AllShards
-    }
-
-    fn is_critical(&self) -> bool {
-        true
-    }
-}
-
-impl ContinuousTask for MessagePump {
-    fn run(self, ctx: TaskCtx) -> impl Future<Output = TaskResult> + 'static {
-        async move {
-            let Some(mut messages_receiver) = self.shard.messages_receiver.take() else {
-                shard_info!(
-                    self.shard.id,
-                    "Message receiver already taken; pump not started"
-                );
-                return Ok(());
-            };
-
-            shard_info!(self.shard.id, "Starting message passing task");
-
-            loop {
-                futures::select! {
-                    _ = ctx.shutdown.wait().fuse() => {
-                        shard_debug!(self.shard.id, "Message receiver shutting down");
-                        break;
-                    }
-                    frame = messages_receiver.next().fuse() => {
-                        match frame {
-                            Some(ShardFrame { message, response_sender }) => {
-                                if let (Some(response), Some(tx)) =
-                                    (self.shard.handle_shard_message(message).await, response_sender)
-                                {
-                                     let _ = tx.send(response).await;
-                                }
-                            }
-                            None => {
-                                shard_debug!(self.shard.id, "Message receiver closed; exiting pump");
-                                break;
-                            }
+    loop {
+        futures::select! {
+            _ = shutdown.wait().fuse() => {
+                shard_debug!(shard.id, "Message receiver shutting down");
+                break;
+            }
+            frame = messages_receiver.next().fuse() => {
+                match frame {
+                    Some(ShardFrame { message, response_sender }) => {
+                        if let (Some(response), Some(tx)) =
+                            (shard.handle_shard_message(message).await, response_sender)
+                        {
+                             let _ = tx.send(response).await;
                         }
+                    }
+                    None => {
+                        shard_debug!(shard.id, "Message receiver closed; exiting pump");
+                        break;
                     }
                 }
             }
-
-            Ok(())
         }
     }
+
+    Ok(())
 }

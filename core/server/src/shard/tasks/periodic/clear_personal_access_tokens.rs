@@ -17,91 +17,60 @@
  */
 
 use crate::shard::IggyShard;
-use crate::shard::task_registry::{PeriodicTask, TaskCtx, TaskMeta, TaskResult, TaskScope};
-use iggy_common::IggyTimestamp;
-use std::fmt::Debug;
-use std::future::Future;
+use iggy_common::{IggyError, IggyTimestamp};
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Duration;
 use tracing::{info, trace};
 
-pub struct ClearPersonalAccessTokens {
-    shard: Rc<IggyShard>,
-    period: Duration,
+pub fn spawn_clear_personal_access_tokens(shard: Rc<IggyShard>) {
+    let period = shard
+        .config
+        .personal_access_token
+        .cleaner
+        .interval
+        .get_duration();
+    info!(
+        "Personal access token cleaner is enabled, expired tokens will be deleted every: {:?}.",
+        period
+    );
+    let shard_clone = shard.clone();
+    shard
+        .task_registry
+        .periodic("clear_personal_access_tokens")
+        .every(period)
+        .tick(move |_shutdown| clear_personal_access_tokens(shard_clone.clone()))
+        .spawn();
 }
 
-impl Debug for ClearPersonalAccessTokens {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ClearPersonalAccessTokens")
-            .field("shard_id", &self.shard.id)
-            .field("period", &self.period)
-            .finish()
-    }
-}
+async fn clear_personal_access_tokens(shard: Rc<IggyShard>) -> Result<(), IggyError> {
+    trace!("Checking for expired personal access tokens...");
 
-impl ClearPersonalAccessTokens {
-    pub fn new(shard: Rc<IggyShard>, period: Duration) -> Self {
-        Self { shard, period }
-    }
-}
+    let now = IggyTimestamp::now();
+    let mut total_removed = 0;
 
-impl TaskMeta for ClearPersonalAccessTokens {
-    fn name(&self) -> &'static str {
-        "clear_personal_access_tokens"
-    }
+    let users = shard.users.borrow();
+    for user in users.values() {
+        let expired_tokens: Vec<Arc<String>> = user
+            .personal_access_tokens
+            .iter()
+            .filter(|entry| entry.value().is_expired(now))
+            .map(|entry| entry.key().clone())
+            .collect();
 
-    fn scope(&self) -> TaskScope {
-        TaskScope::AllShards
-    }
-
-    fn on_start(&self) {
-        info!(
-            "Personal access token cleaner is enabled, expired tokens will be deleted every: {:?}.",
-            self.period
-        );
-    }
-}
-
-impl PeriodicTask for ClearPersonalAccessTokens {
-    fn period(&self) -> Duration {
-        self.period
-    }
-
-    fn tick(&mut self, _ctx: &TaskCtx) -> impl Future<Output = TaskResult> + '_ {
-        let shard = self.shard.clone();
-
-        async move {
-            trace!("Checking for expired personal access tokens...");
-
-            let now = IggyTimestamp::now();
-            let mut total_removed = 0;
-
-            let users = shard.users.borrow();
-            for user in users.values() {
-                let expired_tokens: Vec<Arc<String>> = user
-                    .personal_access_tokens
-                    .iter()
-                    .filter(|entry| entry.value().is_expired(now))
-                    .map(|entry| entry.key().clone())
-                    .collect();
-
-                for token_hash in expired_tokens {
-                    if let Some((_, pat)) = user.personal_access_tokens.remove(&token_hash) {
-                        info!(
-                            "Removed expired personal access token '{}' for user ID {}",
-                            pat.name, user.id
-                        );
-                        total_removed += 1;
-                    }
-                }
+        for token_hash in expired_tokens {
+            if let Some((_, pat)) = user.personal_access_tokens.remove(&token_hash) {
+                info!(
+                    "Removed expired personal access token '{}' for user ID {}",
+                    pat.name, user.id
+                );
+                total_removed += 1;
             }
-
-            if total_removed > 0 {
-                info!("Removed {total_removed} expired personal access tokens");
-            }
-
-            Ok(())
         }
     }
+
+    if total_removed > 0 {
+        info!("Removed {total_removed} expired personal access tokens");
+    }
+
+    Ok(())
 }

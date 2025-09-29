@@ -744,29 +744,37 @@ impl Streams {
                 (msg.unwrap(), index.unwrap())
             });
 
-        registry.spawn_oneshot("fsync:segment-close-log", true, async move {
-            match log_writer.fsync().await {
-                Ok(_) => Ok(()),
-                Err(e) => {
-                    error!("Failed to fsync log writer on segment close: {}", e);
-                    Err(e)
+        registry
+            .oneshot("fsync:segment-close-log")
+            .critical(true)
+            .run(move |_shutdown| async move {
+                match log_writer.fsync().await {
+                    Ok(_) => Ok(()),
+                    Err(e) => {
+                        error!("Failed to fsync log writer on segment close: {}", e);
+                        Err(e)
+                    }
                 }
-            }
-        });
+            })
+            .spawn();
 
-        registry.spawn_oneshot("fsync:segment-close-index", true, async move {
-            match index_writer.fsync().await {
-                Ok(_) => {
-                    drop(index_writer);
-                    Ok(())
+        registry
+            .oneshot("fsync:segment-close-index")
+            .critical(true)
+            .run(move |_shutdown| async move {
+                match index_writer.fsync().await {
+                    Ok(_) => {
+                        drop(index_writer);
+                        Ok(())
+                    }
+                    Err(e) => {
+                        error!("Failed to fsync index writer on segment close: {}", e);
+                        drop(index_writer);
+                        Err(e)
+                    }
                 }
-                Err(e) => {
-                    error!("Failed to fsync index writer on segment close: {}", e);
-                    drop(index_writer);
-                    Err(e)
-                }
-            }
-        });
+            })
+            .spawn();
 
         let (start_offset, size, end_offset) =
             self.with_partition_by_id(stream_id, topic_id, partition_id, |(.., log)| {
@@ -864,5 +872,64 @@ impl Streams {
         );
 
         Ok(batch_count)
+    }
+
+    pub async fn fsync_all_messages(
+        &self,
+        stream_id: &Identifier,
+        topic_id: &Identifier,
+        partition_id: usize,
+    ) -> Result<(), IggyError> {
+        let has_storage =
+            self.with_partition_by_id(stream_id, topic_id, partition_id, |(.., log)| {
+                let storage = log.active_storage();
+                storage.messages_writer.is_some() && storage.index_writer.is_some()
+            });
+
+        if !has_storage {
+            return Ok(());
+        }
+
+        self.with_partition_by_id_async(
+            stream_id,
+            topic_id,
+            partition_id,
+            async move |(.., log)| {
+                if let Some(ref messages_writer) = log.active_storage().messages_writer {
+                    if let Err(e) = messages_writer.fsync().await {
+                        tracing::error!(
+                            "Failed to fsync messages writer for partition {}: {}",
+                            partition_id,
+                            e
+                        );
+                        return Err(e);
+                    }
+                }
+                Ok(())
+            },
+        )
+        .await?;
+
+        self.with_partition_by_id_async(
+            stream_id,
+            topic_id,
+            partition_id,
+            async move |(.., log)| {
+                if let Some(ref index_writer) = log.active_storage().index_writer {
+                    if let Err(e) = index_writer.fsync().await {
+                        tracing::error!(
+                            "Failed to fsync index writer for partition {}: {}",
+                            partition_id,
+                            e
+                        );
+                        return Err(e);
+                    }
+                }
+                Ok(())
+            },
+        )
+        .await?;
+
+        Ok(())
     }
 }

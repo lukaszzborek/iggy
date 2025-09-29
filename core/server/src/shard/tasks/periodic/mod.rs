@@ -22,8 +22,8 @@ pub mod print_sysinfo;
 pub mod save_messages;
 pub mod verify_heartbeats;
 
-pub use clear_jwt_tokens::ClearJwtTokens;
-pub use clear_personal_access_tokens::ClearPersonalAccessTokens;
-pub use print_sysinfo::PrintSysinfo;
-pub use save_messages::SaveMessages;
-pub use verify_heartbeats::VerifyHeartbeats;
+pub use clear_jwt_tokens::spawn_clear_jwt_tokens;
+pub use clear_personal_access_tokens::spawn_clear_personal_access_tokens;
+pub use print_sysinfo::spawn_print_sysinfo;
+pub use save_messages::spawn_save_messages;
+pub use verify_heartbeats::spawn_verify_heartbeats;

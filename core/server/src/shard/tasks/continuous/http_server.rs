@@ -17,53 +17,23 @@
  */
 
 use crate::bootstrap::resolve_persister;
-use crate::http::http_server::{self, start_http_server};
+use crate::http::http_server::start_http_server;
 use crate::shard::IggyShard;
-use crate::shard::task_registry::{ContinuousTask, TaskCtx, TaskMeta, TaskResult, TaskScope};
-use std::fmt::Debug;
-use std::future::Future;
+use iggy_common::IggyError;
 use std::rc::Rc;
 use tracing::info;
 
-pub struct HttpServer {
-    shard: Rc<IggyShard>,
+pub fn spawn_http_server(shard: Rc<IggyShard>) {
+    let shard_clone = shard.clone();
+    shard
+        .task_registry
+        .continuous("http_server")
+        .run(move |_shutdown| http_server(shard_clone))
+        .spawn();
 }
 
-impl Debug for HttpServer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("HttpServer")
-            .field("shard_id", &self.shard.id)
-            .finish()
-    }
-}
-
-impl HttpServer {
-    pub fn new(shard: Rc<IggyShard>) -> Self {
-        Self { shard }
-    }
-}
-
-impl TaskMeta for HttpServer {
-    fn name(&self) -> &'static str {
-        "http_server"
-    }
-
-    fn scope(&self) -> TaskScope {
-        TaskScope::SpecificShard(0)
-    }
-
-    fn is_critical(&self) -> bool {
-        false
-    }
-}
-
-impl ContinuousTask for HttpServer {
-    fn run(self, _ctx: TaskCtx) -> impl Future<Output = TaskResult> + 'static {
-        let shard = self.shard;
-        async move {
-            info!("Starting HTTP server on shard: {}", shard.id);
-            let persister = resolve_persister(shard.config.system.partition.enforce_fsync);
-            start_http_server(shard.config.http.clone(), persister, shard).await
-        }
-    }
+async fn http_server(shard: Rc<IggyShard>) -> Result<(), IggyError> {
+    info!("Starting HTTP server on shard: {}", shard.id);
+    let persister = resolve_persister(shard.config.system.partition.enforce_fsync);
+    start_http_server(shard.config.http.clone(), persister, shard).await
 }

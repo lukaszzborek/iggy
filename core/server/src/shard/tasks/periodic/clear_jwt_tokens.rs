@@ -17,77 +17,45 @@
  */
 
 use crate::http::shared::AppState;
-use crate::shard::task_registry::{PeriodicTask, TaskCtx, TaskMeta, TaskResult, TaskScope};
-use iggy_common::IggyTimestamp;
-use std::fmt::Debug;
-use std::future::Future;
+use crate::shard::IggyShard;
+use iggy_common::{IggyError, IggyTimestamp};
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{error, info, trace};
 
-pub struct ClearJwtTokens {
-    app_state: Arc<AppState>,
-    period: Duration,
+const JWT_TOKENS_CLEANER_PERIOD: Duration = Duration::from_secs(300);
+
+pub fn spawn_clear_jwt_tokens(shard: Rc<IggyShard>, app_state: Arc<AppState>) {
+    info!(
+        "JWT token cleaner is enabled, expired revoked tokens will be deleted every: {} seconds.",
+        JWT_TOKENS_CLEANER_PERIOD.as_secs()
+    );
+    shard
+        .task_registry
+        .periodic("clear_jwt_tokens")
+        .every(JWT_TOKENS_CLEANER_PERIOD)
+        .tick(move |_shutdown| clear_jwt_tokens(app_state.clone()))
+        .spawn();
 }
 
-impl Debug for ClearJwtTokens {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ClearJwtTokens")
-            .field("period", &self.period)
-            .finish()
-    }
-}
+async fn clear_jwt_tokens(app_state: Arc<AppState>) -> Result<(), IggyError> {
+    trace!("Checking for expired revoked JWT tokens...");
 
-impl ClearJwtTokens {
-    pub fn new(app_state: Arc<AppState>, period: Duration) -> Self {
-        Self { app_state, period }
-    }
-}
+    let now = IggyTimestamp::now().to_secs();
 
-impl TaskMeta for ClearJwtTokens {
-    fn name(&self) -> &'static str {
-        "clear_jwt_tokens"
-    }
-
-    fn scope(&self) -> TaskScope {
-        TaskScope::SpecificShard(0)
-    }
-
-    fn on_start(&self) {
-        info!(
-            "JWT token cleaner is enabled, expired revoked tokens will be deleted every: {:?}.",
-            self.period
-        );
-    }
-}
-
-impl PeriodicTask for ClearJwtTokens {
-    fn period(&self) -> Duration {
-        self.period
-    }
-
-    fn tick(&mut self, _ctx: &TaskCtx) -> impl Future<Output = TaskResult> + '_ {
-        let app_state = self.app_state.clone();
-
-        async move {
-            trace!("Checking for expired revoked JWT tokens...");
-
-            let now = IggyTimestamp::now().to_secs();
-
-            match app_state
-                .jwt_manager
-                .delete_expired_revoked_tokens(now)
-                .await
-            {
-                Ok(()) => {
-                    trace!("Successfully cleaned up expired revoked JWT tokens");
-                }
-                Err(err) => {
-                    error!("Failed to delete expired revoked JWT tokens: {}", err);
-                }
-            }
-
-            Ok(())
+    match app_state
+        .jwt_manager
+        .delete_expired_revoked_tokens(now)
+        .await
+    {
+        Ok(()) => {
+            trace!("Successfully cleaned up expired revoked JWT tokens");
+        }
+        Err(err) => {
+            error!("Failed to delete expired revoked JWT tokens: {}", err);
         }
     }
+
+    Ok(())
 }

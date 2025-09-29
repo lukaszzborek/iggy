@@ -17,108 +17,118 @@
  */
 
 use crate::shard::IggyShard;
-use crate::shard::task_registry::{PeriodicTask, TaskCtx, TaskMeta, TaskResult, TaskScope};
 use crate::shard_info;
-use iggy_common::Identifier;
-use std::fmt::Debug;
-use std::future::Future;
+use iggy_common::{Identifier, IggyError};
 use std::rc::Rc;
-use std::time::Duration;
 use tracing::{error, info, trace};
 
-pub struct SaveMessages {
-    shard: Rc<IggyShard>,
-    period: Duration,
+pub fn spawn_save_messages(shard: Rc<IggyShard>) {
+    let period = shard.config.message_saver.interval.get_duration();
+    let enforce_fsync = shard.config.message_saver.enforce_fsync;
+    info!(
+        "Message saver is enabled, buffered messages will be automatically saved every: {:?}, enforce fsync: {enforce_fsync}.",
+        period
+    );
+    let shard_clone = shard.clone();
+    let shard_for_shutdown = shard.clone();
+    shard
+        .task_registry
+        .periodic("save_messages")
+        .every(period)
+        .last_tick_on_shutdown(true)
+        .tick(move |_shutdown| save_messages(shard_clone.clone()))
+        .on_shutdown(move |result| {
+            fsync_all_segments_on_shutdown(shard_for_shutdown.clone(), result)
+        })
+        .spawn();
 }
 
-impl Debug for SaveMessages {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SaveMessages")
-            .field("shard_id", &self.shard.id)
-            .field("period", &self.period)
-            .finish()
-    }
-}
+async fn save_messages(shard: Rc<IggyShard>) -> Result<(), IggyError> {
+    trace!("Saving buffered messages...");
 
-impl SaveMessages {
-    pub fn new(shard: Rc<IggyShard>, period: Duration) -> Self {
-        Self { shard, period }
-    }
-}
+    let namespaces = shard.get_current_shard_namespaces();
+    let mut total_saved_messages = 0u32;
+    const REASON: &str = "background saver triggered";
 
-impl TaskMeta for SaveMessages {
-    fn name(&self) -> &'static str {
-        "save_messages"
-    }
+    for ns in namespaces {
+        let stream_id = Identifier::numeric(ns.stream_id() as u32).unwrap();
+        let topic_id = Identifier::numeric(ns.topic_id() as u32).unwrap();
+        let partition_id = ns.partition_id();
 
-    fn scope(&self) -> TaskScope {
-        TaskScope::AllShards
-    }
-
-    fn on_start(&self) {
-        let enforce_fsync = self.shard.config.message_saver.enforce_fsync;
-        info!(
-            "Message saver is enabled, buffered messages will be automatically saved every: {:?}, enforce fsync: {enforce_fsync}.",
-            self.period
-        );
-    }
-}
-
-impl PeriodicTask for SaveMessages {
-    fn period(&self) -> Duration {
-        self.period
-    }
-
-    fn tick(&mut self, ctx: &TaskCtx) -> impl Future<Output = TaskResult> + '_ {
-        let shard = ctx.shard.clone();
-        async move {
-            trace!("Saving buffered messages...");
-
-            let namespaces = shard.get_current_shard_namespaces();
-            let mut total_saved_messages = 0u32;
-            const REASON: &str = "background saver triggered";
-
-            for ns in namespaces {
-                let stream_id = Identifier::numeric(ns.stream_id() as u32).unwrap();
-                let topic_id = Identifier::numeric(ns.topic_id() as u32).unwrap();
-                let partition_id = ns.partition_id();
-
-                match shard
-                    .streams2
-                    .persist_messages(
-                        shard.id,
-                        &stream_id,
-                        &topic_id,
-                        partition_id,
-                        REASON,
-                        &shard.config.system,
-                    )
-                    .await
-                {
-                    Ok(batch_count) => {
-                        total_saved_messages += batch_count;
-                    }
-                    Err(err) => {
-                        error!(
-                            "Failed to save messages for partition {}: {}",
-                            partition_id, err
-                        );
-                    }
-                }
+        match shard
+            .streams2
+            .persist_messages(
+                shard.id,
+                &stream_id,
+                &topic_id,
+                partition_id,
+                REASON,
+                &shard.config.system,
+            )
+            .await
+        {
+            Ok(batch_count) => {
+                total_saved_messages += batch_count;
             }
-
-            if total_saved_messages > 0 {
-                shard_info!(
-                    shard.id,
-                    "Saved {} buffered messages on disk.",
-                    total_saved_messages
+            Err(err) => {
+                error!(
+                    "Failed to save messages for partition {}: {}",
+                    partition_id, err
                 );
             }
-            Ok(())
         }
     }
 
-    fn last_tick_on_shutdown(&self) -> bool {
-        true
+    if total_saved_messages > 0 {
+        shard_info!(
+            shard.id,
+            "Saved {} buffered messages on disk.",
+            total_saved_messages
+        );
+    }
+    Ok(())
+}
+
+async fn fsync_all_segments_on_shutdown(shard: Rc<IggyShard>, result: Result<(), IggyError>) {
+    // Only fsync if the last save_messages tick succeeded
+    if result.is_err() {
+        error!(
+            "Last save_messages tick failed, skipping fsync: {:?}",
+            result
+        );
+        return;
+    }
+
+    trace!("Performing fsync on all segments during shutdown...");
+
+    let namespaces = shard.get_current_shard_namespaces();
+    let mut total_fsynced = 0u32;
+    let mut total_errors = 0u32;
+
+    for ns in namespaces {
+        let stream_id = Identifier::numeric(ns.stream_id() as u32).unwrap();
+        let topic_id = Identifier::numeric(ns.topic_id() as u32).unwrap();
+        let partition_id = ns.partition_id();
+
+        match shard
+            .streams2
+            .fsync_all_messages(&stream_id, &topic_id, partition_id)
+            .await
+        {
+            Ok(()) => {
+                total_fsynced += 1;
+                trace!(
+                    "Successfully fsynced segment for stream: {}, topic: {}, partition: {} during shutdown",
+                    stream_id, topic_id, partition_id
+                );
+            }
+            Err(err) => {
+                total_errors += 1;
+                error!(
+                    "Failed to fsync segment for stream: {}, topic: {}, partition: {} during shutdown: {}",
+                    stream_id, topic_id, partition_id, err
+                );
+            }
+        }
     }
 }
