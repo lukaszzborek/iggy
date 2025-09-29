@@ -1,4 +1,6 @@
 use crate::shard::task_registry::TaskRegistry;
+use crate::slab::async_safe::AsyncSafe;
+use crate::slab::try_borrow::BorrowResult;
 use crate::streaming::partitions as streaming_partitions;
 use crate::{
     binary::handlers::messages::poll_messages_handler::IggyPollMetadata,
@@ -837,12 +839,35 @@ impl Streams {
             return Ok(0);
         }
 
-        let batches = self.with_partition_by_id_mut(
-            stream_id,
-            topic_id,
-            partition_id,
-            streaming_partitions::helpers::commit_journal(),
-        );
+        // Try to commit journal with retry on conflicts
+        const MAX_RETRIES: usize = 3;
+        let batches_result =
+            AsyncSafe::with_retry(MAX_RETRIES, "persist_messages:commit_journal", || {
+                // Try to get the lock and commit
+                // Return Result<T, ()> to satisfy the signature
+                Ok::<_, ()>(self.with_partition_by_id_mut(
+                    stream_id,
+                    topic_id,
+                    partition_id,
+                    streaming_partitions::helpers::commit_journal(),
+                ))
+            })
+            .await;
+
+        let batches = match batches_result {
+            BorrowResult::Success(b) => b,
+            BorrowResult::Skipped(reason) => {
+                // If we can't get the lock after retries, skip this persist
+                // The data is still in the journal and will be persisted next time
+                tracing::debug!(
+                    "Skipping persist for partition {} ({}): {}",
+                    partition_id,
+                    reason,
+                    "will retry on next interval"
+                );
+                return Ok(0);
+            }
+        };
 
         let (saved, batch_count) = self
             .with_partition_by_id_async(
@@ -860,16 +885,20 @@ impl Streams {
             )
             .await?;
 
-        self.with_partition_by_id_mut(
-            stream_id,
-            topic_id,
-            partition_id,
-            streaming_partitions::helpers::update_index_and_increment_stats(
-                saved,
-                batch_count,
-                config,
-            ),
-        );
+        // Try to update stats with retry
+        let _ = AsyncSafe::with_retry(MAX_RETRIES, "persist_messages:update_stats", || {
+            Ok::<_, ()>(self.with_partition_by_id_mut(
+                stream_id,
+                topic_id,
+                partition_id,
+                streaming_partitions::helpers::update_index_and_increment_stats(
+                    saved,
+                    batch_count,
+                    config,
+                ),
+            ))
+        })
+        .await;
 
         Ok(batch_count)
     }

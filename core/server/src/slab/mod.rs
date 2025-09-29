@@ -1,9 +1,11 @@
+pub mod async_safe;
 pub mod consumer_groups;
 pub mod helpers;
 pub mod partitions;
 pub mod streams;
 pub mod topics;
 pub mod traits_ext;
+pub mod try_borrow;
 
 use std::fmt::{Debug, Display};
 
