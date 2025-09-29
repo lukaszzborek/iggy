@@ -20,7 +20,7 @@ use crate::binary::command::{ServerCommand, ServerCommandHandler};
 use crate::binary::sender::SenderKind;
 use crate::server_error::ConnectionError;
 use crate::shard::IggyShard;
-use crate::shard::task_registry::{ShutdownToken, task_registry};
+use crate::shard::task_registry::ShutdownToken;
 use crate::shard::transmission::event::ShardEvent;
 use crate::streaming::session::Session;
 use crate::{shard_debug, shard_info};
@@ -60,7 +60,7 @@ pub async fn start(
                         trace!("Incoming connection from client: {}", remote_addr);
                         let shard_for_conn = shard.clone();
 
-                        task_registry().spawn_connection(async move {
+                        shard.task_registry.spawn_connection(async move {
                             trace!("Accepting connection from {}", remote_addr);
                             match incoming_conn.await {
                                 Ok(connection) => {
@@ -116,7 +116,7 @@ async fn handle_connection(
     // TODO(hubcio): unused?
     let _responses = shard.broadcast_event_to_all_shards(event).await;
 
-    let conn_stop_receiver = task_registry().add_connection(client_id);
+    let conn_stop_receiver = shard.task_registry.add_connection(client_id);
 
     loop {
         futures::select! {
@@ -132,7 +132,7 @@ async fn handle_connection(
                         let shard_clone = shard.clone();
                         let session_clone = session.clone();
 
-                        task_registry().spawn_connection(async move {
+                        shard.task_registry.spawn_connection(async move {
                             if let Err(err) = handle_stream(stream, shard_clone, session_clone).await {
                                 error!("Error when handling QUIC stream: {:?}", err)
                             }
@@ -144,7 +144,7 @@ async fn handle_connection(
         }
     }
 
-    task_registry().remove_connection(&client_id);
+    shard.task_registry.remove_connection(&client_id);
     info!("QUIC connection {} closed", client_id);
     Ok(())
 }

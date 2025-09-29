@@ -38,7 +38,10 @@ use std::{
 };
 use tracing::info;
 
-use super::{IggyShard, transmission::connector::ShardConnector, transmission::frame::ShardFrame};
+use super::{
+    IggyShard, TaskRegistry, transmission::connector::ShardConnector,
+    transmission::frame::ShardFrame,
+};
 
 #[derive(Default)]
 pub struct IggyShardBuilder {
@@ -135,6 +138,10 @@ impl IggyShardBuilder {
 
         // Initialize metrics
         let metrics = self.metrics.unwrap_or_else(|| Metrics::init());
+
+        // Create TaskRegistry for this shard
+        let task_registry = Rc::new(TaskRegistry::new(id));
+
         IggyShard {
             id: id,
             shards: shards,
@@ -152,6 +159,7 @@ impl IggyShardBuilder {
             is_shutting_down: AtomicBool::new(false),
             tcp_bound_address: Cell::new(None),
             quic_bound_address: Cell::new(None),
+            task_registry,
 
             permissioner: Default::default(),
             client_manager: Default::default(),

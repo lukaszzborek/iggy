@@ -25,7 +25,7 @@ use crate::http::metrics::metrics;
 use crate::http::shared::AppState;
 use crate::http::*;
 use crate::shard::IggyShard;
-use crate::shard::task_registry::{TaskScope, task_registry};
+use crate::shard::task_registry::TaskScope;
 use crate::shard::tasks::periodic::ClearJwtTokens;
 use crate::streaming::persistence::persister::PersisterKind;
 use axum::extract::DefaultBodyLimit;
@@ -111,7 +111,7 @@ pub async fn start_http_server(
         app = app.layer(middleware::from_fn_with_state(app_state.clone(), metrics));
     }
 
-    task_registry().spawn_periodic(
+    shard.task_registry.spawn_periodic(
         shard.clone(),
         ClearJwtTokens::new(app_state.clone(), JWT_TOKENS_CLEANER_PERIOD),
     );

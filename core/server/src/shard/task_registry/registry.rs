@@ -1,7 +1,5 @@
 use super::shutdown::{Shutdown, ShutdownToken};
-use super::specs::{
-    ContinuousTask, OneShotTask, PeriodicTask, TaskCtx, TaskMeta, TaskResult, TaskScope,
-};
+use super::specs::{ContinuousTask, OneShotTask, PeriodicTask, TaskCtx, TaskMeta, TaskResult};
 use crate::shard::IggyShard;
 use compio::runtime::JoinHandle;
 use futures::future::join_all;

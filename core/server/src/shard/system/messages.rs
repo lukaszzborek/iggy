@@ -141,7 +141,13 @@ impl IggyShard {
                     let batch = self.maybe_encrypt_messages(batch)?;
                     let messages_count = batch.count();
                     self.streams2
-                        .append_messages(self.id, &self.config.system, &ns, batch)
+                        .append_messages(
+                            self.id,
+                            &self.config.system,
+                            &self.task_registry,
+                            &ns,
+                            batch,
+                        )
                         .await?;
                     self.metrics.increment_messages(messages_count as u64);
                     Ok(())

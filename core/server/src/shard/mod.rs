@@ -59,8 +59,7 @@ use crate::{
     io::fs_utils,
     shard::{
         namespace::{IggyFullNamespace, IggyNamespace},
-        task_registry::{init_task_registry, task_registry},
-        tasks::register_tasks,
+        task_registry::TaskRegistry,
         transmission::{
             event::ShardEvent,
             frame::{ShardFrame, ShardResponse},
@@ -165,6 +164,7 @@ pub struct IggyShard {
     pub(crate) is_shutting_down: AtomicBool,
     pub(crate) tcp_bound_address: Cell<Option<SocketAddr>>,
     pub(crate) quic_bound_address: Cell<Option<SocketAddr>>,
+    pub(crate) task_registry: Rc<TaskRegistry>,
 }
 
 impl IggyShard {
@@ -178,11 +178,79 @@ impl IggyShard {
         Ok(())
     }
 
+    fn init_tasks(self: &Rc<Self>) {
+        use self::tasks::{continuous, periodic};
+
+        self.task_registry
+            .spawn_continuous(self.clone(), continuous::MessagePump::new(self.clone()));
+
+        if self.config.tcp.enabled {
+            self.task_registry
+                .spawn_continuous(self.clone(), continuous::TcpServer::new(self.clone()));
+        }
+
+        if self.config.http.enabled {
+            self.task_registry
+                .spawn_continuous(self.clone(), continuous::HttpServer::new(self.clone()));
+        }
+
+        if self.config.quic.enabled {
+            self.task_registry
+                .spawn_continuous(self.clone(), continuous::QuicServer::new(self.clone()));
+        }
+
+        if self.config.message_saver.enabled {
+            let period = self.config.message_saver.interval.get_duration();
+            self.task_registry.spawn_periodic(
+                self.clone(),
+                periodic::SaveMessages::new(self.clone(), period),
+            );
+        }
+
+        if self.config.heartbeat.enabled {
+            let period = self.config.heartbeat.interval.get_duration();
+            self.task_registry.spawn_periodic(
+                self.clone(),
+                periodic::VerifyHeartbeats::new(self.clone(), period),
+            );
+        }
+
+        if self.config.personal_access_token.cleaner.enabled {
+            let period = self
+                .config
+                .personal_access_token
+                .cleaner
+                .interval
+                .get_duration();
+            self.task_registry.spawn_periodic(
+                self.clone(),
+                periodic::ClearPersonalAccessTokens::new(self.clone(), period),
+            );
+        }
+
+        if self
+            .config
+            .system
+            .logging
+            .sysinfo_print_interval
+            .as_micros()
+            > 0
+        {
+            let period = self
+                .config
+                .system
+                .logging
+                .sysinfo_print_interval
+                .get_duration();
+            self.task_registry.spawn_periodic(
+                self.clone(),
+                periodic::PrintSysinfo::new(self.clone(), period),
+            );
+        }
+    }
+
     pub async fn run(self: &Rc<Self>, persister: Arc<PersisterKind>) -> Result<(), IggyError> {
         let now = Instant::now();
-
-        // Initialize thread-local task registry for this thread
-        init_task_registry(self.id);
 
         // Workaround to ensure that the statistics are initialized before the server
         // loads streams and starts accepting connections. This is necessary to
@@ -194,7 +262,7 @@ impl IggyShard {
         // TODO: Fixme
         //self.assert_init();
 
-        register_tasks(&task_registry(), self.clone());
+        self.init_tasks();
         let (shutdown_complete_tx, shutdown_complete_rx) = async_channel::bounded(1);
         let stop_receiver = self.get_stop_receiver();
         let shard_for_shutdown = self.clone();
@@ -317,19 +385,11 @@ impl IggyShard {
         self.stop_receiver.clone()
     }
 
-    /// Get the task supervisor for the current thread
-    ///
-    /// # Panics
-    /// Panics if the task supervisor has not been initialized
-    pub fn task_registry() -> Rc<crate::shard::task_registry::TaskRegistry> {
-        task_registry()
-    }
-
     #[instrument(skip_all, name = "trace_shutdown")]
     pub async fn trigger_shutdown(&self) -> bool {
         self.is_shutting_down.store(true, Ordering::SeqCst);
         debug!("Shard {} shutdown state set", self.id);
-        task_registry().graceful_shutdown(SHUTDOWN_TIMEOUT).await
+        self.task_registry.graceful_shutdown(SHUTDOWN_TIMEOUT).await
     }
 
     pub fn get_available_shards_count(&self) -> u32 {
@@ -359,7 +419,13 @@ impl IggyShard {
                 let batch = self.maybe_encrypt_messages(batch)?;
                 let messages_count = batch.count();
                 self.streams2
-                    .append_messages(self.id, &self.config.system, &ns, batch)
+                    .append_messages(
+                        self.id,
+                        &self.config.system,
+                        &self.task_registry,
+                        &ns,
+                        batch,
+                    )
                     .await?;
                 self.metrics.increment_messages(messages_count as u64);
                 Ok(ShardResponse::SendMessages)

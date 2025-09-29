@@ -19,7 +19,7 @@
 use crate::binary::sender::SenderKind;
 use crate::configs::tcp::TcpSocketConfig;
 use crate::shard::IggyShard;
-use crate::shard::task_registry::{ShutdownToken, task_registry};
+use crate::shard::task_registry::ShutdownToken;
 use crate::shard::transmission::event::ShardEvent;
 use crate::tcp::connection_handler::{handle_connection, handle_error};
 use crate::{shard_error, shard_info, shard_warn};
@@ -213,7 +213,9 @@ async fn accept_loop(
 
                         // Perform TLS handshake in a separate task to avoid blocking the accept loop
                         let task_shard = shard_clone.clone();
-                        task_registry().spawn_connection(async move {
+                        let registry = shard.task_registry.clone();
+                        let registry_clone = registry.clone();
+                        registry.spawn_connection(async move {
                             match acceptor.accept(stream).await {
                                 Ok(tls_stream) => {
                                     // TLS handshake successful, now create session
@@ -231,13 +233,13 @@ async fn accept_loop(
                                     let client_id = session.client_id;
                                     shard_info!(shard_clone.id, "Created new session: {}", session);
 
-                                    let conn_stop_receiver = task_registry().add_connection(client_id);
+                                    let conn_stop_receiver = registry_clone.add_connection(client_id);
                                     let shard_for_conn = shard_clone.clone();
                                     let mut sender = SenderKind::get_tcp_tls_sender(tls_stream);
                                     if let Err(error) = handle_connection(&session, &mut sender, &shard_for_conn, conn_stop_receiver).await {
                                         handle_error(error);
                                     }
-                                    task_registry().remove_connection(&client_id);
+                                    registry_clone.remove_connection(&client_id);
 
                                     if let Err(error) = sender.shutdown().await {
                                         shard_error!(shard.id, "Failed to shutdown TCP TLS stream for client: {}, address: {}. {}", client_id, address, error);

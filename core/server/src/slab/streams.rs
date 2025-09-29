@@ -1,4 +1,4 @@
-use crate::shard::task_registry::tls::task_registry;
+use crate::shard::task_registry::TaskRegistry;
 use crate::streaming::partitions as streaming_partitions;
 use crate::{
     binary::handlers::messages::poll_messages_handler::IggyPollMetadata,
@@ -43,6 +43,7 @@ use iggy_common::{Identifier, IggyError, IggyTimestamp, PollingKind};
 use slab::Slab;
 use std::{
     cell::RefCell,
+    rc::Rc,
     sync::{Arc, atomic::Ordering},
 };
 use tracing::{error, trace};
@@ -172,6 +173,7 @@ impl MainOps for Streams {
         &self,
         shard_id: u16,
         config: &SystemConfig,
+        registry: &Rc<TaskRegistry>,
         ns: &Self::Namespace,
         mut input: Self::In,
     ) -> Result<(), Self::Error> {
@@ -244,8 +246,15 @@ impl MainOps for Streams {
                 .await?;
 
             if is_full {
-                self.handle_full_segment(shard_id, stream_id, topic_id, partition_id, config)
-                    .await?;
+                self.handle_full_segment(
+                    shard_id,
+                    registry,
+                    stream_id,
+                    topic_id,
+                    partition_id,
+                    config,
+                )
+                .await?;
             }
         }
         Ok(())
@@ -707,6 +716,7 @@ impl Streams {
     pub async fn handle_full_segment(
         &self,
         shard_id: u16,
+        registry: &Rc<TaskRegistry>,
         stream_id: &Identifier,
         topic_id: &Identifier,
         partition_id: partitions::ContainerId,
@@ -734,7 +744,7 @@ impl Streams {
                 (msg.unwrap(), index.unwrap())
             });
 
-        task_registry().spawn_oneshot_future("fsync:segment-close-log", true, async move {
+        registry.spawn_oneshot_future("fsync:segment-close-log", true, async move {
             match log_writer.fsync().await {
                 Ok(_) => Ok(()),
                 Err(e) => {
@@ -744,7 +754,7 @@ impl Streams {
             }
         });
 
-        task_registry().spawn_oneshot_future("fsync:segment-close-index", true, async move {
+        registry.spawn_oneshot_future("fsync:segment-close-index", true, async move {
             match index_writer.fsync().await {
                 Ok(_) => {
                     drop(index_writer);
