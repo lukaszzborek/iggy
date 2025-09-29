@@ -1,19 +1,20 @@
+use super::NoShutdown;
 use crate::shard::task_registry::ShutdownToken;
 use crate::shard::task_registry::registry::TaskRegistry;
 use iggy_common::IggyError;
-use std::future::Future;
+use std::ops::AsyncFnOnce;
 use std::time::Duration;
 
-pub struct OneShotBuilder<'a, TaskFn, ShutdownFn = ()> {
+pub struct OneShotBuilder<'a, Task, OnShutdown = NoShutdown> {
     reg: &'a TaskRegistry,
     name: &'static str,
     critical: bool,
     timeout: Option<Duration>,
-    run_fn: Option<TaskFn>,
-    on_shutdown: Option<ShutdownFn>,
+    run_fn: Option<Task>,
+    on_shutdown: Option<OnShutdown>,
 }
 
-impl<'a> OneShotBuilder<'a, (), ()> {
+impl<'a> OneShotBuilder<'a, (), NoShutdown> {
     pub fn new(reg: &'a TaskRegistry, name: &'static str) -> Self {
         Self {
             reg,
@@ -26,7 +27,7 @@ impl<'a> OneShotBuilder<'a, (), ()> {
     }
 }
 
-impl<'a, TaskFn, ShutdownFn> OneShotBuilder<'a, TaskFn, ShutdownFn> {
+impl<'a, Task, OnShutdown> OneShotBuilder<'a, Task, OnShutdown> {
     pub fn critical(mut self, c: bool) -> Self {
         self.critical = c;
         self
@@ -37,10 +38,9 @@ impl<'a, TaskFn, ShutdownFn> OneShotBuilder<'a, TaskFn, ShutdownFn> {
         self
     }
 
-    pub fn on_shutdown<F, Fut>(self, f: F) -> OneShotBuilder<'a, TaskFn, F>
+    pub fn on_shutdown<NewShutdown>(self, f: NewShutdown) -> OneShotBuilder<'a, Task, NewShutdown>
     where
-        F: FnOnce(Result<(), IggyError>) -> Fut + 'static,
-        Fut: Future<Output = ()> + 'static,
+        NewShutdown: AsyncFnOnce(Result<(), IggyError>) + 'static,
     {
         OneShotBuilder {
             reg: self.reg,
@@ -53,11 +53,10 @@ impl<'a, TaskFn, ShutdownFn> OneShotBuilder<'a, TaskFn, ShutdownFn> {
     }
 }
 
-impl<'a, ShutdownFn> OneShotBuilder<'a, (), ShutdownFn> {
-    pub fn run<TaskFn, TaskFut>(self, f: TaskFn) -> OneShotBuilder<'a, TaskFn, ShutdownFn>
+impl<'a, OnShutdown> OneShotBuilder<'a, (), OnShutdown> {
+    pub fn run<NewTask>(self, f: NewTask) -> OneShotBuilder<'a, NewTask, OnShutdown>
     where
-        TaskFn: FnOnce(ShutdownToken) -> TaskFut + 'static,
-        TaskFut: Future<Output = Result<(), IggyError>> + 'static,
+        NewTask: AsyncFnOnce(ShutdownToken) -> Result<(), IggyError> + 'static,
     {
         OneShotBuilder {
             reg: self.reg,
@@ -70,30 +69,26 @@ impl<'a, ShutdownFn> OneShotBuilder<'a, (), ShutdownFn> {
     }
 }
 
-impl<'a, TaskFn, TaskFut> OneShotBuilder<'a, TaskFn, ()>
+impl<'a, Task> OneShotBuilder<'a, Task, NoShutdown>
 where
-    TaskFn: FnOnce(ShutdownToken) -> TaskFut + 'static,
-    TaskFut: Future<Output = Result<(), IggyError>> + 'static,
+    Task: AsyncFnOnce(ShutdownToken) -> Result<(), IggyError> + 'static,
 {
     pub fn spawn(self) {
         let run_fn = self.run_fn.expect("run() must be called before spawn()");
-        self.reg
-            .spawn_oneshot_closure::<_, _, fn(Result<(), IggyError>) -> std::future::Ready<()>, _>(
-                self.name,
-                self.critical,
-                self.timeout,
-                run_fn,
-                None,
-            );
+        self.reg.spawn_oneshot_closure(
+            self.name,
+            self.critical,
+            self.timeout,
+            run_fn,
+            Some(|_| async {}),
+        );
     }
 }
 
-impl<'a, TaskFn, TaskFut, ShutdownFn, ShutdownFut> OneShotBuilder<'a, TaskFn, ShutdownFn>
+impl<'a, Task, OnShutdown> OneShotBuilder<'a, Task, OnShutdown>
 where
-    TaskFn: FnOnce(ShutdownToken) -> TaskFut + 'static,
-    TaskFut: Future<Output = Result<(), IggyError>> + 'static,
-    ShutdownFn: FnOnce(Result<(), IggyError>) -> ShutdownFut + 'static,
-    ShutdownFut: Future<Output = ()> + 'static,
+    Task: AsyncFnOnce(ShutdownToken) -> Result<(), IggyError> + 'static,
+    OnShutdown: AsyncFnOnce(Result<(), IggyError>) + 'static,
 {
     pub fn spawn(self) {
         let run_fn = self.run_fn.expect("run() must be called before spawn()");

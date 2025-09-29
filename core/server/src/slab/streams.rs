@@ -895,7 +895,9 @@ impl Streams {
             topic_id,
             partition_id,
             async move |(.., log)| {
-                if let Some(ref messages_writer) = log.active_storage().messages_writer {
+                let storage = log.active_storage();
+
+                if let Some(ref messages_writer) = storage.messages_writer {
                     if let Err(e) = messages_writer.fsync().await {
                         tracing::error!(
                             "Failed to fsync messages writer for partition {}: {}",

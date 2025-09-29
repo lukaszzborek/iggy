@@ -1,21 +1,21 @@
 use super::shutdown::{Shutdown, ShutdownToken};
-use crate::shard::IggyShard;
 use compio::runtime::JoinHandle;
 use futures::future::join_all;
 use iggy_common::IggyError;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::future::Future;
-use std::rc::Rc;
+use std::ops::{AsyncFn, AsyncFnOnce};
 use std::time::{Duration, Instant};
 use tracing::{debug, error, trace, warn};
 
+#[derive(Debug)]
 enum Kind {
     Continuous,
-    Periodic(Duration),
+    Periodic,
     OneShot,
 }
 
+#[derive(Debug)]
 struct TaskHandle {
     name: String,
     kind: Kind,
@@ -51,18 +51,15 @@ impl TaskRegistry {
         self.shutdown_token.clone()
     }
 
-    // New closure-based spawn methods for builders
-    pub(crate) fn spawn_continuous_closure<RunFn, RunFut, ShutdownFn, ShutdownFut>(
+    pub(crate) fn spawn_continuous_closure<Task, OnShutdown>(
         &self,
         name: &'static str,
         critical: bool,
-        f: RunFn,
-        on_shutdown: Option<ShutdownFn>,
+        f: Task,
+        on_shutdown: Option<OnShutdown>,
     ) where
-        RunFn: FnOnce(ShutdownToken) -> RunFut + 'static,
-        RunFut: Future<Output = Result<(), IggyError>> + 'static,
-        ShutdownFn: FnOnce(Result<(), IggyError>) -> ShutdownFut + 'static,
-        ShutdownFut: Future<Output = ()> + 'static,
+        Task: AsyncFnOnce(ShutdownToken) -> Result<(), IggyError> + 'static,
+        OnShutdown: AsyncFnOnce(Result<(), IggyError>) + 'static,
     {
         if *self.shutting_down.borrow() {
             warn!(
@@ -101,19 +98,17 @@ impl TaskRegistry {
         });
     }
 
-    pub(crate) fn spawn_periodic_closure<TickFn, TickFut, ShutdownFn, ShutdownFut>(
+    pub(crate) fn spawn_periodic_closure<Tick, OnShutdown>(
         &self,
         name: &'static str,
         period: Duration,
         critical: bool,
         last_on_shutdown: bool,
-        tick_fn: TickFn,
-        on_shutdown: Option<ShutdownFn>,
+        tick_fn: Tick,
+        on_shutdown: Option<OnShutdown>,
     ) where
-        TickFn: Fn(ShutdownToken) -> TickFut + 'static,
-        TickFut: Future<Output = Result<(), IggyError>> + 'static,
-        ShutdownFn: FnOnce(Result<(), IggyError>) -> ShutdownFut + 'static,
-        ShutdownFut: Future<Output = ()> + 'static,
+        Tick: AsyncFn(ShutdownToken) -> Result<(), IggyError> + 'static,
+        OnShutdown: AsyncFnOnce(Result<(), IggyError>) + 'static,
     {
         if *self.shutting_down.borrow() {
             warn!(
@@ -176,24 +171,22 @@ impl TaskRegistry {
 
         self.long_running.borrow_mut().push(TaskHandle {
             name: name.into(),
-            kind: Kind::Periodic(period),
+            kind: Kind::Periodic,
             handle,
             critical,
         });
     }
 
-    pub(crate) fn spawn_oneshot_closure<TaskFn, TaskFut, ShutdownFn, ShutdownFut>(
+    pub(crate) fn spawn_oneshot_closure<Task, OnShutdown>(
         &self,
         name: &'static str,
         critical: bool,
         timeout: Option<Duration>,
-        f: TaskFn,
-        on_shutdown: Option<ShutdownFn>,
+        f: Task,
+        on_shutdown: Option<OnShutdown>,
     ) where
-        TaskFn: FnOnce(ShutdownToken) -> TaskFut + 'static,
-        TaskFut: Future<Output = Result<(), IggyError>> + 'static,
-        ShutdownFn: FnOnce(Result<(), IggyError>) -> ShutdownFut + 'static,
-        ShutdownFut: Future<Output = ()> + 'static,
+        Task: AsyncFnOnce(ShutdownToken) -> Result<(), IggyError> + 'static,
+        OnShutdown: AsyncFnOnce(Result<(), IggyError>) + 'static,
     {
         if *self.shutting_down.borrow() {
             warn!("Attempted to spawn oneshot task '{}' during shutdown", name);
@@ -306,15 +299,18 @@ impl TaskRegistry {
             match compio::time::timeout(timeout, t.handle).await {
                 Ok(Ok(Ok(()))) => true,
                 Ok(Ok(Err(e))) => {
-                    error!("task '{}' failed: {}", t.name, e);
+                    error!("task '{}' of kind {:?} failed: {}", t.name, t.kind, e);
                     !t.critical
                 }
                 Ok(Err(_)) => {
-                    error!("task '{}' panicked", t.name);
+                    error!("task '{}' of kind {:?} panicked", t.name, t.kind);
                     !t.critical
                 }
                 Err(_) => {
-                    error!("task '{}' timed out after {:?}", t.name, timeout);
+                    error!(
+                        "task '{}' of kind {:?} timed out after {:?}",
+                        t.name, t.kind, timeout
+                    );
                     !t.critical
                 }
             }
@@ -324,6 +320,7 @@ impl TaskRegistry {
         results.into_iter().all(|x| x)
     }
 
+    #[cfg(test)]
     async fn await_all(&self, tasks: Vec<TaskHandle>) -> bool {
         if tasks.is_empty() {
             return true;
@@ -566,7 +563,7 @@ mod tests {
 
         registry.long_running.borrow_mut().push(TaskHandle {
             name: "periodic_with_slow_final".to_string(),
-            kind: Kind::Periodic(Duration::from_millis(10)),
+            kind: Kind::Periodic,
             handle,
             critical: false,
         });

@@ -18,25 +18,20 @@
 
 use crate::{
     configs::server::ServerConfig,
-    io::storage::Storage,
     shard::{Shard, ShardInfo, namespace::IggyNamespace},
     slab::streams::Streams,
-    state::{StateKind, system::SystemState},
-    streaming::{
-        diagnostics::metrics::Metrics, storage::SystemStorage, users::user::User,
-        utils::ptr::EternalPtr,
-    },
+    state::StateKind,
+    streaming::{diagnostics::metrics::Metrics, users::user::User, utils::ptr::EternalPtr},
     versioning::SemanticVersion,
 };
 use ahash::HashMap;
 use dashmap::DashMap;
-use iggy_common::{Aes256GcmEncryptor, EncryptorKind, UserId};
+use iggy_common::{EncryptorKind, UserId};
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
-    sync::{Arc, atomic::AtomicBool},
+    sync::atomic::AtomicBool,
 };
-use tracing::info;
 
 use super::{
     IggyShard, TaskRegistry, transmission::connector::ShardConnector,

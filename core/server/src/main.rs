@@ -16,34 +16,23 @@
  * under the License.
  */
 
-use std::collections::HashSet;
-use std::rc::Rc;
-use std::str::FromStr;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-
 use anyhow::Result;
 use clap::Parser;
 use dashmap::DashMap;
 use dotenvy::dotenv;
 use error_set::ErrContext;
 use figlet_rs::FIGfont;
-use iggy_common::create_user::CreateUser;
-use iggy_common::defaults::DEFAULT_ROOT_USER_ID;
-use iggy_common::{Aes256GcmEncryptor, EncryptorKind, Identifier, IggyError};
-use lending_iterator::lending_iterator::constructors::into_lending_iter;
+use iggy_common::{Aes256GcmEncryptor, EncryptorKind, IggyError};
 use server::args::Args;
-use server::binary::handlers::streams;
 use server::bootstrap::{
-    create_directories, create_root_user, create_shard_connections, create_shard_executor,
-    load_config, load_streams, load_users, resolve_persister, update_system_info,
+    create_directories, create_shard_connections, create_shard_executor, load_config, load_streams,
+    load_users, resolve_persister, update_system_info,
 };
 use server::configs::config_provider::{self};
-use server::configs::server::ServerConfig;
 use server::configs::sharding::CpuAllocation;
 use server::io::fs_utils;
 use server::log::logger::Logging;
-use server::server_error::{ConfigError, ServerError};
+use server::server_error::ServerError;
 use server::shard::namespace::IggyNamespace;
 use server::shard::system::info::SystemInfo;
 use server::shard::{IggyShard, ShardInfo, calculate_shard_assignment};
@@ -51,16 +40,18 @@ use server::slab::traits_ext::{
     EntityComponentSystem, EntityComponentSystemMutCell, IntoComponents,
 };
 use server::state::StateKind;
-use server::state::command::EntryCommand;
 use server::state::file::FileState;
-use server::state::models::CreateUserWithId;
 use server::state::system::SystemState;
 use server::streaming::diagnostics::metrics::Metrics;
 use server::streaming::storage::SystemStorage;
 use server::streaming::utils::MemoryPool;
 use server::streaming::utils::ptr::EternalPtr;
 use server::versioning::SemanticVersion;
-use server::{IGGY_ROOT_PASSWORD_ENV, IGGY_ROOT_USERNAME_ENV, map_toggle_str, shard_info};
+use server::{map_toggle_str, shard_info};
+use std::collections::HashSet;
+use std::rc::Rc;
+use std::str::FromStr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::time::Instant;
 use tracing::{error, info, instrument, warn};
 
@@ -285,7 +276,6 @@ async fn main() -> Result<(), ServerError> {
         let streams = streams.clone();
         let shards_table = shards_table.clone();
         let users = users.clone();
-        let persister = storage.persister.clone();
         let connections = connections.clone();
         let config = config.clone();
         let encryptor = encryptor.clone();
@@ -342,7 +332,7 @@ async fn main() -> Result<(), ServerError> {
                         .build();
                     let shard = Rc::new(shard);
 
-                    if let Err(e) = shard.run(persister).await {
+                    if let Err(e) = shard.run().await {
                         error!("Failed to run shard-{id}: {e}");
                     }
                     shard_info!(shard.id, "Run completed");

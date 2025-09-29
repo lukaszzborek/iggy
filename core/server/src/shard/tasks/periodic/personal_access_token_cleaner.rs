@@ -22,7 +22,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tracing::{info, trace};
 
-pub fn spawn_clear_personal_access_tokens(shard: Rc<IggyShard>) {
+pub fn spawn_personal_access_token_cleaner(shard: Rc<IggyShard>) {
     let period = shard
         .config
         .personal_access_token

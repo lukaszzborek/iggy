@@ -1,20 +1,21 @@
+use super::NoShutdown;
 use crate::shard::task_registry::ShutdownToken;
 use crate::shard::task_registry::registry::TaskRegistry;
 use iggy_common::IggyError;
-use std::future::Future;
+use std::ops::{AsyncFn, AsyncFnOnce};
 use std::time::Duration;
 
-pub struct PeriodicBuilder<'a, TickFn, ShutdownFn = ()> {
+pub struct PeriodicBuilder<'a, Tick, OnShutdown = NoShutdown> {
     reg: &'a TaskRegistry,
     name: &'static str,
     critical: bool,
     period: Option<Duration>,
     last_on_shutdown: bool,
-    tick_fn: Option<TickFn>,
-    on_shutdown: Option<ShutdownFn>,
+    tick_fn: Option<Tick>,
+    on_shutdown: Option<OnShutdown>,
 }
 
-impl<'a> PeriodicBuilder<'a, (), ()> {
+impl<'a> PeriodicBuilder<'a, (), NoShutdown> {
     pub fn new(reg: &'a TaskRegistry, name: &'static str) -> Self {
         Self {
             reg,
@@ -28,7 +29,7 @@ impl<'a> PeriodicBuilder<'a, (), ()> {
     }
 }
 
-impl<'a, TickFn, ShutdownFn> PeriodicBuilder<'a, TickFn, ShutdownFn> {
+impl<'a, Tick, OnShutdown> PeriodicBuilder<'a, Tick, OnShutdown> {
     pub fn every(mut self, d: Duration) -> Self {
         self.period = Some(d);
         self
@@ -44,10 +45,9 @@ impl<'a, TickFn, ShutdownFn> PeriodicBuilder<'a, TickFn, ShutdownFn> {
         self
     }
 
-    pub fn on_shutdown<F, Fut>(self, f: F) -> PeriodicBuilder<'a, TickFn, F>
+    pub fn on_shutdown<NewShutdown>(self, f: NewShutdown) -> PeriodicBuilder<'a, Tick, NewShutdown>
     where
-        F: FnOnce(Result<(), IggyError>) -> Fut + 'static,
-        Fut: Future<Output = ()> + 'static,
+        NewShutdown: AsyncFnOnce(Result<(), IggyError>) + 'static,
     {
         PeriodicBuilder {
             reg: self.reg,
@@ -62,10 +62,9 @@ impl<'a, TickFn, ShutdownFn> PeriodicBuilder<'a, TickFn, ShutdownFn> {
 }
 
 impl<'a> PeriodicBuilder<'a, ()> {
-    pub fn tick<TickFn, TickFut>(self, f: TickFn) -> PeriodicBuilder<'a, TickFn>
+    pub fn tick<NewTick>(self, f: NewTick) -> PeriodicBuilder<'a, NewTick>
     where
-        TickFn: Fn(ShutdownToken) -> TickFut + 'static,
-        TickFut: Future<Output = Result<(), IggyError>> + 'static,
+        NewTick: AsyncFn(ShutdownToken) -> Result<(), IggyError> + 'static,
     {
         PeriodicBuilder {
             reg: self.reg,
@@ -79,33 +78,29 @@ impl<'a> PeriodicBuilder<'a, ()> {
     }
 }
 
-impl<'a, TickFn, TickFut> PeriodicBuilder<'a, TickFn, ()>
+impl<'a, Tick> PeriodicBuilder<'a, Tick, NoShutdown>
 where
-    TickFn: Fn(ShutdownToken) -> TickFut + 'static,
-    TickFut: Future<Output = Result<(), IggyError>> + 'static,
+    Tick: AsyncFn(ShutdownToken) -> Result<(), IggyError> + 'static,
 {
     pub fn spawn(self) {
         let period = self.period.expect("period required - use .every()");
         let tick_fn = self.tick_fn.expect("tick function required - use .tick()");
 
-        self.reg
-            .spawn_periodic_closure::<_, _, fn(Result<(), IggyError>) -> std::future::Ready<()>, _>(
-                self.name,
-                period,
-                self.critical,
-                self.last_on_shutdown,
-                tick_fn,
-                None,
-            );
+        self.reg.spawn_periodic_closure(
+            self.name,
+            period,
+            self.critical,
+            self.last_on_shutdown,
+            tick_fn,
+            Some(|_| async {}),
+        );
     }
 }
 
-impl<'a, TickFn, TickFut, ShutdownFn, ShutdownFut> PeriodicBuilder<'a, TickFn, ShutdownFn>
+impl<'a, Tick, OnShutdown> PeriodicBuilder<'a, Tick, OnShutdown>
 where
-    TickFn: Fn(ShutdownToken) -> TickFut + 'static,
-    TickFut: Future<Output = Result<(), IggyError>> + 'static,
-    ShutdownFn: FnOnce(Result<(), IggyError>) -> ShutdownFut + 'static,
-    ShutdownFut: Future<Output = ()> + 'static,
+    Tick: AsyncFn(ShutdownToken) -> Result<(), IggyError> + 'static,
+    OnShutdown: AsyncFnOnce(Result<(), IggyError>) + 'static,
 {
     pub fn spawn(self) {
         let period = self.period.expect("period required - use .every()");

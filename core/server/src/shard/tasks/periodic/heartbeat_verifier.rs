@@ -17,15 +17,13 @@
  */
 
 use crate::shard::IggyShard;
-use crate::shard::task_registry::ShutdownToken;
 use iggy_common::{IggyDuration, IggyError, IggyTimestamp};
 use std::rc::Rc;
-use std::time::Duration;
 use tracing::{debug, info, trace, warn};
 
 const MAX_THRESHOLD: f64 = 1.2;
 
-pub fn spawn_verify_heartbeats(shard: Rc<IggyShard>) {
+pub fn spawn_heartbeat_verifier(shard: Rc<IggyShard>) {
     let period = shard.config.heartbeat.interval.get_duration();
     let interval = iggy_common::IggyDuration::from(period);
     let max_interval =

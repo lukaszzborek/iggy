@@ -196,15 +196,15 @@ impl IggyShard {
         }
 
         if self.config.message_saver.enabled {
-            periodic::spawn_save_messages(self.clone());
+            periodic::spawn_message_saver(self.clone());
         }
 
         if self.config.heartbeat.enabled {
-            periodic::spawn_verify_heartbeats(self.clone());
+            periodic::spawn_heartbeat_verifier(self.clone());
         }
 
         if self.config.personal_access_token.cleaner.enabled {
-            periodic::spawn_clear_personal_access_tokens(self.clone());
+            periodic::spawn_personal_access_token_cleaner(self.clone());
         }
 
         if self
@@ -216,11 +216,11 @@ impl IggyShard {
             > 0
             && self.id == 0
         {
-            periodic::spawn_print_sysinfo(self.clone());
+            periodic::spawn_sysinfo_printer(self.clone());
         }
     }
 
-    pub async fn run(self: &Rc<Self>, persister: Arc<PersisterKind>) -> Result<(), IggyError> {
+    pub async fn run(self: &Rc<Self>) -> Result<(), IggyError> {
         let now = Instant::now();
 
         // Workaround to ensure that the statistics are initialized before the server

@@ -19,6 +19,7 @@
 use crate::bootstrap::resolve_persister;
 use crate::http::http_server::start_http_server;
 use crate::shard::IggyShard;
+use crate::shard::task_registry::ShutdownToken;
 use iggy_common::IggyError;
 use std::rc::Rc;
 use tracing::info;
@@ -28,12 +29,12 @@ pub fn spawn_http_server(shard: Rc<IggyShard>) {
     shard
         .task_registry
         .continuous("http_server")
-        .run(move |_shutdown| http_server(shard_clone))
+        .run(move |shutdown| http_server(shard_clone, shutdown))
         .spawn();
 }
 
-async fn http_server(shard: Rc<IggyShard>) -> Result<(), IggyError> {
+async fn http_server(shard: Rc<IggyShard>, shutdown: ShutdownToken) -> Result<(), IggyError> {
     info!("Starting HTTP server on shard: {}", shard.id);
     let persister = resolve_persister(shard.config.system.partition.enforce_fsync);
-    start_http_server(shard.config.http.clone(), persister, shard).await
+    start_http_server(shard.config.http.clone(), persister, shard, shutdown).await
 }

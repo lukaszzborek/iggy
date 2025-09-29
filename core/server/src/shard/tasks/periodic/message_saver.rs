@@ -22,7 +22,7 @@ use iggy_common::{Identifier, IggyError};
 use std::rc::Rc;
 use tracing::{error, info, trace};
 
-pub fn spawn_save_messages(shard: Rc<IggyShard>) {
+pub fn spawn_message_saver(shard: Rc<IggyShard>) {
     let period = shard.config.message_saver.interval.get_duration();
     let enforce_fsync = shard.config.message_saver.enforce_fsync;
     info!(
@@ -102,8 +102,6 @@ async fn fsync_all_segments_on_shutdown(shard: Rc<IggyShard>, result: Result<(),
     trace!("Performing fsync on all segments during shutdown...");
 
     let namespaces = shard.get_current_shard_namespaces();
-    let mut total_fsynced = 0u32;
-    let mut total_errors = 0u32;
 
     for ns in namespaces {
         let stream_id = Identifier::numeric(ns.stream_id() as u32).unwrap();
@@ -116,14 +114,12 @@ async fn fsync_all_segments_on_shutdown(shard: Rc<IggyShard>, result: Result<(),
             .await
         {
             Ok(()) => {
-                total_fsynced += 1;
                 trace!(
                     "Successfully fsynced segment for stream: {}, topic: {}, partition: {} during shutdown",
                     stream_id, topic_id, partition_id
                 );
             }
             Err(err) => {
-                total_errors += 1;
                 error!(
                     "Failed to fsync segment for stream: {}, topic: {}, partition: {} during shutdown: {}",
                     stream_id, topic_id, partition_id, err

@@ -1,17 +1,18 @@
+use super::NoShutdown;
 use crate::shard::task_registry::ShutdownToken;
 use crate::shard::task_registry::registry::TaskRegistry;
 use iggy_common::IggyError;
-use std::future::Future;
+use std::ops::AsyncFnOnce;
 
-pub struct ContinuousBuilder<'a, RunFn, ShutdownFn = ()> {
+pub struct ContinuousBuilder<'a, Task, OnShutdown = NoShutdown> {
     reg: &'a TaskRegistry,
     name: &'static str,
     critical: bool,
-    run_fn: Option<RunFn>,
-    on_shutdown: Option<ShutdownFn>,
+    run_fn: Option<Task>,
+    on_shutdown: Option<OnShutdown>,
 }
 
-impl<'a> ContinuousBuilder<'a, (), ()> {
+impl<'a> ContinuousBuilder<'a, (), NoShutdown> {
     pub fn new(reg: &'a TaskRegistry, name: &'static str) -> Self {
         Self {
             reg,
@@ -23,16 +24,18 @@ impl<'a> ContinuousBuilder<'a, (), ()> {
     }
 }
 
-impl<'a, RunFn, ShutdownFn> ContinuousBuilder<'a, RunFn, ShutdownFn> {
+impl<'a, Task, OnShutdown> ContinuousBuilder<'a, Task, OnShutdown> {
     pub fn critical(mut self, c: bool) -> Self {
         self.critical = c;
         self
     }
 
-    pub fn on_shutdown<F, Fut>(self, f: F) -> ContinuousBuilder<'a, RunFn, F>
+    pub fn on_shutdown<NewShutdown>(
+        self,
+        f: NewShutdown,
+    ) -> ContinuousBuilder<'a, Task, NewShutdown>
     where
-        F: FnOnce(Result<(), IggyError>) -> Fut + 'static,
-        Fut: Future<Output = ()> + 'static,
+        NewShutdown: AsyncFnOnce(Result<(), IggyError>) + 'static,
     {
         ContinuousBuilder {
             reg: self.reg,
@@ -44,11 +47,10 @@ impl<'a, RunFn, ShutdownFn> ContinuousBuilder<'a, RunFn, ShutdownFn> {
     }
 }
 
-impl<'a, ShutdownFn> ContinuousBuilder<'a, (), ShutdownFn> {
-    pub fn run<RunFn, RunFut>(self, f: RunFn) -> ContinuousBuilder<'a, RunFn, ShutdownFn>
+impl<'a, OnShutdown> ContinuousBuilder<'a, (), OnShutdown> {
+    pub fn run<NewTask>(self, f: NewTask) -> ContinuousBuilder<'a, NewTask, OnShutdown>
     where
-        RunFn: FnOnce(ShutdownToken) -> RunFut + 'static,
-        RunFut: Future<Output = Result<(), IggyError>> + 'static,
+        NewTask: AsyncFnOnce(ShutdownToken) -> Result<(), IggyError> + 'static,
     {
         ContinuousBuilder {
             reg: self.reg,
@@ -60,32 +62,24 @@ impl<'a, ShutdownFn> ContinuousBuilder<'a, (), ShutdownFn> {
     }
 }
 
-impl<'a, RunFn, RunFut> ContinuousBuilder<'a, RunFn, ()>
+impl<'a, Task> ContinuousBuilder<'a, Task, NoShutdown>
 where
-    RunFn: FnOnce(ShutdownToken) -> RunFut + 'static,
-    RunFut: Future<Output = Result<(), IggyError>> + 'static,
+    Task: AsyncFnOnce(ShutdownToken) -> Result<(), IggyError> + 'static,
 {
     pub fn spawn(self) {
         if let Some(f) = self.run_fn {
             self.reg
-                .spawn_continuous_closure::<_, _, fn(Result<(), IggyError>) -> std::future::Ready<()>, _>(
-                    self.name,
-                    self.critical,
-                    f,
-                    None
-                );
+                .spawn_continuous_closure(self.name, self.critical, f, Some(|_| async {}));
         } else {
             panic!("run() must be called before spawn()");
         }
     }
 }
 
-impl<'a, RunFn, RunFut, ShutdownFn, ShutdownFut> ContinuousBuilder<'a, RunFn, ShutdownFn>
+impl<'a, Task, OnShutdown> ContinuousBuilder<'a, Task, OnShutdown>
 where
-    RunFn: FnOnce(ShutdownToken) -> RunFut + 'static,
-    RunFut: Future<Output = Result<(), IggyError>> + 'static,
-    ShutdownFn: FnOnce(Result<(), IggyError>) -> ShutdownFut + 'static,
-    ShutdownFut: Future<Output = ()> + 'static,
+    Task: AsyncFnOnce(ShutdownToken) -> Result<(), IggyError> + 'static,
+    OnShutdown: AsyncFnOnce(Result<(), IggyError>) + 'static,
 {
     pub fn spawn(self) {
         if let Some(f) = self.run_fn {

@@ -16,14 +16,14 @@
  * under the License.
  */
 
-pub mod clear_jwt_tokens;
-pub mod clear_personal_access_tokens;
-pub mod print_sysinfo;
-pub mod save_messages;
-pub mod verify_heartbeats;
+mod heartbeat_verifier;
+mod jwt_token_cleaner;
+mod message_saver;
+mod personal_access_token_cleaner;
+mod sysinfo_printer;
 
-pub use clear_jwt_tokens::spawn_clear_jwt_tokens;
-pub use clear_personal_access_tokens::spawn_clear_personal_access_tokens;
-pub use print_sysinfo::spawn_print_sysinfo;
-pub use save_messages::spawn_save_messages;
-pub use verify_heartbeats::spawn_verify_heartbeats;
+pub use heartbeat_verifier::spawn_heartbeat_verifier;
+pub use jwt_token_cleaner::spawn_jwt_token_cleaner;
+pub use message_saver::spawn_message_saver;
+pub use personal_access_token_cleaner::spawn_personal_access_token_cleaner;
+pub use sysinfo_printer::spawn_sysinfo_printer;

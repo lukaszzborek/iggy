@@ -26,7 +26,7 @@ use tracing::{error, info, trace};
 
 const JWT_TOKENS_CLEANER_PERIOD: Duration = Duration::from_secs(300);
 
-pub fn spawn_clear_jwt_tokens(shard: Rc<IggyShard>, app_state: Arc<AppState>) {
+pub fn spawn_jwt_token_cleaner(shard: Rc<IggyShard>, app_state: Arc<AppState>) {
     info!(
         "JWT token cleaner is enabled, expired revoked tokens will be deleted every: {} seconds.",
         JWT_TOKENS_CLEANER_PERIOD.as_secs()

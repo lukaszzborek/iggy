@@ -22,7 +22,7 @@ use iggy_common::IggyError;
 use std::rc::Rc;
 use tracing::{error, info, trace};
 
-pub fn spawn_print_sysinfo(shard: Rc<IggyShard>) {
+pub fn spawn_sysinfo_printer(shard: Rc<IggyShard>) {
     let period = shard
         .config
         .system
