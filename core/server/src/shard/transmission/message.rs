@@ -25,12 +25,6 @@ use crate::{
 };
 use iggy_common::Identifier;
 
-pub enum ShardSendRequestResult {
-    // TODO: In the future we can add other variants, for example backpressure from the destination shard,
-    Recoil(ShardMessage),
-    Response(ShardResponse),
-}
-
 #[derive(Debug)]
 pub enum ShardMessage {
     Request(ShardRequest),
@@ -70,6 +64,10 @@ pub enum ShardRequestPayload {
         consumer: PollingConsumer,
         args: PollingArgs,
     },
+    PersistMessages {
+        reason: String,
+    },
+    FsyncMessages,
 }
 
 impl From<ShardRequest> for ShardMessage {

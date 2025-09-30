@@ -21,9 +21,7 @@ use crate::binary::handlers::messages::poll_messages_handler::IggyPollMetadata;
 use crate::shard::IggyShard;
 use crate::shard::namespace::{IggyFullNamespace, IggyNamespace};
 use crate::shard::transmission::frame::ShardResponse;
-use crate::shard::transmission::message::{
-    ShardMessage, ShardRequest, ShardRequestPayload, ShardSendRequestResult,
-};
+use crate::shard::transmission::message::{ShardMessage, ShardRequest, ShardRequestPayload};
 use crate::shard_trace;
 use crate::streaming::polling_consumer::PollingConsumer;
 use crate::streaming::segments::{IggyIndexesMut, IggyMessagesBatchMut, IggyMessagesBatchSet};
@@ -123,50 +121,12 @@ impl IggyShard {
         let payload = ShardRequestPayload::SendMessages { batch };
         let request = ShardRequest::new(stream_id.clone(), topic_id.clone(), partition_id, payload);
         let message = ShardMessage::Request(request);
-        match self
-            .send_request_to_shard_or_recoil(&namespace, message)
-            .await?
-        {
-            ShardSendRequestResult::Recoil(message) => {
-                if let ShardMessage::Request(ShardRequest {
-                    stream_id,
-                    topic_id,
-                    partition_id,
-                    payload,
-                }) = message
-                    && let ShardRequestPayload::SendMessages { batch } = payload
-                {
-                    let ns = IggyFullNamespace::new(stream_id, topic_id, partition_id);
-                    // Encrypt messages if encryptor is enabled in configuration.
-                    let batch = self.maybe_encrypt_messages(batch)?;
-                    let messages_count = batch.count();
-                    self.streams2
-                        .append_messages(
-                            self.id,
-                            &self.config.system,
-                            &self.task_registry,
-                            &ns,
-                            batch,
-                        )
-                        .await?;
-                    self.metrics.increment_messages(messages_count as u64);
-                    Ok(())
-                } else {
-                    unreachable!(
-                        "Expected a SendMessages request inside of SendMessages handler, impossible state"
-                    );
-                }
-            }
-            ShardSendRequestResult::Response(response) => match response {
-                ShardResponse::SendMessages => Ok(()),
-                ShardResponse::ErrorResponse(err) => Err(err),
-                _ => unreachable!(
-                    "Expected a SendMessages response inside of SendMessages handler, impossible state"
-                ),
-            },
-        }?;
 
-        Ok(())
+        match self.send_request_to_shard(&namespace, message).await? {
+            ShardResponse::SendMessages => Ok(()),
+            ShardResponse::ErrorResponse(err) => Err(err),
+            _ => unreachable!("Unexpected response type for SendMessages request"),
+        }
     }
 
     pub async fn poll_messages(
@@ -239,101 +199,10 @@ impl IggyShard {
         let payload = ShardRequestPayload::PollMessages { consumer, args };
         let request = ShardRequest::new(stream_id.clone(), topic_id.clone(), partition_id, payload);
         let message = ShardMessage::Request(request);
-        let (metadata, batch) = match self
-            .send_request_to_shard_or_recoil(&namespace, message)
-            .await?
-        {
-            ShardSendRequestResult::Recoil(message) => {
-                if let ShardMessage::Request(ShardRequest {
-                    partition_id,
-                    payload,
-                    ..
-                }) = message
-                    && let ShardRequestPayload::PollMessages { consumer, args } = payload
-                {
-                    let ns = IggyFullNamespace::new(stream_id, topic_id, partition_id);
-                    let auto_commit = args.auto_commit;
-                    let (metadata, batches) =
-                        self.streams2.poll_messages(&ns, consumer, args).await?;
-                    let stream_id = ns.stream_id();
-                    let topic_id = ns.topic_id();
-
-                    if auto_commit && !batches.is_empty() {
-                        let offset = batches
-                            .last_offset()
-                            .expect("Batch set should have at least one batch");
-                        trace!(
-                            "Last offset: {} will be automatically stored for {}, stream: {}, topic: {}, partition: {}",
-                            offset, consumer, numeric_stream_id, numeric_topic_id, partition_id
-                        );
-                        match consumer {
-                            PollingConsumer::Consumer(consumer_id, _) => {
-                                self.streams2.with_partition_by_id(
-                                    &stream_id,
-                                    &topic_id,
-                                    partition_id,
-                                    partitions::helpers::store_consumer_offset(
-                                        consumer_id,
-                                        numeric_stream_id,
-                                        numeric_topic_id,
-                                        partition_id,
-                                        offset,
-                                        &self.config.system,
-                                    ),
-                                );
-                                self.streams2
-                                    .with_partition_by_id_async(
-                                        &stream_id,
-                                        &topic_id,
-                                        partition_id,
-                                        partitions::helpers::persist_consumer_offset_to_disk(
-                                            self.id,
-                                            consumer_id,
-                                        ),
-                                    )
-                                    .await?;
-                            }
-                            PollingConsumer::ConsumerGroup(cg_id, _) => {
-                                self.streams2.with_partition_by_id(
-                                    &stream_id,
-                                    &topic_id,
-                                    partition_id,
-                                    partitions::helpers::store_consumer_group_member_offset(
-                                        cg_id,
-                                        numeric_stream_id,
-                                        numeric_topic_id,
-                                        partition_id,
-                                        offset,
-                                        &self.config.system,
-                                    ),
-                                );
-                                self.streams2.with_partition_by_id_async(
-                                    &stream_id,
-                                    &topic_id,
-                                    partition_id,
-                                    partitions::helpers::persist_consumer_group_member_offset_to_disk(
-                                        self.id,
-                                        cg_id,
-                                    ),
-                                )
-                                .await?;
-                            }
-                        }
-                    }
-                    Ok((metadata, batches))
-                } else {
-                    unreachable!(
-                        "Expected a PollMessages request inside of PollMessages handler, impossible state"
-                    );
-                }
-            }
-            ShardSendRequestResult::Response(response) => match response {
-                ShardResponse::PollMessages(result) => Ok(result),
-                ShardResponse::ErrorResponse(err) => Err(err),
-                _ => unreachable!(
-                    "Expected a SendMessages response inside of SendMessages handler, impossible state"
-                ),
-            },
+        let (metadata, batch) = match self.send_request_to_shard(&namespace, message).await? {
+            ShardResponse::PollMessages(result) => Ok(result),
+            ShardResponse::ErrorResponse(err) => Err(err),
+            _ => unreachable!("Unexpected response type for PollMessages request"),
         }?;
 
         let batch = if let Some(encryptor) = &self.encryptor {

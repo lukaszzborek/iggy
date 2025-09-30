@@ -17,6 +17,9 @@
  */
 
 use crate::shard::IggyShard;
+use crate::shard::namespace::IggyNamespace;
+use crate::shard::transmission::frame::ShardResponse;
+use crate::shard::transmission::message::{ShardMessage, ShardRequest, ShardRequestPayload};
 use crate::shard_info;
 use iggy_common::{Identifier, IggyError};
 use std::rc::Rc;
@@ -50,33 +53,75 @@ async fn save_messages(shard: Rc<IggyShard>) -> Result<(), IggyError> {
     let mut total_saved_messages = 0u32;
     const REASON: &str = "background saver triggered";
 
+    // During shutdown, the message pump is already dead, so we must call streams2 directly.
+    // This is safe because we're single-threaded at this point (all other tasks are shut down).
+    let is_shutdown = shard.is_shutting_down();
+
     for ns in namespaces {
         let stream_id = Identifier::numeric(ns.stream_id() as u32).unwrap();
         let topic_id = Identifier::numeric(ns.topic_id() as u32).unwrap();
         let partition_id = ns.partition_id();
 
-        match shard
-            .streams2
-            .persist_messages(
-                shard.id,
-                &stream_id,
-                &topic_id,
-                partition_id,
-                REASON,
-                &shard.config.system,
-            )
-            .await
-        {
-            Ok(batch_count) => {
-                total_saved_messages += batch_count;
+        let batch_count = if is_shutdown {
+            // Direct call during shutdown
+            match shard
+                .streams2
+                .persist_messages(
+                    shard.id,
+                    &stream_id,
+                    &topic_id,
+                    partition_id,
+                    REASON,
+                    &shard.config.system,
+                )
+                .await
+            {
+                Ok(count) => count,
+                Err(err) => {
+                    error!(
+                        "Failed to save messages for partition {}: {}",
+                        partition_id, err
+                    );
+                    continue;
+                }
             }
-            Err(err) => {
-                error!(
-                    "Failed to save messages for partition {}: {}",
-                    partition_id, err
-                );
+        } else {
+            // Normal operation: route through message pump
+            let namespace = IggyNamespace::new(ns.stream_id(), ns.topic_id(), partition_id);
+            let payload = ShardRequestPayload::PersistMessages {
+                reason: REASON.to_string(),
+            };
+            let request =
+                ShardRequest::new(stream_id.clone(), topic_id.clone(), partition_id, payload);
+            let message = ShardMessage::Request(request);
+
+            match shard.send_request_to_shard(&namespace, message).await {
+                Ok(ShardResponse::PersistMessages(batch_count)) => batch_count,
+                Ok(ShardResponse::ErrorResponse(err)) => {
+                    error!(
+                        "Failed to save messages for partition {}: {}",
+                        partition_id, err
+                    );
+                    continue;
+                }
+                Ok(_) => {
+                    error!(
+                        "Unexpected response type for persist_messages on partition {}",
+                        partition_id
+                    );
+                    continue;
+                }
+                Err(err) => {
+                    error!(
+                        "Failed to send persist_messages request for partition {}: {}",
+                        partition_id, err
+                    );
+                    continue;
+                }
             }
-        }
+        };
+
+        total_saved_messages += batch_count;
     }
 
     if total_saved_messages > 0 {
@@ -103,6 +148,8 @@ async fn fsync_all_segments_on_shutdown(shard: Rc<IggyShard>, result: Result<(),
 
     let namespaces = shard.get_current_shard_namespaces();
 
+    // During shutdown, the message pump is already dead, so we must call streams2 directly.
+    // This is safe because we're single-threaded at this point (all other tasks are shut down).
     for ns in namespaces {
         let stream_id = Identifier::numeric(ns.stream_id() as u32).unwrap();
         let topic_id = Identifier::numeric(ns.topic_id() as u32).unwrap();
