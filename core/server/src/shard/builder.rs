@@ -23,19 +23,14 @@ use super::{
 use crate::{
     configs::server::ServerConfig,
     shard::{Shard, ShardInfo, namespace::IggyNamespace},
-    slab::streams::Streams,
+    slab::{streams::Streams, users::Users},
     state::StateKind,
-    streaming::{diagnostics::metrics::Metrics, users::user::User, utils::ptr::EternalPtr},
+    streaming::{diagnostics::metrics::Metrics, utils::ptr::EternalPtr},
     versioning::SemanticVersion,
 };
-use ahash::HashMap;
 use dashmap::DashMap;
-use iggy_common::{EncryptorKind, UserId};
-use std::{
-    cell::{Cell, RefCell},
-    rc::Rc,
-    sync::atomic::AtomicBool,
-};
+use iggy_common::EncryptorKind;
+use std::{cell::Cell, rc::Rc, sync::atomic::AtomicBool};
 
 #[derive(Default)]
 pub struct IggyShardBuilder {
@@ -43,7 +38,7 @@ pub struct IggyShardBuilder {
     streams: Option<Streams>,
     shards_table: Option<EternalPtr<DashMap<IggyNamespace, ShardInfo>>>,
     state: Option<StateKind>,
-    users: Option<HashMap<UserId, User>>,
+    users: Option<Users>,
     connections: Option<Vec<ShardConnector<ShardFrame>>>,
     config: Option<ServerConfig>,
     encryptor: Option<EncryptorKind>,
@@ -95,7 +90,7 @@ impl IggyShardBuilder {
         self
     }
 
-    pub fn users(mut self, users: HashMap<UserId, User>) -> Self {
+    pub fn users(mut self, users: Users) -> Self {
         self.users = Some(users);
         self
     }
@@ -147,7 +142,7 @@ impl IggyShardBuilder {
             shards,
             shards_table,
             streams2: streams, // TODO: Fixme
-            users: RefCell::new(users),
+            users,
             encryptor,
             config,
             _version: version,

@@ -4,6 +4,7 @@ pub mod partitions;
 pub mod streams;
 pub mod topics;
 pub mod traits_ext;
+pub mod users;
 
 use std::fmt::{Debug, Display};
 

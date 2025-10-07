@@ -219,14 +219,15 @@ impl IggyShard {
                 })?;
         let mut topic = self.delete_topic_base2(stream_id, topic_id);
         let topic_id_numeric = topic.id();
-        
+
         // Clean up consumer groups from ClientManager for this topic
         self.client_manager
             .borrow_mut()
             .delete_consumer_groups_for_topic(numeric_stream_id, topic_id_numeric);
-        
+
         // Remove all partition entries from shards_table for this topic
-        let namespaces_to_remove: Vec<_> = self.shards_table
+        let namespaces_to_remove: Vec<_> = self
+            .shards_table
             .iter()
             .filter_map(|entry| {
                 let (ns, _) = entry.pair();
@@ -237,11 +238,11 @@ impl IggyShard {
                 }
             })
             .collect();
-        
+
         for ns in namespaces_to_remove {
             self.remove_shard_table_record(&ns);
         }
-        
+
         let parent = topic.stats().parent().clone();
         // We need to borrow topic as mutable, as we are extracting partitions out of it, in order to close them.
         let (messages_count, size_bytes, segments_count) =
@@ -343,10 +344,18 @@ impl IggyShard {
             topic_id,
             partitions::helpers::purge_partitions_mem(),
         );
+
         for part_id in part_ids {
             self.delete_segments_bypass_auth(stream_id, topic_id, part_id, u32::MAX)
                 .await?;
         }
+
+        // Zero out topic stats after purging all partitions
+        self.streams2
+            .with_topic_by_id(stream_id, topic_id, |(_root, _aux, stats)| {
+                stats.zero_out_all();
+            });
+
         Ok(())
     }
 }

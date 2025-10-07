@@ -38,35 +38,29 @@ use crate::{
         },
     },
     shard_error, shard_info,
-    slab::{streams::Streams, traits_ext::EntityMarker},
+    slab::{streams::Streams, traits_ext::EntityMarker, users::Users},
     state::StateKind,
     streaming::{
-        clients::client_manager::ClientManager,
-        diagnostics::metrics::Metrics,
-        partitions,
-        polling_consumer::PollingConsumer,
-        session::Session,
-        traits::MainOps,
-        users::{permissioner::Permissioner, user::User},
-        utils::ptr::EternalPtr,
+        clients::client_manager::ClientManager, diagnostics::metrics::Metrics, partitions,
+        polling_consumer::PollingConsumer, session::Session, traits::MainOps,
+        users::permissioner::Permissioner, utils::ptr::EternalPtr,
     },
     versioning::SemanticVersion,
 };
-use ahash::HashMap;
 use builder::IggyShardBuilder;
 use compio::io::AsyncWriteAtExt;
 use dashmap::DashMap;
 use error_set::ErrContext;
 use hash32::{Hasher, Murmur3Hasher};
 use iggy_common::{
-    EncryptorKind, Identifier, IggyError, IggyTimestamp, PollingKind, TransportProtocol, UserId,
+    EncryptorKind, Identifier, IggyError, IggyTimestamp, PollingKind, TransportProtocol,
 };
 use std::hash::Hasher as _;
 use std::{
     cell::{Cell, RefCell},
     net::SocketAddr,
     rc::Rc,
-    sync::atomic::{AtomicBool, AtomicU32, Ordering},
+    sync::atomic::{AtomicBool, Ordering},
     time::{Duration, Instant},
 };
 use tracing::{debug, error, instrument, trace};
@@ -74,8 +68,6 @@ use transmission::connector::{Receiver, ShardConnector, StopReceiver};
 
 pub const COMPONENT: &str = "SHARD";
 pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
-
-static USER_ID: AtomicU32 = AtomicU32::new(1);
 
 pub(crate) struct Shard {
     id: u16,
@@ -138,7 +130,7 @@ pub struct IggyShard {
     pub(crate) client_manager: RefCell<ClientManager>,
     pub(crate) active_sessions: RefCell<Vec<Rc<Session>>>,
     pub(crate) permissioner: RefCell<Permissioner>,
-    pub(crate) users: RefCell<HashMap<UserId, User>>,
+    pub(crate) users: Users,
     pub(crate) metrics: Metrics,
     pub messages_receiver: Cell<Option<Receiver<ShardFrame>>>,
     pub(crate) stop_receiver: StopReceiver,
@@ -428,13 +420,11 @@ impl IggyShard {
     }
 
     async fn load_users(&self) -> Result<(), IggyError> {
-        let users = self.users.borrow();
-        let users_count = users.len();
-        let current_user_id = users.keys().max().unwrap_or(&1);
-        USER_ID.store(current_user_id + 1, Ordering::SeqCst);
+        let users_list = self.users.values();
+        let users_count = users_list.len();
         self.permissioner
             .borrow_mut()
-            .init(&users.values().collect::<Vec<_>>());
+            .init(&users_list.iter().collect::<Vec<_>>());
         self.metrics.increment_users(users_count as u32);
         shard_info!(self.id, "Initialized {} user(s).", users_count);
         Ok(())
