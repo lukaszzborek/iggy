@@ -16,22 +16,24 @@
  * under the License.
  */
 
-use derive_more::derive::Display;
-use serde::{Deserialize, Serialize};
+use crate::shard::IggyShard;
+use crate::shard::task_registry::ShutdownToken;
+use iggy_common::IggyError;
+use std::rc::Rc;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Display, Default, Hash)]
-pub enum BenchmarkTransport {
-    #[default]
-    #[display("TCP")]
-    #[serde(rename = "tcp")]
-    Tcp,
-    #[display("HTTP")]
-    #[serde(rename = "http")]
-    Http,
-    #[display("QUIC")]
-    #[serde(rename = "quic")]
-    Quic,
-    #[display("WEBSOCKET")]
-    #[serde(rename = "websocket")]
-    WebSocket,
+pub fn spawn_websocket_server(shard: Rc<IggyShard>) {
+    let shard_clone = shard.clone();
+    shard
+        .task_registry
+        .continuous("websocket_server")
+        .critical(true)
+        .run(move |shutdown| websocket_server_task(shard_clone, shutdown))
+        .spawn();
+}
+
+async fn websocket_server_task(
+    shard: Rc<IggyShard>,
+    shutdown: ShutdownToken,
+) -> Result<(), IggyError> {
+    crate::websocket::websocket_server::spawn_websocket_server(shard, shutdown).await
 }

@@ -145,6 +145,7 @@ pub struct IggyShard {
     pub(crate) is_shutting_down: AtomicBool,
     pub(crate) tcp_bound_address: Cell<Option<SocketAddr>>,
     pub(crate) quic_bound_address: Cell<Option<SocketAddr>>,
+    pub websocket_bound_address: Cell<Option<SocketAddr>>,
     pub(crate) http_bound_address: Cell<Option<SocketAddr>>,
     config_writer_notify: async_channel::Sender<()>,
     config_writer_receiver: async_channel::Receiver<()>,
@@ -188,6 +189,10 @@ impl IggyShard {
 
         if self.config.message_saver.enabled {
             periodic::spawn_message_saver(self.clone());
+        }
+
+        if self.config.websocket.enabled && self.id == 0 {
+            continuous::spawn_websocket_server(self.clone());
         }
 
         if self.config.heartbeat.enabled {
@@ -862,6 +867,11 @@ impl IggyShard {
                         // Notify config writer that a server has bound
                         let _ = self.config_writer_notify.try_send(());
                     }
+                    TransportProtocol::WebSocket => {
+                        self.websocket_bound_address.set(Some(address));
+                        // Notify config writer that a server has bound
+                        let _ = self.config_writer_notify.try_send(());
+                    }
                 }
                 Ok(())
             }
@@ -1012,6 +1022,10 @@ impl IggyShard {
                     topic_id_usize,
                     group_id_usize,
                 )?;
+                Ok(())
+            }
+            ShardEvent::WebSocketBound { address } => {
+                self.websocket_bound_address.set(Some(address));
                 Ok(())
             }
             ShardEvent::LeftConsumerGroup {

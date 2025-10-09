@@ -20,8 +20,9 @@ mod http_server;
 mod message_pump;
 mod quic_server;
 mod tcp_server;
-
+mod websocket_server;
 pub use http_server::spawn_http_server;
 pub use message_pump::spawn_message_pump;
 pub use quic_server::spawn_quic_server;
 pub use tcp_server::spawn_tcp_server;
+pub use websocket_server::spawn_websocket_server;

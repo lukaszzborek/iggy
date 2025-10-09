@@ -16,22 +16,22 @@
  * under the License.
  */
 
-use derive_more::derive::Display;
-use serde::{Deserialize, Serialize};
+use async_trait::async_trait;
+use iggy_common::IggyError;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Display, Default, Hash)]
-pub enum BenchmarkTransport {
-    #[default]
-    #[display("TCP")]
-    #[serde(rename = "tcp")]
-    Tcp,
-    #[display("HTTP")]
-    #[serde(rename = "http")]
-    Http,
-    #[display("QUIC")]
-    #[serde(rename = "quic")]
-    Quic,
-    #[display("WEBSOCKET")]
-    #[serde(rename = "websocket")]
-    WebSocket,
+/// Connection stream trait for WebSocket connections.
+/// Similar to the TCP ConnectionStream trait but adapted for WebSocket semantics.
+#[async_trait]
+pub trait ConnectionStream: Send + Sync {
+    /// Read exact amount of bytes from the stream.
+    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, IggyError>;
+
+    /// Write all bytes to the stream.
+    async fn write(&mut self, buf: &[u8]) -> Result<(), IggyError>;
+
+    /// Flush any buffered data.
+    async fn flush(&mut self) -> Result<(), IggyError>;
+
+    /// Shutdown the connection.
+    async fn shutdown(&mut self) -> Result<(), IggyError>;
 }
