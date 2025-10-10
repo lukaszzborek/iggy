@@ -128,7 +128,7 @@ impl IggyCmdTest {
             .await
             .unwrap();
 
-        assert_eq!(identity_info.user_id, 1);
+        assert_eq!(identity_info.user_id, 0);
     }
 
     pub(crate) async fn execute_test(&mut self, mut test_case: impl IggyCmdTestCase) {

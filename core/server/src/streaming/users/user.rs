@@ -38,7 +38,7 @@ pub struct User {
 impl Default for User {
     fn default() -> Self {
         Self {
-            id: 1,
+            id: 0,
             status: UserStatus::Active,
             username: "user".to_string(),
             password: "secret".to_string(),

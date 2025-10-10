@@ -21,6 +21,7 @@ use crate::{
         traits_ext::{
             EntityComponentSystem, EntityComponentSystemMutCell, Insert, InsertCell, IntoComponents,
         },
+        users::Users,
     },
     state::system::{StreamState, TopicState, UserState},
     streaming::{
@@ -45,7 +46,7 @@ use ahash::HashMap;
 use compio::{fs::create_dir_all, runtime::Runtime};
 use error_set::ErrContext;
 use iggy_common::{
-    ConsumerKind, IggyError, UserId,
+    ConsumerKind, IggyError,
     defaults::{
         DEFAULT_ROOT_PASSWORD, DEFAULT_ROOT_USERNAME, MAX_PASSWORD_LENGTH, MAX_USERNAME_LENGTH,
         MIN_PASSWORD_LENGTH, MIN_USERNAME_LENGTH,
@@ -198,8 +199,8 @@ pub async fn load_streams(
     Ok(streams)
 }
 
-pub fn load_users(state: impl IntoIterator<Item = UserState>) -> HashMap<UserId, User> {
-    let mut users = HashMap::default();
+pub fn load_users(state: impl IntoIterator<Item = UserState>) -> Users {
+    let users = Users::new();
     for user_state in state {
         let UserState {
             id,
@@ -217,16 +218,11 @@ pub fn load_users(state: impl IntoIterator<Item = UserState>) -> HashMap<UserId,
             .map(|token| {
                 (
                     Arc::new(token.token_hash.clone()),
-                    PersonalAccessToken::raw(
-                        user_state.id,
-                        &token.name,
-                        &token.token_hash,
-                        token.expiry_at,
-                    ),
+                    PersonalAccessToken::raw(id, &token.name, &token.token_hash, token.expiry_at),
                 )
             })
             .collect();
-        users.insert(id, user);
+        users.insert(user);
     }
     users
 }

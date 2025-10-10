@@ -44,7 +44,7 @@ impl IggyShard {
             stream_id,
             topic_id,
             partition_id,
-            |(_, stats,.., log)| {
+            |(_, stats, .., log)| {
                 let upperbound = log.segments().len();
                 let begin = upperbound.saturating_sub(segments_count as usize);
                 let segments = log

@@ -22,15 +22,12 @@ use crate::streaming::session::Session;
 use crate::streaming::users::user::User;
 use crate::streaming::utils::crypto;
 use error_set::ErrContext;
+use iggy_common::Identifier;
 use iggy_common::IggyError;
 use iggy_common::Permissions;
 use iggy_common::UserStatus;
-use iggy_common::{IdKind, Identifier};
-use std::cell::RefMut;
-use std::sync::atomic::{AtomicU32, Ordering};
 use tracing::{error, warn};
 
-static USER_ID: AtomicU32 = AtomicU32::new(1);
 const MAX_USERS: usize = u32::MAX as usize;
 
 impl IggyShard {
@@ -62,54 +59,7 @@ impl IggyShard {
     }
 
     pub fn try_get_user(&self, user_id: &Identifier) -> Result<Option<User>, IggyError> {
-        match user_id.kind {
-            IdKind::Numeric => {
-                let user = self.users.borrow().get(&user_id.get_u32_value()?).cloned();
-                Ok(user)
-            }
-            IdKind::String => {
-                let username = user_id.get_cow_str_value()?;
-                let user = self
-                    .users
-                    .borrow()
-                    .iter()
-                    .find(|(_, user)| user.username == username)
-                    .map(|(_, user)| user.clone());
-                Ok(user)
-            }
-        }
-    }
-
-    pub fn get_user_mut(&self, user_id: &Identifier) -> Result<RefMut<'_, User>, IggyError> {
-        match user_id.kind {
-            IdKind::Numeric => {
-                let user_id = user_id.get_u32_value()?;
-                let users = self.users.borrow_mut();
-                let exists = users.contains_key(&user_id);
-                if !exists {
-                    return Err(IggyError::ResourceNotFound(user_id.to_string()));
-                }
-                Ok(RefMut::map(users, |u| {
-                    let user = u.get_mut(&user_id);
-                    user.unwrap()
-                }))
-            }
-            IdKind::String => {
-                let username = user_id.get_cow_str_value()?;
-                let users = self.users.borrow_mut();
-                let exists = users.iter().any(|(_, user)| user.username == username);
-                if !exists {
-                    return Err(IggyError::ResourceNotFound(user_id.to_string()));
-                }
-                Ok(RefMut::map(users, |u| {
-                    let user = u
-                        .iter_mut()
-                        .find(|(_, user)| user.username == username)
-                        .map(|(_, user)| user);
-                    user.unwrap()
-                }))
-            }
-        }
+        self.users.get_by_identifier(user_id)
     }
 
     pub async fn get_users(&self, session: &Session) -> Result<Vec<User>, IggyError> {
@@ -123,7 +73,7 @@ impl IggyShard {
                     session.get_user_id()
                 )
             })?;
-        Ok(self.users.borrow().values().cloned().collect())
+        Ok(self.users.values())
     }
 
     pub fn create_user(
@@ -145,60 +95,49 @@ impl IggyShard {
                 )
             })?;
 
-        if self
-            .users
-            .borrow()
-            .iter()
-            .any(|(_, user)| user.username == username)
-        {
+        if self.users.username_exists(username) {
             error!("User: {username} already exists.");
             return Err(IggyError::UserAlreadyExists);
         }
 
-        if self.users.borrow().len() >= MAX_USERS {
+        if self.users.len() >= MAX_USERS {
             error!("Available users limit reached.");
             return Err(IggyError::UsersLimitReached);
         }
 
-        // TODO: Tech debt, replace with Slab.
-        USER_ID.fetch_add(1, Ordering::SeqCst);
-        let current_user_id = USER_ID.load(Ordering::SeqCst);
-        self.create_user_base(current_user_id, username, password, status, permissions)?;
-        self.get_user(&current_user_id.try_into()?)
+        let user_id = self.create_user_base(username, password, status, permissions)?;
+        self.get_user(&(user_id as u32).try_into()?)
             .with_error_context(|error| {
-                format!(
-                    "{COMPONENT} (error: {error}) - failed to get user with id: {current_user_id}"
-                )
+                format!("{COMPONENT} (error: {error}) - failed to get user with id: {user_id}")
             })
     }
 
     pub fn create_user_bypass_auth(
         &self,
-        user_id: u32,
+        _user_id: u32, // Ignored - Slab auto-assigns IDs
         username: &str,
         password: &str,
         status: UserStatus,
         permissions: Option<Permissions>,
     ) -> Result<(), IggyError> {
-        self.create_user_base(user_id, username, password, status, permissions)?;
+        self.create_user_base(username, password, status, permissions)?;
         Ok(())
     }
 
     fn create_user_base(
         &self,
-        user_id: u32,
         username: &str,
         password: &str,
         status: UserStatus,
         permissions: Option<Permissions>,
-    ) -> Result<(), IggyError> {
-        let user = User::new(user_id, username, password, status, permissions.clone());
+    ) -> Result<usize, IggyError> {
+        let user = User::new(0, username, password, status, permissions.clone());
+        let user_id = self.users.insert(user);
         self.permissioner
             .borrow_mut()
-            .init_permissions_for_user(user_id, permissions);
-        self.users.borrow_mut().insert(user.id, user);
+            .init_permissions_for_user(user_id as u32, permissions);
         self.metrics.increment_users(1);
-        Ok(())
+        Ok(user_id)
     }
 
     pub fn delete_user(&self, session: &Session, user_id: &Identifier) -> Result<User, IggyError> {
@@ -221,32 +160,30 @@ impl IggyShard {
     }
 
     fn delete_user_base(&self, user_id: &Identifier) -> Result<User, IggyError> {
-        let existing_user_id;
-        {
-            let user = self.get_user(user_id).with_error_context(|error| {
-                format!("{COMPONENT} (error: {error}) - failed to get user with id: {user_id}")
-            })?;
-            if user.is_root() {
-                error!("Cannot delete the root user.");
-                return Err(IggyError::CannotDeleteUser(user.id));
-            }
+        let user = self.get_user(user_id).with_error_context(|error| {
+            format!("{COMPONENT} (error: {error}) - failed to get user with id: {user_id}")
+        })?;
 
-            existing_user_id = user.id;
+        if user.is_root() {
+            error!("Cannot delete the root user.");
+            return Err(IggyError::CannotDeleteUser(user.id));
         }
+
+        let user_slab_id = user.id as usize;
+        let user_u32_id = user.id;
 
         let user = self
             .users
-            .borrow_mut()
-            .remove(&existing_user_id)
+            .remove(user_slab_id)
             .ok_or(IggyError::ResourceNotFound(user_id.to_string()))?;
         self.permissioner
             .borrow_mut()
-            .delete_permissions_for_user(existing_user_id);
+            .delete_permissions_for_user(user_u32_id);
         self.client_manager.borrow_mut()
-            .delete_clients_for_user(existing_user_id)
+            .delete_clients_for_user(user_u32_id)
             .with_error_context(|error| {
                 format!(
-                    "{COMPONENT} (error: {error}) - failed to delete clients for user with ID: {existing_user_id}"
+                    "{COMPONENT} (error: {error}) - failed to delete clients for user with ID: {user_u32_id}"
                 )
             })?;
         self.metrics.decrement_users(1);
@@ -289,29 +226,26 @@ impl IggyShard {
         username: Option<String>,
         status: Option<UserStatus>,
     ) -> Result<User, IggyError> {
-        if let Some(username) = username.to_owned() {
+        if let Some(ref new_username) = username {
             let user = self.get_user(user_id)?;
-            let existing_user = self.get_user(&username.to_owned().try_into()?);
+            let existing_user = self.get_user(&new_username.to_owned().try_into()?);
             if existing_user.is_ok() && existing_user.unwrap().id != user.id {
-                error!("User: {username} already exists.");
+                error!("User: {new_username} already exists.");
                 return Err(IggyError::UserAlreadyExists);
             }
         }
 
-        let mut user = self.get_user_mut(user_id).with_error_context(|error| {
-            format!("{COMPONENT} update user (error: {error}) - failed to get mutable reference to the user with id: {user_id}")
-        })?;
-        if let Some(username) = username {
-            user.username = username;
-        }
-
-        if let Some(status) = status {
-            user.status = status;
-        }
-        let cloned_user = user.clone();
-        drop(user);
-
-        Ok(cloned_user)
+        self.users.with_user_mut(user_id, |user| {
+            if let Some(username) = username {
+                user.username = username;
+            }
+            if let Some(status) = status {
+                user.status = status;
+            }
+            user.clone()
+        }).with_error_context(|error| {
+            format!("{COMPONENT} update user (error: {error}) - failed to update user with id: {user_id}")
+        })
     }
 
     pub fn update_permissions(
@@ -356,26 +290,21 @@ impl IggyShard {
         user_id: &Identifier,
         permissions: Option<Permissions>,
     ) -> Result<(), IggyError> {
-        {
-            let user: User = self.get_user(user_id).with_error_context(|error| {
-                format!("{COMPONENT} (error: {error}) - failed to get user with id: {user_id}")
-            })?;
+        let user: User = self.get_user(user_id).with_error_context(|error| {
+            format!("{COMPONENT} (error: {error}) - failed to get user with id: {user_id}")
+        })?;
 
-            self.permissioner
-                .borrow_mut()
-                .update_permissions_for_user(user.id, permissions.clone());
-        }
+        self.permissioner
+            .borrow_mut()
+            .update_permissions_for_user(user.id, permissions.clone());
 
-        {
-            let mut user = self.get_user_mut(user_id).with_error_context(|error| {
-                format!(
-                    "{COMPONENT} update user permissions (error: {error}) - failed to get mutable reference to the user with id: {user_id}"
-                )
-            })?;
+        self.users.with_user_mut(user_id, |user| {
             user.permissions = permissions;
-        }
-
-        Ok(())
+        }).with_error_context(|error| {
+            format!(
+                "{COMPONENT} update user permissions (error: {error}) - failed to update permissions for user with id: {user_id}"
+            )
+        })
     }
 
     pub fn change_password(
@@ -417,19 +346,19 @@ impl IggyShard {
         current_password: &str,
         new_password: &str,
     ) -> Result<(), IggyError> {
-        let mut user = self.get_user_mut(user_id).with_error_context(|error| {
-            format!("{COMPONENT} change password (error: {error}) - failed to get mutable reference to the user with id: {user_id}")
-        })?;
-        if !crypto::verify_password(current_password, &user.password) {
-            error!(
-                "Invalid current password for user: {} with ID: {user_id}.",
-                user.username
-            );
-            return Err(IggyError::InvalidCredentials);
-        }
-
-        user.password = crypto::hash_password(new_password);
-        Ok(())
+        self.users.with_user_mut(user_id, |user| {
+            if !crypto::verify_password(current_password, &user.password) {
+                error!(
+                    "Invalid current password for user: {} with ID: {user_id}.",
+                    user.username
+                );
+                return Err(IggyError::InvalidCredentials);
+            }
+            user.password = crypto::hash_password(new_password);
+            Ok(())
+        }).with_error_context(|error| {
+            format!("{COMPONENT} change password (error: {error}) - failed to change password for user with id: {user_id}")
+        })?
     }
 
     pub fn login_user_event(

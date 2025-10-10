@@ -99,26 +99,26 @@ impl IggyShard {
         let name = personal_access_token.name.clone();
         let token_hash = personal_access_token.token.clone();
         let identifier = user_id.try_into()?;
-        let user = self.get_user_mut(&identifier).with_error_context(|error| {
-            format!("{COMPONENT} create PAT (error: {error}) - failed to get mutable reference to the user with id: {user_id}")
-        })?;
+        self.users.with_user_mut(&identifier, |user| {
+            if user
+                .personal_access_tokens
+                .iter()
+                .any(|pat| pat.name.as_str() == name.as_str())
+            {
+                error!("Personal access token: {name} for user with ID: {user_id} already exists.");
+                return Err(IggyError::PersonalAccessTokenAlreadyExists(
+                    name.to_string(),
+                    user_id,
+                ));
+            }
 
-        if user
-            .personal_access_tokens
-            .iter()
-            .any(|pat| pat.name.as_str() == name.as_str())
-        {
-            error!("Personal access token: {name} for user with ID: {user_id} already exists.");
-            return Err(IggyError::PersonalAccessTokenAlreadyExists(
-                name.to_string(),
-                user_id,
-            ));
-        }
-
-        info!("Creating personal access token: {name} for user with ID: {user_id}...");
-        user.personal_access_tokens
-            .insert(token_hash, personal_access_token);
-        info!("Created personal access token: {name} for user with ID: {user_id}.");
+            user.personal_access_tokens
+                .insert(token_hash, personal_access_token);
+            info!("Created personal access token: {name} for user with ID: {user_id}.");
+            Ok(())
+        }).with_error_context(|error| {
+            format!("{COMPONENT} create PAT (error: {error}) - failed to access user with id: {user_id}")
+        })??;
         Ok(())
     }
 
@@ -141,27 +141,26 @@ impl IggyShard {
     }
 
     fn delete_personal_access_token_base(&self, user_id: u32, name: &str) -> Result<(), IggyError> {
-        let user = self
-            .get_user_mut(&user_id.try_into()?)
-            .with_error_context(|error| {
-                format!(
-                    "{COMPONENT} delete PAT (error: {error}) - failed to get mutable reference to the user with id: {user_id}"
-                )
-            })?;
+        self.users.with_user_mut(&user_id.try_into()?, |user| {
+            let token = if let Some(pat) = user
+                .personal_access_tokens
+                .iter()
+                .find(|pat| pat.name.as_str() == name)
+            {
+                pat.token.clone()
+            } else {
+                error!("Personal access token: {name} for user with ID: {user_id} does not exist.",);
+                return Err(IggyError::ResourceNotFound(name.to_owned()));
+            };
 
-        let token = if let Some(pat) = user
-            .personal_access_tokens
-            .iter()
-            .find(|pat| pat.name.as_str() == name)
-        {
-            pat.token.clone()
-        } else {
-            error!("Personal access token: {name} for user with ID: {user_id} does not exist.",);
-            return Err(IggyError::ResourceNotFound(name.to_owned()));
-        };
-
-        info!("Deleting personal access token: {name} for user with ID: {user_id}...");
-        user.personal_access_tokens.remove(&token);
+            info!("Deleting personal access token: {name} for user with ID: {user_id}...");
+            user.personal_access_tokens.remove(&token);
+            Ok(())
+        }).with_error_context(|error| {
+            format!(
+                "{COMPONENT} delete PAT (error: {error}) - failed to access user with id: {user_id}"
+            )
+        })??;
         info!("Deleted personal access token: {name} for user with ID: {user_id}.");
         Ok(())
     }
@@ -182,9 +181,9 @@ impl IggyShard {
         session: Option<&Session>,
     ) -> Result<User, IggyError> {
         let token_hash = PersonalAccessToken::hash_token(token);
-        let users = self.users.borrow();
+        let users = self.users.values();
         let mut personal_access_token = None;
-        for user in users.values() {
+        for user in &users {
             if let Some(pat) = user.personal_access_tokens.get(&token_hash) {
                 personal_access_token = Some(pat);
                 break;

@@ -64,8 +64,8 @@ pub use iggy_common::{
     Sizeable, SnapshotCompression, Stats, Stream, StreamDetails, StreamPermissions,
     SystemSnapshotType, TcpClientConfig, TcpClientConfigBuilder, TcpClientReconnectionConfig,
     Topic, TopicDetails, TopicPermissions, TransportProtocol, UserId, UserStatus, Validatable,
-    defaults, locking, WebSocketClientConfig,
-    WebSocketClientConfigBuilder, WebSocketClientReconnectionConfig
+    WebSocketClientConfig, WebSocketClientConfigBuilder, WebSocketClientReconnectionConfig,
+    defaults, locking,
 };
 pub use iggy_common::{
     IGGY_MESSAGE_CHECKSUM_OFFSET_RANGE, IGGY_MESSAGE_HEADER_SIZE,

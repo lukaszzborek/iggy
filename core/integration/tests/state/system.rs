@@ -39,7 +39,7 @@ async fn should_be_initialized_based_on_state_entries() {
     let state = setup.state();
     state.init().await.unwrap();
 
-    let user_id = 1;
+    let user_id = 0;
     let create_user = CreateUser {
         username: "user".to_string(),
         password: "secret".to_string(),

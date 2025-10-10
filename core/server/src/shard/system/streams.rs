@@ -148,14 +148,15 @@ impl IggyShard {
             })?;
         let mut stream = self.delete_stream2_base(id);
         let stream_id_usize = stream.id();
-        
+
         // Clean up consumer groups from ClientManager for this stream
         self.client_manager
             .borrow_mut()
             .delete_consumer_groups_for_stream(stream_id_usize);
-        
+
         // Remove all entries from shards_table for this stream (all topics and partitions)
-        let namespaces_to_remove: Vec<_> = self.shards_table
+        let namespaces_to_remove: Vec<_> = self
+            .shards_table
             .iter()
             .filter_map(|entry| {
                 let (ns, _) = entry.pair();
@@ -166,11 +167,11 @@ impl IggyShard {
                 }
             })
             .collect();
-        
+
         for ns in namespaces_to_remove {
             self.remove_shard_table_record(&ns);
         }
-        
+
         delete_stream_from_disk(self.id, &mut stream, &self.config.system).await?;
         Ok(stream)
     }
@@ -229,13 +230,13 @@ mod tests {
     use crate::shard::ShardInfo;
     use crate::shard::transmission::connector::ShardConnector;
     use crate::slab::streams::Streams;
+    use crate::slab::users::Users;
     use crate::state::{MockState, StateKind};
     use crate::streaming::session::Session;
     use crate::streaming::streams;
     use crate::streaming::users::user::User;
     use crate::streaming::utils::ptr::EternalPtr;
     use crate::versioning::SemanticVersion;
-    use ahash::HashMap;
     use dashmap::DashMap;
     use iggy_common::defaults::{DEFAULT_ROOT_PASSWORD, DEFAULT_ROOT_USERNAME};
     use std::net::{Ipv4Addr, SocketAddr};
@@ -250,11 +251,8 @@ mod tests {
         let shards_table = Box::leak(shards_table);
         let shards_table: EternalPtr<DashMap<crate::shard::namespace::IggyNamespace, ShardInfo>> =
             shards_table.into();
-
-        let users = HashMap::default();
+        let users = Users::new();
         let state = StateKind::Mock(MockState::new());
-
-        // Create single shard connection
         let connections = vec![ShardConnector::new(0, 1)];
 
         let builder = IggyShard::builder();
@@ -281,13 +279,12 @@ mod tests {
 
         // Initialize root user and session
         let root = User::root(DEFAULT_ROOT_USERNAME, DEFAULT_ROOT_PASSWORD);
+        let root_id = shard.users.insert(root);
         let session = Session::new(
             1,
-            root.id,
+            root_id as u32,
             SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 1234),
         );
-
-        shard.users.borrow_mut().insert(root.id, root);
         shard
             .permissioner
             .borrow_mut()
@@ -340,13 +337,12 @@ mod tests {
 
         // Initialize root user and session
         let root = User::root(DEFAULT_ROOT_USERNAME, DEFAULT_ROOT_PASSWORD);
+        let root_id = shard.users.insert(root);
         let session = Session::new(
             1,
-            root.id,
+            root_id as u32,
             SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 1234),
         );
-
-        shard.users.borrow_mut().insert(root.id, root);
         shard
             .permissioner
             .borrow_mut()
@@ -399,13 +395,12 @@ mod tests {
 
         // Initialize root user and session
         let root = User::root(DEFAULT_ROOT_USERNAME, DEFAULT_ROOT_PASSWORD);
+        let root_id = shard.users.insert(root);
         let session = Session::new(
             1,
-            root.id,
+            root_id as u32,
             SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 1234),
         );
-
-        shard.users.borrow_mut().insert(root.id, root);
         shard
             .permissioner
             .borrow_mut()

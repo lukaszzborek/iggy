@@ -48,8 +48,8 @@ async fn clear_personal_access_tokens(shard: Rc<IggyShard>) -> Result<(), IggyEr
     let now = IggyTimestamp::now();
     let mut total_removed = 0;
 
-    let users = shard.users.borrow();
-    for user in users.values() {
+    let users = shard.users.values();
+    for user in &users {
         let expired_tokens: Vec<Arc<String>> = user
             .personal_access_tokens
             .iter()

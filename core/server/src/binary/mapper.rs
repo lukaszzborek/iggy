@@ -293,7 +293,7 @@ fn extend_consumer_group(
 
 fn extend_client(client: &Client, bytes: &mut BytesMut) {
     bytes.put_u32_le(client.session.client_id);
-    bytes.put_u32_le(client.user_id.unwrap_or(0));
+    bytes.put_u32_le(client.user_id.unwrap_or(u32::MAX));
     let transport: u8 = match client.transport {
         TransportProtocol::Tcp => 1,
         TransportProtocol::Quic => 2,

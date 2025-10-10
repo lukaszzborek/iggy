@@ -45,7 +45,7 @@ impl Session {
     }
 
     pub fn from_client_id(client_id: u32, ip_address: SocketAddr) -> Self {
-        Self::new(client_id, 0, ip_address)
+        Self::new(client_id, u32::MAX, ip_address)
     }
 
     pub fn get_user_id(&self) -> UserId {
@@ -61,7 +61,7 @@ impl Session {
     }
 
     pub fn clear_user_id(&self) {
-        self.set_user_id(0);
+        self.set_user_id(u32::MAX);
     }
 
     pub fn is_active(&self) -> bool {
@@ -69,14 +69,14 @@ impl Session {
     }
 
     pub fn is_authenticated(&self) -> bool {
-        self.get_user_id() > 0
+        self.get_user_id() != u32::MAX
     }
 }
 
 impl Display for Session {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let user_id = self.get_user_id();
-        if user_id > 0 {
+        if user_id != u32::MAX {
             write!(
                 f,
                 "client ID: {}, user ID: {}, IP address: {}",

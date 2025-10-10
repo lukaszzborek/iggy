@@ -228,15 +228,16 @@ async fn delete_stream(
 
         // Delete stream and get the stream entity
         let stream = {
-            let future = SendWrapper::new(state.shard.shard().delete_stream2(
-                &session,
-                &identifier_stream_id,
-            ));
+            let future = SendWrapper::new(
+                state
+                    .shard
+                    .shard()
+                    .delete_stream2(&session, &identifier_stream_id),
+            );
             future.await
-        }.with_error_context(|error| {
-            format!(
-                "{COMPONENT} (error: {error}) - failed to delete stream with ID: {stream_id}",
-            )
+        }
+        .with_error_context(|error| {
+            format!("{COMPONENT} (error: {error}) - failed to delete stream with ID: {stream_id}",)
         })?;
 
         let stream_id_numeric = stream.root().id();
