@@ -1249,6 +1249,20 @@ impl Streams {
     ) -> Result<u32, IggyError> {
         let batch_count = batches.count();
         let batch_size = batches.size();
+
+        if batch_count == 0 {
+            return Ok(0);
+        }
+
+        let has_segments =
+            self.with_partition_by_id(stream_id, topic_id, partition_id, |(.., log)| {
+                log.has_segments()
+            });
+
+        if !has_segments {
+            return Ok(0);
+        }
+
         // Extract storage before async operations
         let (messages_writer, index_writer) =
             self.with_partition_by_id(stream_id, topic_id, partition_id, |(.., log)| {

@@ -169,7 +169,6 @@ impl IggyCmdTestCase for TestMessageFetchCmd {
 
 #[tokio::test]
 #[parallel]
-#[ignore = "flush_unsaved_buffer not yet implemented (todo!)"]
 pub async fn should_be_successful() {
     let mut iggy_cmd_test = IggyCmdTest::default();
 
