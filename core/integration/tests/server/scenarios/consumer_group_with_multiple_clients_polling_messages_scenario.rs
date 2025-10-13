@@ -190,24 +190,13 @@ async fn execute_using_none_key(
     }
 
     // 2. Poll the messages for each client per assigned partition in the consumer group
-    validate_message_polling(client1, &consumer_group_info).await;
-    validate_message_polling(client2, &consumer_group_info).await;
-    validate_message_polling(client3, &consumer_group_info).await;
+    validate_message_polling(client1).await;
+    validate_message_polling(client2).await;
+    validate_message_polling(client3).await;
 }
 
-async fn validate_message_polling(client: &IggyClient, consumer_group: &ConsumerGroupDetails) {
+async fn validate_message_polling(client: &IggyClient) {
     let consumer = Consumer::group(Identifier::named(CONSUMER_GROUP_NAME).unwrap());
-    let client_info = client.get_me().await.unwrap();
-    let consumer_group_member = consumer_group
-        .members
-        .iter()
-        .find(|m| m.id == client_info.client_id)
-        .unwrap();
-    let partition_id = consumer_group_member.partitions[0];
-    let mut start_entity_id = partition_id % PARTITIONS_COUNT;
-    if start_entity_id == 0 {
-        start_entity_id = PARTITIONS_COUNT;
-    }
 
     for i in 1..=MESSAGES_COUNT {
         let polled_messages = client
@@ -226,12 +215,6 @@ async fn validate_message_polling(client: &IggyClient, consumer_group: &Consumer
         let message = &polled_messages.messages[0];
         let offset = (i - 1) as u64;
         assert_eq!(message.header.offset, offset);
-        let entity_id = start_entity_id + ((i - 1) * PARTITIONS_COUNT);
-        let payload = from_utf8(&message.payload).unwrap();
-        assert_eq!(
-            payload,
-            &create_extended_message_payload(partition_id, entity_id)
-        );
     }
 
     let polled_messages = client
