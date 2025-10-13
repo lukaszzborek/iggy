@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Parser, Debug, Clone, Deserialize, Serialize, Default)]
 #[command(author, version, about, long_about = None)]
 pub struct ArgsOptional {
-    /// The transport to use. Valid values are `quic`, `http` and `tcp`
+    /// The transport to use. Valid values are `quic`, `http`, `tcp` and `ws`
     ///
     /// [default: tcp]
     #[arg(long)]
@@ -224,7 +224,7 @@ pub struct ArgsOptional {
 /// The arguments used by the `ClientProviderConfig` to create a client.
 #[derive(Debug, Clone)]
 pub struct Args {
-    /// The transport to use. Valid values are `quic`, `http` and `tcp`
+    /// The transport to use. Valid values are `quic`, `http`, `tcp` and `ws`
     pub transport: String,
 
     /// Optional encryption key for the message payload used by the client
