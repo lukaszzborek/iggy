@@ -135,7 +135,7 @@ pub struct IggyShard {
     pub(crate) quic_bound_address: Cell<Option<SocketAddr>>,
     pub(crate) websocket_bound_address: Cell<Option<SocketAddr>>,
     pub(crate) http_bound_address: Cell<Option<SocketAddr>>,
-    config_writer_notify: async_channel::Sender<()>,
+    pub(crate) config_writer_notify: async_channel::Sender<()>,
     config_writer_receiver: async_channel::Receiver<()>,
     pub(crate) task_registry: Rc<TaskRegistry>,
 }
@@ -309,7 +309,7 @@ impl IggyShard {
     }
 
     pub async fn run(self: &Rc<Self>) -> Result<(), IggyError> {
-        let now = Instant::now();
+        let now: Instant = Instant::now();
 
         // Workaround to ensure that the statistics are initialized before the server
         // loads streams and starts accepting connections. This is necessary to
@@ -509,6 +509,11 @@ impl IggyShard {
                         .await?;
                 }
                 Ok(ShardResponse::PollMessages((metadata, batches)))
+            }
+            ShardRequestPayload::FlushUnsavedBuffer { fsync } => {
+                self.flush_unsaved_buffer_base(&stream_id, &topic_id, partition_id, fsync)
+                    .await?;
+                Ok(ShardResponse::FlushUnsavedBuffer)
             }
         }
     }
@@ -847,10 +852,15 @@ impl IggyShard {
                 stream_id,
                 topic_id,
                 partition_id,
-                ..
+                fsync,
             } => {
-                self.flush_unsaved_buffer_bypass_auth(&stream_id, &topic_id, partition_id)
+                self.flush_unsaved_buffer_base(&stream_id, &topic_id, partition_id, fsync)
                     .await?;
+                Ok(())
+            }
+            ShardEvent::ClientDisconnected { client_id, user_id } => {
+                self.delete_client(client_id);
+                self.remove_active_session(user_id);
                 Ok(())
             }
         }
