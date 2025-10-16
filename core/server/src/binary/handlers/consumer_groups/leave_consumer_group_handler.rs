@@ -20,6 +20,7 @@ use super::COMPONENT;
 use crate::binary::command::{BinaryServerCommand, ServerCommand, ServerCommandHandler};
 use crate::binary::handlers::utils::receive_and_validate;
 use crate::binary::sender::SenderKind;
+
 use crate::shard::IggyShard;
 use crate::shard::transmission::event::ShardEvent;
 use crate::streaming::session::Session;
@@ -71,7 +72,7 @@ impl ServerCommandHandler for LeaveConsumerGroup {
             topic_id,
             group_id,
         };
-        let _responses = shard.broadcast_event_to_all_shards(event).await;
+        shard.broadcast_event_to_all_shards(event).await?;
 
         sender.send_empty_ok_response().await?;
         Ok(())

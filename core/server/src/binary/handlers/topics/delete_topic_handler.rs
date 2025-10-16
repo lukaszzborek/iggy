@@ -19,6 +19,7 @@
 use crate::binary::command::{BinaryServerCommand, ServerCommand, ServerCommandHandler};
 use crate::binary::handlers::utils::receive_and_validate;
 use crate::binary::{handlers::topics::COMPONENT, sender::SenderKind};
+
 use crate::shard::IggyShard;
 use crate::shard::transmission::event::ShardEvent;
 use crate::shard_info;
@@ -71,7 +72,7 @@ impl ServerCommandHandler for DeleteTopic {
             stream_id: self.stream_id.clone(),
             topic_id: self.topic_id.clone(),
         };
-        let _responses = shard.broadcast_event_to_all_shards(event).await;
+        shard.broadcast_event_to_all_shards(event).await?;
 
         shard
             .state

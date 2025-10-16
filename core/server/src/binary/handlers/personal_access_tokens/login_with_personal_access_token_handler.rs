@@ -60,7 +60,7 @@ impl ServerCommandHandler for LoginWithPersonalAccessToken {
             token: self.token,
             client_id: session.client_id,
         };
-        let _responses = shard.broadcast_event_to_all_shards(event).await;
+        shard.broadcast_event_to_all_shards(event).await?;
         let identity_info = mapper::map_identity_info(user.id);
         sender.send_ok_response(&identity_info).await?;
         Ok(())

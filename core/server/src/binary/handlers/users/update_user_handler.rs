@@ -21,6 +21,7 @@ use std::rc::Rc;
 use crate::binary::command::{BinaryServerCommand, ServerCommand, ServerCommandHandler};
 use crate::binary::handlers::utils::receive_and_validate;
 use crate::binary::{handlers::users::COMPONENT, sender::SenderKind};
+
 use crate::shard::IggyShard;
 use crate::shard::transmission::event::ShardEvent;
 use crate::shard_info;
@@ -73,7 +74,7 @@ impl ServerCommandHandler for UpdateUser {
             username: self.username.clone(),
             status: self.status,
         };
-        let _responses = shard.broadcast_event_to_all_shards(event).await;
+        shard.broadcast_event_to_all_shards(event).await?;
 
         let user_id = self.user_id.clone();
         shard

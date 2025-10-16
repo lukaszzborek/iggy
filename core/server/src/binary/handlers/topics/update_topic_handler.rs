@@ -19,6 +19,7 @@
 use crate::binary::command::{BinaryServerCommand, ServerCommand, ServerCommandHandler};
 use crate::binary::handlers::utils::receive_and_validate;
 use crate::binary::{handlers::topics::COMPONENT, sender::SenderKind};
+
 use crate::shard::IggyShard;
 use crate::shard::transmission::event::ShardEvent;
 use crate::state::command::EntryCommand;
@@ -81,7 +82,7 @@ impl ServerCommandHandler for UpdateTopic {
             max_topic_size: self.max_topic_size,
             replication_factor: self.replication_factor,
         };
-        let _responses = shard.broadcast_event_to_all_shards(event).await;
+        shard.broadcast_event_to_all_shards(event).await?;
         let topic_id = self.topic_id.clone();
         let stream_id = self.stream_id.clone();
 

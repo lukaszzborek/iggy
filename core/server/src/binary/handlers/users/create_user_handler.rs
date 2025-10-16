@@ -78,7 +78,7 @@ impl ServerCommandHandler for CreateUser {
             status: self.status,
             permissions: self.permissions.clone(),
         };
-        let _responses = shard.broadcast_event_to_all_shards(event).await;
+        shard.broadcast_event_to_all_shards(event).await?;
         let user_id = user.id;
         let response = mapper::map_user(&user);
 
