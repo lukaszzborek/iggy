@@ -16,11 +16,10 @@
  * under the License.
  */
 
-use async_trait::async_trait;
 use iggy_common::{Identifier, IggyError};
 
 /// This trait defines the methods to interact with the partition module.
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 pub trait PartitionClient {
     /// Create new N partitions for a topic by unique ID or name.
     ///

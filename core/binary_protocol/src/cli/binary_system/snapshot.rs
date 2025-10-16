@@ -21,11 +21,9 @@ use std::path::Path;
 use crate::Client;
 use crate::cli::cli_command::{CliCommand, PRINT_TARGET};
 use anyhow::Context;
-use async_trait::async_trait;
 use comfy_table::Table;
 use iggy_common::get_snapshot::GetSnapshot;
 use iggy_common::{SnapshotCompression, SystemSnapshotType};
-use tokio::io::AsyncWriteExt;
 use tracing::{Level, event};
 
 pub struct GetSnapshotCmd {
@@ -64,7 +62,7 @@ impl Default for GetSnapshotCmd {
     }
 }
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl CliCommand for GetSnapshotCmd {
     fn explain(&self) -> String {
         "snapshot command".to_owned()
@@ -84,13 +82,29 @@ impl CliCommand for GetSnapshotCmd {
         ));
         let file_size = snapshot_data.0.len();
 
+        #[cfg(not(feature = "sync"))]
         let mut file = tokio::fs::File::create(&file_path)
             .await
             .with_context(|| format!("Failed to create file at {file_path:?}"))?;
 
-        file.write_all(&snapshot_data.0)
-            .await
-            .with_context(|| "Failed to write snapshot data to file".to_owned())?;
+        #[cfg(feature = "sync")]
+        let mut file = std::fs::File::create(&file_path)
+            .with_context(|| format!("Failed to create file at {file_path:?}"))?;
+
+        #[cfg(not(feature = "sync"))]
+        {
+            use tokio::io::AsyncWriteExt;
+            file.write_all(&snapshot_data.0)
+                .await
+                .with_context(|| "Failed to write snapshot data to file".to_owned())?;
+        }
+
+        #[cfg(feature = "sync")]
+        {
+            use std::io::Write;
+            file.write_all(&snapshot_data.0)
+                .with_context(|| "Failed to write snapshot data to file".to_owned())?;
+        }
 
         let mut table = Table::new();
         table.set_header(vec!["Property", "Value"]);

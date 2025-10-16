@@ -29,7 +29,7 @@ use iggy_common::{
     CompressionAlgorithm, Identifier, IggyError, IggyExpiry, MaxTopicSize, Topic, TopicDetails,
 };
 
-#[async_trait::async_trait]
+#[maybe_async::maybe_async(Send)]
 impl<B: BinaryClient> TopicClient for B {
     async fn get_topic(
         &self,

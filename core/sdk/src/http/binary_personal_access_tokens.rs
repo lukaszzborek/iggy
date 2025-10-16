@@ -19,7 +19,6 @@
 use crate::http::http_client::HttpClient;
 use crate::http::http_transport::HttpTransport;
 use crate::prelude::IggyError;
-use async_trait::async_trait;
 use iggy_binary_protocol::PersonalAccessTokenClient;
 use iggy_common::IdentityInfo;
 use iggy_common::PersonalAccessTokenExpiry;
@@ -29,7 +28,7 @@ use iggy_common::{PersonalAccessTokenInfo, RawPersonalAccessToken};
 
 const PATH: &str = "/personal-access-tokens";
 
-#[async_trait]
+#[async_trait::async_trait]
 impl PersonalAccessTokenClient for HttpClient {
     async fn get_personal_access_tokens(&self) -> Result<Vec<PersonalAccessTokenInfo>, IggyError> {
         let response = self.get(PATH).await?;

@@ -15,14 +15,15 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
+use super::{BackgroundConfig, ErrorCtx};
 use crate::clients::producer::ProducerCoreBackend;
-use crate::clients::producer_config::BackgroundConfig;
-use crate::clients::producer_error_callback::ErrorCtx;
+use crate::runtime::JoinHandle;
+use iggy_common::locking::semaphore::OwnedSemaphorePermit;
 use iggy_common::{Identifier, IggyByteSize, IggyError, IggyMessage, Partitioning, Sizeable};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use tokio::sync::{OwnedSemaphorePermit, broadcast};
-use tokio::task::JoinHandle;
+use tokio::sync::broadcast;
 use tracing::{debug, error};
 
 /// A strategy for distributing messages across shards.

@@ -16,7 +16,6 @@
  * under the License.
  */
 
-use async_trait::async_trait;
 use comfy_table::Table;
 use tracing::{Level, event};
 
@@ -56,7 +55,7 @@ impl Default for GetContextsCmd {
     }
 }
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl CliCommand for GetContextsCmd {
     fn explain(&self) -> String {
         let mode = match self.output {
@@ -97,6 +96,6 @@ impl CliCommand for GetContextsCmd {
             }),
         }
 
-        return Ok(());
+        Ok(())
     }
 }

@@ -17,14 +17,13 @@
  */
 
 use crate::prelude::IggyClient;
-use async_trait::async_trait;
 use iggy_binary_protocol::UserClient;
 use iggy_common::locking::IggySharedMutFn;
 use iggy_common::{
     Identifier, IdentityInfo, IggyError, Permissions, UserInfo, UserInfoDetails, UserStatus,
 };
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl UserClient for IggyClient {
     async fn get_user(&self, user_id: &Identifier) -> Result<Option<UserInfoDetails>, IggyError> {
         self.client.read().await.get_user(user_id).await

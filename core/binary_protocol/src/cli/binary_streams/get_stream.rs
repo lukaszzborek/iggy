@@ -19,7 +19,6 @@
 use crate::Client;
 use crate::cli::cli_command::{CliCommand, PRINT_TARGET};
 use anyhow::Context;
-use async_trait::async_trait;
 use comfy_table::Table;
 use iggy_common::Identifier;
 use iggy_common::get_stream::GetStream;
@@ -37,7 +36,7 @@ impl GetStreamCmd {
     }
 }
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl CliCommand for GetStreamCmd {
     fn explain(&self) -> String {
         format!("get stream with ID: {}", self.get_stream.stream_id)

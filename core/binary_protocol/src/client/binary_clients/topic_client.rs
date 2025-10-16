@@ -16,14 +16,13 @@
  * under the License.
  */
 
-use async_trait::async_trait;
 use iggy_common::{
     CompressionAlgorithm, Identifier, IggyError, IggyExpiry, MaxTopicSize, Topic, TopicDetails,
 };
 
 /// This trait defines the methods to interact with the topic module.
+#[maybe_async::maybe_async(Send)]
 #[allow(clippy::too_many_arguments)]
-#[async_trait]
 pub trait TopicClient {
     /// Get the info about a specific topic by unique ID or name.
     ///

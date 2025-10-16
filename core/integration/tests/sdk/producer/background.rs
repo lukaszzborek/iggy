@@ -20,7 +20,7 @@ use crate::sdk::producer::{
     PARTITION_ID, STREAM_ID, TOPIC_ID, cleanup, create_message_payload, init_system,
 };
 use bytes::Bytes;
-use iggy::clients::producer_config::BackpressureMode;
+use iggy::clients::dispatchers::background::BackpressureMode;
 use iggy::prelude::*;
 use iggy::{clients::client::IggyClient, prelude::TcpClient};
 use iggy_common::TcpClientConfig;
@@ -67,7 +67,7 @@ async fn background_send_receive_ok() {
         );
     }
 
-    let producer = client
+    let mut producer = client
         .producer(&STREAM_ID.to_string(), &TOPIC_ID.to_string())
         .unwrap()
         .partitioning(Partitioning::partition_id(PARTITION_ID))
@@ -289,7 +289,7 @@ async fn background_graceful_shutdown() {
         .batch_size(0)
         .linger_time(IggyDuration::from(2_000_000)) // 2s – long enough not to flush automatically
         .build();
-    let producer = client
+    let mut producer = client
         .producer(&STREAM_ID.to_string(), &TOPIC_ID.to_string())
         .unwrap()
         .background(cfg)
@@ -362,7 +362,7 @@ async fn background_many_parallel_producers() {
         let client_clone = client.clone();
         let handle = tokio::spawn(async move {
             let cfg = BackgroundConfig::builder().num_shards(1).build();
-            let producer = client_clone
+            let mut producer = client_clone
                 .producer(&STREAM_ID.to_string(), &TOPIC_ID.to_string())
                 .unwrap()
                 .partitioning(Partitioning::partition_id(PARTITION_ID))

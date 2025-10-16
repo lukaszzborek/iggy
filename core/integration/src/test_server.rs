@@ -27,7 +27,6 @@ use std::thread::{panicking, sleep};
 use std::time::Duration;
 
 use assert_cmd::prelude::CommandCargoExt;
-use async_trait::async_trait;
 use derive_more::Display;
 use futures::executor::block_on;
 use uuid::Uuid;
@@ -35,6 +34,9 @@ use uuid::Uuid;
 use iggy::prelude::UserStatus::Active;
 use iggy::prelude::*;
 use server::configs::config_provider::{ConfigProvider, FileConfigProvider};
+
+// Re-export common types for backward compatibility
+pub use crate::common_types::{ClientFactory, IpAddrKind, Transport};
 
 pub const SYSTEM_PATH_ENV_VAR: &str = "IGGY_SYSTEM_PATH";
 pub const TEST_VERBOSITY_ENV_VAR: &str = "IGGY_TEST_VERBOSE";
@@ -44,31 +46,6 @@ const SLEEP_INTERVAL_MS: u64 = 20;
 const LOCAL_DATA_PREFIX: &str = "local_data_";
 
 const MAX_PORT_WAIT_DURATION_S: u64 = 60;
-
-#[derive(PartialEq)]
-pub enum IpAddrKind {
-    V4,
-    V6,
-}
-
-#[async_trait]
-pub trait ClientFactory: Sync + Send {
-    async fn create_client(&self) -> ClientWrapper;
-    fn transport(&self) -> Transport;
-    fn server_addr(&self) -> String;
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Display)]
-pub enum Transport {
-    #[display("http")]
-    Http,
-
-    #[display("quic")]
-    Quic,
-
-    #[display("tcp")]
-    Tcp,
-}
 
 #[derive(Display, Debug)]
 enum ServerProtocolAddr {

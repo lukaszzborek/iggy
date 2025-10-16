@@ -17,15 +17,40 @@
  */
 
 pub mod bench_utils;
+pub mod common_types;
 pub mod file;
+
+pub use common_types::*;
+
+// TestServer and related modules only in async mode (not in sync)
+#[cfg(not(feature = "sync"))]
 #[allow(deprecated)]
 pub mod http_client;
+#[cfg(not(feature = "sync"))]
 #[allow(deprecated)]
 pub mod quic_client;
+#[cfg(not(feature = "sync"))]
 #[allow(deprecated)]
 pub mod tcp_client;
+#[cfg(not(feature = "sync"))]
 #[allow(deprecated)]
 pub mod test_mcp_server;
+#[cfg(not(feature = "sync"))]
 #[allow(deprecated)]
 pub mod test_server;
+
+// External server for sync mode (starts server as separate process)
+#[cfg(feature = "sync")]
+pub mod external_server;
+
+#[cfg(feature = "sync")]
+pub mod tcp_client_sync;
+
+#[cfg(not(feature = "sync"))]
+pub use tcp_client::TcpClientFactory;
+#[cfg(feature = "sync")]
+pub use tcp_client_sync::TcpClientFactory;
+
+// Available in both modes
+pub mod test_server_provider;
 pub mod test_tls_utils;

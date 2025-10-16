@@ -24,7 +24,12 @@ license = "Apache-2.0"
 # Some tests are failing in CI due to lack of IPv6 interfaces
 # inside the docker containers. This is a temporary workaround (hopefully).
 [features]
+default = ["async"]
 ci-qemu = []
+# Sync mode: SDK in sync mode, server runs as external process (cargo run)
+sync = ["iggy/sync", "iggy_binary_protocol/sync", "maybe-async/is_sync"]
+# Async mode: SDK async, embedded server with TestServer
+async = ["iggy/async", "iggy_binary_protocol/async", "dep:server", "dep:iggy_common"]
 
 [dependencies]
 ahash = { workspace = true }
@@ -37,13 +42,14 @@ derive_more = { workspace = true }
 env_logger = { workspace = true }
 futures = { workspace = true }
 humantime = { workspace = true }
-iggy = { workspace = true }
-iggy_binary_protocol = { workspace = true }
-iggy_common = { workspace = true }
+iggy = { workspace = true, default-features = false }
+iggy_binary_protocol = { workspace = true, default-features = false }
+iggy_common = { workspace = true, features = ["async", "tokio_lock"], optional = true }
 keyring = { workspace = true }
 lazy_static = { workspace = true }
 libc = "0.2.175"
 log = { workspace = true }
+maybe-async = { workspace = true }
 predicates = { workspace = true }
 rand = { workspace = true }
 rcgen = "0.14.3"
@@ -54,7 +60,7 @@ rmcp = { version = "0.5.0", features = [
     "transport-streamable-http-client",
 ] }
 serial_test = { workspace = true }
-server = { workspace = true }
+server = { workspace = true, optional = true }
 tempfile = { workspace = true }
 test-case = { workspace = true }
 tokio = { workspace = true }

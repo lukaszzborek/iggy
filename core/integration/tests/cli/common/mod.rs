@@ -22,11 +22,12 @@ pub(crate) use crate::cli::common::command::IggyCmdCommand;
 pub(crate) use crate::cli::common::help::{CLAP_INDENT, TestHelpCmd, USAGE_PREFIX};
 use assert_cmd::assert::{Assert, OutputAssertExt};
 use assert_cmd::prelude::CommandCargoExt;
-use async_trait::async_trait;
 use iggy::clients::client::IggyClient;
 use iggy::prelude::defaults::*;
-use iggy::prelude::{Client, ClientWrapper, SystemClient, TcpClient, TcpClientConfig, UserClient};
-use integration::test_server::TestServer;
+use iggy::prelude::{Client, ClientWrapper, SystemClient, TcpClientConfig, UserClient};
+use integration::test_server_provider::{TestServerProvider, UniversalTestServer};
+
+use iggy::prelude::TcpClient;
 use std::fmt::{Display, Formatter, Result};
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -73,7 +74,7 @@ impl OutputFormat {
     }
 }
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 pub(crate) trait IggyCmdTestCase {
     async fn prepare_server_state(&mut self, client: &dyn Client);
     fn get_command(&self) -> IggyCmdCommand;
@@ -82,7 +83,7 @@ pub(crate) trait IggyCmdTestCase {
     }
     fn verify_command(&self, command_state: Assert);
     async fn verify_server_state(&self, client: &dyn Client);
-    fn protocol(&self, server: &TestServer) -> Vec<String> {
+    fn protocol(&self, server: &dyn TestServerProvider) -> Vec<String> {
         vec![
             "--tcp-server-address".into(),
             server.get_raw_tcp_addr().unwrap(),
@@ -91,13 +92,13 @@ pub(crate) trait IggyCmdTestCase {
 }
 
 pub(crate) struct IggyCmdTest {
-    server: TestServer,
+    server: UniversalTestServer,
     client: IggyClient,
 }
 
 impl IggyCmdTest {
     pub(crate) fn new(start_server: bool) -> Self {
-        let mut server = TestServer::default();
+        let mut server = UniversalTestServer::default();
         if start_server {
             server.start();
         }
@@ -105,8 +106,7 @@ impl IggyCmdTest {
             server_address: server.get_raw_tcp_addr().unwrap(),
             ..TcpClientConfig::default()
         };
-        let client = ClientWrapper::Tcp(TcpClient::create(Arc::new(tcp_client_config)).unwrap());
-        let client = IggyClient::create(client, None, None);
+        let client = get_client(tcp_client_config);
 
         Self { server, client }
     }
@@ -115,6 +115,7 @@ impl IggyCmdTest {
         Self::new(false)
     }
 
+    #[maybe_async::maybe_async]
     pub(crate) async fn setup(&mut self) {
         self.client.connect().await.unwrap();
 
@@ -131,6 +132,7 @@ impl IggyCmdTest {
         assert_eq!(identity_info.user_id, 1);
     }
 
+    #[maybe_async::maybe_async]
     pub(crate) async fn execute_test(&mut self, mut test_case: impl IggyCmdTestCase) {
         // Make sure server is started
         assert!(
@@ -198,6 +200,7 @@ impl IggyCmdTest {
         test_case.verify_server_state(&self.client).await;
     }
 
+    #[maybe_async::maybe_async]
     pub(crate) async fn execute_test_for_help_command(&mut self, test_case: TestHelpCmd) {
         // Get iggy tool
         let mut command = Command::cargo_bin("iggy").unwrap();
@@ -235,6 +238,12 @@ impl IggyCmdTest {
     pub(crate) fn get_tcp_server_address(&self) -> Option<String> {
         self.server.get_raw_tcp_addr()
     }
+}
+
+fn get_client(tcp_client_config: TcpClientConfig) -> IggyClient {
+    let client = TcpClient::create(Arc::new(tcp_client_config)).unwrap();
+    let client_wrapper = ClientWrapper::Tcp(client);
+    IggyClient::new(client_wrapper)
 }
 
 impl Default for IggyCmdTest {

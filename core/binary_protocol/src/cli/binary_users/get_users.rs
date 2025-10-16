@@ -19,7 +19,6 @@
 use crate::Client;
 use crate::cli::cli_command::{CliCommand, PRINT_TARGET};
 use anyhow::Context;
-use async_trait::async_trait;
 use comfy_table::Table;
 use iggy_common::get_users::GetUsers;
 use tracing::{Level, event};
@@ -52,7 +51,7 @@ impl Default for GetUsersCmd {
     }
 }
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl CliCommand for GetUsersCmd {
     fn explain(&self) -> String {
         let mode = match self.output {

@@ -19,7 +19,6 @@
 use crate::Client;
 use crate::cli::cli_command::{CliCommand, PRINT_TARGET};
 use anyhow::Context;
-use async_trait::async_trait;
 use iggy_common::Identifier;
 use iggy_common::create_partitions::CreatePartitions;
 use tracing::{Level, event};
@@ -40,7 +39,7 @@ impl CreatePartitionsCmd {
     }
 }
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl CliCommand for CreatePartitionsCmd {
     fn explain(&self) -> String {
         let mut partitions = String::from("partition");

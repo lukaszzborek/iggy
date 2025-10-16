@@ -16,7 +16,7 @@
  * under the License.
  */
 
-use crate::test_server::{ClientFactory, Transport};
+use crate::common_types::{ClientFactory, Transport};
 use async_trait::async_trait;
 use iggy::prelude::{Client, ClientWrapper, TcpClient, TcpClientConfig};
 use std::sync::Arc;
@@ -29,6 +29,15 @@ pub struct TcpClientFactory {
     pub tls_domain: String,
     pub tls_ca_file: Option<String>,
     pub tls_validate_certificate: bool,
+}
+
+impl TcpClientFactory {
+    pub fn new(server_addr: String) -> Self {
+        Self {
+            server_addr,
+            ..Default::default()
+        }
+    }
 }
 
 #[async_trait]

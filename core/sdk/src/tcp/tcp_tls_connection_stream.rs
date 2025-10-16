@@ -17,7 +17,6 @@
  */
 
 use crate::tcp::tcp_stream::ConnectionStream;
-use async_trait::async_trait;
 use iggy_common::IggyError;
 use std::net::SocketAddr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -40,7 +39,7 @@ impl TcpTlsConnectionStream {
     }
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl ConnectionStream for TcpTlsConnectionStream {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, IggyError> {
         self.stream.read(buf).await.map_err(|error| {

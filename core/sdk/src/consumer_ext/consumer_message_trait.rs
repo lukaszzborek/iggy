@@ -18,26 +18,35 @@
 
 use crate::consumer_ext::MessageConsumer;
 use crate::prelude::IggyError;
-use async_trait::async_trait;
-use tokio::sync::oneshot;
+use iggy_common::adapters::oneshot::ShutdownRx;
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 pub trait IggyConsumerMessageExt<'a> {
-    /// This function starts an event loop that consumes messages from the stream and
-    /// applies the provided consumer. The loop will exit when the shutdown receiver is triggered.
-    ///
-    /// This can be combined with `AutoCommitAfter` to automatically commit offsets after consuming.
+    /// Consume messages from the stream and process them with the given message consumer.
     ///
     /// # Arguments
     ///
-    /// * `message_consumer`: The consumer to send messages to.
-    /// * `shutdown_rx`: The receiver to listen to for shutdown.
+    /// * `message_consumer`: The message consumer to use. This must be a reference to a static
+    /// object that implements the `MessageConsumer` trait.
+    /// * `shutdown_rx`: A receiver which will receive a shutdown signal, which will be used to
+    /// stop message consumption.
     ///
-    async fn consume_messages<P>(
+    /// # Errors
+    ///
+    /// * `IggyError::Disconnected`: The client has been disconnected.
+    /// * `IggyError::CannotEstablishConnection`: The client cannot establish a connection to iggy.
+    /// * `IggyError::StaleClient`: This client is stale and cannot be used to consume messages.
+    /// * `IggyError::InvalidServerAddress`: The server address is invalid.
+    /// * `IggyError::InvalidClientAddress`: The client address is invalid.
+    /// * `IggyError::NotConnected`: The client is not connected.
+    /// * `IggyError::ClientShutdown`: The client has been shut down.
+    ///
+    async fn consume_messages<P, S>(
         &mut self,
         message_consumer: &'a P,
-        shutdown_rx: oneshot::Receiver<()>,
+        shutdown_rx: S,
     ) -> Result<(), IggyError>
     where
-        P: MessageConsumer + Sync;
+        P: MessageConsumer + Sync,
+        S: Into<ShutdownRx> + Send;
 }

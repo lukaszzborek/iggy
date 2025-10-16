@@ -233,6 +233,7 @@ impl Validatable<ConfigError> for ArchiverConfig {
                 }
                 Ok(())
             }
+            #[cfg(feature = "s3-backup")]
             ArchiverKindType::S3 => {
                 if self.s3.is_none() {
                     return Err(ConfigError::InvalidConfiguration);

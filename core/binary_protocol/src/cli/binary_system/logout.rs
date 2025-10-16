@@ -20,7 +20,6 @@ use crate::Client;
 use crate::cli::binary_system::session::ServerSession;
 use crate::cli::cli_command::{CliCommand, PRINT_TARGET};
 use anyhow::Context;
-use async_trait::async_trait;
 use tracing::{Level, event};
 
 pub struct LogoutCmd {
@@ -35,7 +34,7 @@ impl LogoutCmd {
     }
 }
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl CliCommand for LogoutCmd {
     fn explain(&self) -> String {
         "logout command".to_owned()

@@ -16,14 +16,13 @@
  * under the License.
  */
 
-use async_trait::async_trait;
 use iggy_common::{
     IdentityInfo, IggyError, PersonalAccessTokenExpiry, PersonalAccessTokenInfo,
     RawPersonalAccessToken,
 };
 
 /// This trait defines the methods to interact with the personal access token module.
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 pub trait PersonalAccessTokenClient {
     /// Get the info about all the personal access tokens of the currently authenticated user.
     async fn get_personal_access_tokens(&self) -> Result<Vec<PersonalAccessTokenInfo>, IggyError>;

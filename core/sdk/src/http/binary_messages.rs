@@ -22,11 +22,10 @@ use crate::prelude::{
     Consumer, FlushUnsavedBuffer, Identifier, IggyError, IggyMessage, Partitioning, PollMessages,
     PolledMessages, PollingStrategy, SendMessages,
 };
-use async_trait::async_trait;
 use iggy_binary_protocol::MessageClient;
 use iggy_common::IggyMessagesBatch;
 
-#[async_trait]
+#[async_trait::async_trait]
 impl MessageClient for HttpClient {
     async fn poll_messages(
         &self,

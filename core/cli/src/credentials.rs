@@ -144,6 +144,7 @@ impl<'a> IggyCredentials<'a> {
         self.iggy_client = Some(iggy_client);
     }
 
+    #[maybe_async::maybe_async]
     pub(crate) async fn login_user(&self) -> anyhow::Result<(), anyhow::Error> {
         if let Some(client) = self.iggy_client
             && self.login_required
@@ -197,6 +198,7 @@ impl<'a> IggyCredentials<'a> {
         Ok(())
     }
 
+    #[maybe_async::maybe_async]
     pub(crate) async fn logout_user(&self) -> anyhow::Result<(), anyhow::Error> {
         if let Some(client) = self.iggy_client
             && self.login_required

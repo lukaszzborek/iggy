@@ -16,6 +16,10 @@
  * under the License.
  */
 
+// In sync mode, serial_test::serial returns a Future that is not awaited
+// This is expected behavior with maybe_async transformation
+#![cfg_attr(feature = "sync", allow(unused_must_use))]
+
 use ctor::{ctor, dtor};
 use lazy_static::lazy_static;
 use std::collections::{HashMap, HashSet};
@@ -25,15 +29,25 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Once};
 use std::{panic, thread};
 
+// Server-specific tests (only in async mode)
+#[cfg(not(feature = "sync"))]
 mod archiver;
-mod cli;
+#[cfg(not(feature = "sync"))]
 mod config_provider;
+#[cfg(not(feature = "sync"))]
 mod data_integrity;
+#[cfg(not(feature = "sync"))]
 mod mcp;
-mod sdk;
+#[cfg(not(feature = "sync"))]
 mod server;
+#[cfg(not(feature = "sync"))]
 mod state;
+#[cfg(not(feature = "sync"))]
 mod streaming;
+
+mod cli;
+
+mod sdk;
 
 lazy_static! {
     static ref TESTS_FAILED: AtomicBool = AtomicBool::new(false);

@@ -19,7 +19,6 @@
 use crate::http::http_client::HttpClient;
 use crate::http::http_transport::HttpTransport;
 use crate::prelude::{IggyDuration, IggyError};
-use async_trait::async_trait;
 use iggy_binary_protocol::SystemClient;
 use iggy_common::Snapshot;
 use iggy_common::Stats;
@@ -32,7 +31,7 @@ const CLIENTS: &str = "/clients";
 const STATS: &str = "/stats";
 const SNAPSHOT: &str = "/snapshot";
 
-#[async_trait]
+#[async_trait::async_trait]
 impl SystemClient for HttpClient {
     async fn get_stats(&self) -> Result<Stats, IggyError> {
         let response = self.get(STATS).await?;

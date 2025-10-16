@@ -19,12 +19,11 @@
 use crate::http::http_client::HttpClient;
 use crate::http::http_transport::HttpTransport;
 use crate::prelude::{Identifier, IggyError};
-use async_trait::async_trait;
 use iggy_binary_protocol::PartitionClient;
 use iggy_common::create_partitions::CreatePartitions;
 use iggy_common::delete_partitions::DeletePartitions;
 
-#[async_trait]
+#[async_trait::async_trait]
 impl PartitionClient for HttpClient {
     async fn create_partitions(
         &self,

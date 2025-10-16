@@ -17,7 +17,6 @@
  */
 
 use crate::clients::client::IggyClient;
-use crate::clients::consumer::IggyConsumer;
 use crate::prelude::{IggyError, SystemClient};
 use crate::stream_builder::{IggyConsumerConfig, build};
 use tracing::trace;
@@ -37,10 +36,11 @@ impl IggyStreamConsumer {
     ///
     /// If the builds fails, an `IggyError` is returned.
     ///
+    #[maybe_async::maybe_async]
     pub async fn build(
         client: &IggyClient,
         config: &IggyConsumerConfig,
-    ) -> Result<IggyConsumer, IggyError> {
+    ) -> Result<crate::clients::consumer::IggyConsumer, IggyError> {
         trace!("Check if client is connected");
         if client.ping().await.is_err() {
             return Err(IggyError::NotConnected);
@@ -67,10 +67,11 @@ impl IggyStreamConsumer {
     ///
     /// If the builds fails, an `IggyError` is returned.
     ///
+    #[maybe_async::maybe_async]
     pub async fn with_client_from_url(
         connection_string: &str,
         config: &IggyConsumerConfig,
-    ) -> Result<(IggyClient, IggyConsumer), IggyError> {
+    ) -> Result<(IggyClient, crate::clients::consumer::IggyConsumer), IggyError> {
         trace!("Build and connect iggy client");
         let client = build::build_iggy_client(connection_string).await?;
 
@@ -100,6 +101,7 @@ impl IggyStreamConsumer {
     /// If the connection string is invalid or the client cannot be initialized,
     /// an `IggyError` will be returned.
     ///
+    #[maybe_async::maybe_async]
     pub async fn build_iggy_client(connection_string: &str) -> Result<IggyClient, IggyError> {
         trace!("Build and connect iggy client");
         let client = build::build_iggy_client(connection_string).await?;

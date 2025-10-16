@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::test_server::Transport;
+use crate::common_types::Transport;
 use assert_cmd::prelude::CommandCargoExt;
 use iggy::prelude::*;
 use std::{

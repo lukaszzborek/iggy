@@ -18,13 +18,14 @@
 
 use crate::prelude::Client;
 use crate::prelude::TcpClientConfig;
+use crate::runtime::{Runtime, RuntimeExecutor, default_runtime};
 use crate::tcp::tcp_connection_stream::TcpConnectionStream;
 use crate::tcp::tcp_connection_stream_kind::ConnectionStreamKind;
 use crate::tcp::tcp_tls_connection_stream::TcpTlsConnectionStream;
-use async_broadcast::{Receiver, Sender, broadcast};
-use async_trait::async_trait;
 use bytes::{BufMut, Bytes, BytesMut};
 use iggy_binary_protocol::{BinaryClient, BinaryTransport, PersonalAccessTokenClient, UserClient};
+use iggy_common::broadcast::{Recv, Sender, Snd, channel};
+use iggy_common::locking::mutex::Mutex;
 use iggy_common::{
     AutoLogin, ClientState, Command, ConnectionString, ConnectionStringUtils, Credentials,
     DiagnosticEvent, IggyDuration, IggyError, IggyErrorDiscriminants, IggyTimestamp,
@@ -35,8 +36,6 @@ use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::net::TcpStream;
-use tokio::sync::Mutex;
-use tokio::time::sleep;
 use tokio_rustls::{TlsConnector, TlsStream};
 use tracing::{error, info, trace, warn};
 
@@ -52,8 +51,9 @@ pub struct TcpClient {
     pub(crate) config: Arc<TcpClientConfig>,
     pub(crate) state: Mutex<ClientState>,
     client_address: Mutex<Option<SocketAddr>>,
-    events: (Sender<DiagnosticEvent>, Receiver<DiagnosticEvent>),
+    events: (Snd<DiagnosticEvent>, Recv<DiagnosticEvent>),
     connected_at: Mutex<Option<IggyTimestamp>>,
+    rt: Runtime,
 }
 
 impl Default for TcpClient {
@@ -62,7 +62,7 @@ impl Default for TcpClient {
     }
 }
 
-#[async_trait]
+#[maybe_async::async_impl(Send)]
 impl Client for TcpClient {
     async fn connect(&self) -> Result<(), IggyError> {
         TcpClient::connect(self).await
@@ -76,13 +76,12 @@ impl Client for TcpClient {
         TcpClient::shutdown(self).await
     }
 
-    async fn subscribe_events(&self) -> Receiver<DiagnosticEvent> {
+    async fn subscribe_events(&self) -> Recv<DiagnosticEvent> {
         self.events.1.clone()
     }
 }
 
-#[async_trait]
-#[async_trait]
+#[maybe_async::async_impl(Send)]
 impl BinaryTransport for TcpClient {
     async fn get_state(&self) -> ClientState {
         *self.state.lock().await
@@ -144,6 +143,7 @@ impl BinaryTransport for TcpClient {
     }
 }
 
+#[maybe_async::async_impl]
 impl BinaryClient for TcpClient {}
 
 impl TcpClient {
@@ -196,8 +196,9 @@ impl TcpClient {
             client_address: Mutex::new(None),
             stream: Arc::new(Mutex::new(None)),
             state: Mutex::new(ClientState::Disconnected),
-            events: broadcast(1000),
+            events: channel(1000),
             connected_at: Mutex::new(None),
+            rt: default_runtime(),
         })
     }
 
@@ -274,7 +275,7 @@ impl TcpClient {
             if elapsed < interval {
                 let remaining = IggyDuration::from(interval - elapsed);
                 info!("Trying to connect to the server in: {remaining}",);
-                sleep(remaining.get_duration()).await;
+                self.rt.sleep(remaining).await;
             }
         }
 
@@ -316,7 +317,7 @@ impl TcpClient {
                         "Retrying to connect to server ({retry_count}/{max_retries_str}): {} in: {interval_str}",
                         self.config.server_address,
                     );
-                    sleep(self.config.reconnection.interval.get_duration()).await;
+                    self.rt.sleep(self.config.reconnection.interval).await;
                     continue;
                 }
 

@@ -22,7 +22,8 @@ use crate::cli::system::test_logout_cmd::TestLogoutCmd;
 use crate::cli::system::test_me_command::{Protocol, Scenario, TestMeCmd};
 use serial_test::serial;
 
-#[tokio::test]
+#[cfg_attr(feature = "sync", serial_test::serial)]
+#[maybe_async::test(feature = "sync", async(feature = "async", tokio::test))]
 #[serial]
 pub async fn should_be_successful() {
     let mut iggy_cmd_test = IggyCmdTest::default();
@@ -82,7 +83,10 @@ pub async fn should_be_successful() {
         ))
         .await;
     // sleep for given seconds (min 1 second)
+    #[cfg(not(feature = "sync"))]
     tokio::time::sleep(tokio::time::Duration::from_secs(login_session_timeout)).await;
+    #[cfg(feature = "sync")]
+    std::thread::sleep(std::time::Duration::from_secs(login_session_timeout));
     // Check if session expired using "me" command (which requires authentication,
     // not provided in this case).
     // Command shall be executed without credentials and should fail with proper

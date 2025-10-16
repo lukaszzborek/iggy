@@ -23,7 +23,7 @@ use iggy_common::{
     SEND_MESSAGES_CODE, SendMessages,
 };
 
-#[async_trait::async_trait]
+#[maybe_async::maybe_async(Send)]
 impl<B: BinaryClient> MessageClient for B {
     async fn poll_messages(
         &self,

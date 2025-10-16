@@ -23,9 +23,9 @@ use iggy_binary_protocol::{
 
 use crate::prelude::{IggyDuration, IggyError, IggyTimestamp, QuicClientConfig};
 use crate::quic::skip_server_verification::SkipServerVerification;
-use async_broadcast::{Receiver, Sender, broadcast};
-use async_trait::async_trait;
 use bytes::Bytes;
+use iggy_common::broadcast::{Recv, Sender, Snd, channel};
+use iggy_common::locking::mutex::Mutex;
 use iggy_common::{
     ClientState, Command, ConnectionString, ConnectionStringUtils, Credentials, DiagnosticEvent,
     QuicConnectionStringOptions, TransportProtocol,
@@ -37,7 +37,6 @@ use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tracing::{error, info, trace, warn};
 
@@ -53,7 +52,7 @@ pub struct QuicClient {
     pub(crate) config: Arc<QuicClientConfig>,
     pub(crate) server_address: SocketAddr,
     pub(crate) state: Mutex<ClientState>,
-    events: (Sender<DiagnosticEvent>, Receiver<DiagnosticEvent>),
+    events: (Snd<DiagnosticEvent>, Recv<DiagnosticEvent>),
     connected_at: Mutex<Option<IggyTimestamp>>,
 }
 
@@ -66,7 +65,7 @@ impl Default for QuicClient {
     }
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl Client for QuicClient {
     async fn connect(&self) -> Result<(), IggyError> {
         QuicClient::connect(self).await
@@ -80,12 +79,12 @@ impl Client for QuicClient {
         QuicClient::shutdown(self).await
     }
 
-    async fn subscribe_events(&self) -> Receiver<DiagnosticEvent> {
+    async fn subscribe_events(&self) -> Recv<DiagnosticEvent> {
         self.events.1.clone()
     }
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl BinaryTransport for QuicClient {
     async fn get_state(&self) -> ClientState {
         *self.state.lock().await
@@ -198,7 +197,7 @@ impl QuicClient {
             server_address,
             connection: Arc::new(Mutex::new(None)),
             state: Mutex::new(ClientState::Disconnected),
-            events: broadcast(1000),
+            events: channel(1000),
             connected_at: Mutex::new(None),
         })
     }

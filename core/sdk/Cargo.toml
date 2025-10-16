@@ -29,36 +29,56 @@ repository = "https://github.com/apache/iggy"
 readme = "../../README.md"
 
 [features]
-default = ["tokio_lock"]
-tokio_lock = []
+default = ["async"]
+sync = [
+    "maybe-async/is_sync",
+    "iggy_binary_protocol/sync",
+    "iggy_common/sync",
+    "iggy_common/std_sync_lock",
+]
+async = [
+    "iggy_binary_protocol/async",
+    "iggy_common/async",
+    "iggy_common/tokio_lock",
+    "async-dropper",
+    "async-trait",
+    "futures",
+    "futures-util",
+    "tokio",
+    "tokio-rustls",
+    "quinn",
+    "reqwest",
+    "reqwest-middleware",
+    "reqwest-retry",
+]
+
 # Moved to common crate. Not sure if this is even needed anymore
 #fast_async_lock = ["dep:fast-async-mutex"]
 
 [dependencies]
-async-broadcast = { workspace = true }
-async-dropper = { workspace = true }
-async-trait = { workspace = true }
+async-dropper = { workspace = true, optional = true }
+async-trait = { workspace = true, optional = true }
 bon = { workspace = true }
 bytes = { workspace = true }
 dashmap = { workspace = true }
 # Can be removed if the feature above gets removed.
 #fast-async-mutex = { version = "0.6.7", optional = true }
 flume = { workspace = true }
-futures = { workspace = true }
-futures-util = { workspace = true }
-iggy_binary_protocol = { workspace = true }
-iggy_common = { workspace = true }
+futures = { workspace = true, optional = true }
+futures-util = { workspace = true, optional = true }
+iggy_binary_protocol = { workspace = true, features = [] }
+iggy_common = { workspace = true, features = [] }
+maybe-async = { workspace = true }
 num_cpus = "1.17.0"
-quinn = { workspace = true }
-reqwest = { workspace = true }
-reqwest-middleware = { workspace = true }
-reqwest-retry = { workspace = true }
+quinn = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
+reqwest-middleware = { workspace = true, optional = true }
+reqwest-retry = { workspace = true, optional = true }
 rustls = { workspace = true }
 serde = { workspace = true }
-tokio = { workspace = true }
-tokio-rustls = { workspace = true }
+tokio = { workspace = true, optional = true }
+tokio-rustls = { workspace = true, optional = true }
 tracing = { workspace = true }
-trait-variant = { workspace = true }
 webpki-roots = { workspace = true }
 
 [dev-dependencies]

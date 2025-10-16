@@ -18,11 +18,10 @@
 use crate::http::http_client::HttpClient;
 use crate::http::http_transport::HttpTransport;
 use crate::prelude::{Identifier, IggyError};
-use async_trait::async_trait;
 use iggy_binary_protocol::SegmentClient;
 use iggy_common::delete_segments::DeleteSegments;
 
-#[async_trait]
+#[async_trait::async_trait]
 impl SegmentClient for HttpClient {
     async fn delete_segments(
         &self,

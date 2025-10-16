@@ -15,12 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use async_trait::async_trait;
 use iggy_common::{IdentityInfo, IggyError};
 use reqwest::{Response, Url};
 use serde::Serialize;
 
-#[async_trait]
+#[async_trait::async_trait]
 pub trait HttpTransport {
     /// Get full URL for the provided path.
     fn get_url(&self, path: &str) -> Result<Url, IggyError>;

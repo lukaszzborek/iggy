@@ -18,30 +18,31 @@
 
 use std::ops::{Deref, DerefMut};
 
-/// This module provides a trait and implementations for a shared mutable reference configurable via feature flags.
-#[cfg(feature = "tokio_lock")]
-#[cfg(not(any(feature = "fast_async_lock")))]
-mod tokio_lock;
+pub mod mutex;
+#[cfg(not(feature = "sync"))]
+pub mod semaphore;
 
-// this can be used in the future to provide different locking mechanisms
-#[cfg(feature = "fast_async_lock")]
-mod fast_async_lock;
+cfg_if::cfg_if! {
+    if #[cfg(feature = "std_sync_lock")] {
+        mod std_sync_lock;
+        pub type IggySharedMut<T> = std_sync_lock::IggyStdSyncRwLock<T>;
+    } else if #[cfg(feature = "tokio_lock")] {
+        mod tokio_lock;
+        pub type IggySharedMut<T> = tokio_lock::IggyTokioRwLock<T>;
+    } else if #[cfg(feature = "fast_async_lock")] {
+        mod fast_async_lock;
+        pub type IggySharedMut<T> = fast_async_lock::IggyFastAsyncRwLock<T>;
+    }
+}
 
-#[cfg(feature = "tokio_lock")]
-#[cfg(not(any(feature = "fast_async_lock")))]
-pub type IggySharedMut<T> = tokio_lock::IggyTokioRwLock<T>;
-
-//this can be used in the future to provide different locking mechanisms
-#[cfg(feature = "fast_async_lock")]
-pub type IggySharedMut<T> = fast_async_lock::IggyFastAsyncRwLock<T>;
-
-#[allow(async_fn_in_trait)]
-pub trait IggySharedMutFn<T>: Send + Sync {
-    type ReadGuard<'a>: Deref<Target = T> + Send
+#[maybe_async::maybe_async(AFIT)]
+#[cfg_attr(not(feature = "sync"), allow(async_fn_in_trait))]
+pub trait IggySharedMutFn<T>: Sync {
+    type ReadGuard<'a>: Deref<Target = T>
     where
         T: 'a,
         Self: 'a;
-    type WriteGuard<'a>: DerefMut<Target = T> + Send
+    type WriteGuard<'a>: DerefMut<Target = T>
     where
         T: 'a,
         Self: 'a;

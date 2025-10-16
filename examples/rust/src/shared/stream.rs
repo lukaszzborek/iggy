@@ -23,6 +23,7 @@ use iggy::prelude::IggyError;
 #[derive(Debug)]
 pub struct PrintEventConsumer {}
 
+#[async_trait::async_trait]
 impl MessageConsumer for PrintEventConsumer {
     async fn consume(&self, message: ReceivedMessage) -> Result<(), IggyError> {
         // Extract message payload as raw bytes

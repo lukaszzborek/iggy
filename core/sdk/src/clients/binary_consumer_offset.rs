@@ -17,12 +17,11 @@
  */
 
 use crate::prelude::IggyClient;
-use async_trait::async_trait;
 use iggy_binary_protocol::ConsumerOffsetClient;
 use iggy_common::locking::IggySharedMutFn;
 use iggy_common::{Consumer, ConsumerOffsetInfo, Identifier, IggyError};
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl ConsumerOffsetClient for IggyClient {
     async fn store_consumer_offset(
         &self,

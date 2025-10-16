@@ -16,8 +16,10 @@
  * under the License.
  */
 
-use crate::client_wrappers::client_wrapper::ClientWrapper;
-use crate::prelude::{AutoCommit, AutoCommitWhen, IggyConsumer};
+use crate::client_wrappers::ClientWrapper;
+use crate::clients::consumer::IggyConsumer;
+use crate::prelude::{AutoCommit, AutoCommitWhen};
+use crate::runtime::default_runtime;
 use iggy_common::locking::IggySharedMut;
 use iggy_common::{Consumer, EncryptorKind, Identifier, IggyDuration, PollingStrategy};
 use std::sync::Arc;
@@ -220,6 +222,7 @@ impl IggyConsumerBuilder {
     ///
     /// Note: After building the consumer, `init()` must be invoked before producing messages.
     pub fn build(self) -> IggyConsumer {
+        let rt = Arc::new(default_runtime());
         IggyConsumer::new(
             self.client,
             self.consumer_name,
@@ -238,6 +241,7 @@ impl IggyConsumerBuilder {
             self.init_retries,
             self.init_retry_interval,
             self.allow_replay,
+            rt,
         )
     }
 }

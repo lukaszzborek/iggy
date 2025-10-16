@@ -30,7 +30,7 @@ use iggy_common::{
     SystemSnapshotType,
 };
 
-#[async_trait::async_trait]
+#[maybe_async::maybe_async(Send)]
 impl<B: BinaryClient> SystemClient for B {
     async fn get_stats(&self) -> Result<Stats, IggyError> {
         let response = self.send_with_response(&GetStats {}).await?;

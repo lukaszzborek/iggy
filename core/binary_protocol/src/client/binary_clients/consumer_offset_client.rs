@@ -16,11 +16,10 @@
  * under the License.
  */
 
-use async_trait::async_trait;
 use iggy_common::{Consumer, ConsumerOffsetInfo, Identifier, IggyError};
 
 /// This trait defines the methods to interact with the consumer offset module.
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 pub trait ConsumerOffsetClient {
     /// Store the consumer offset for a specific consumer or consumer group for the given stream and topic by unique IDs or names.
     ///

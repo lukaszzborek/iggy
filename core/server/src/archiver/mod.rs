@@ -17,9 +17,12 @@
  */
 
 pub mod disk;
+#[cfg(feature = "s3-backup")]
 pub mod s3;
 
-use crate::configs::server::{DiskArchiverConfig, S3ArchiverConfig};
+use crate::configs::server::DiskArchiverConfig;
+#[cfg(feature = "s3-backup")]
+use crate::configs::server::S3ArchiverConfig;
 use crate::server_error::ArchiverError;
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
@@ -28,6 +31,7 @@ use std::future::Future;
 use std::str::FromStr;
 
 use crate::archiver::disk::DiskArchiver;
+#[cfg(feature = "s3-backup")]
 use crate::archiver::s3::S3Archiver;
 
 pub const COMPONENT: &str = "ARCHIVER";
@@ -38,6 +42,7 @@ pub enum ArchiverKindType {
     #[default]
     #[display("disk")]
     Disk,
+    #[cfg(feature = "s3-backup")]
     #[display("s3")]
     S3,
 }
@@ -47,6 +52,7 @@ impl FromStr for ArchiverKindType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "disk" => Ok(Self::Disk),
+            #[cfg(feature = "s3-backup")]
             "s3" => Ok(Self::S3),
             _ => Err(format!("Unknown archiver kind: {s}")),
         }
@@ -71,6 +77,7 @@ pub trait Archiver: Send {
 #[allow(clippy::large_enum_variant)] // TODO(hubcio): consider `Box`ing
 pub enum ArchiverKind {
     Disk(DiskArchiver),
+    #[cfg(feature = "s3-backup")]
     S3(S3Archiver),
 }
 
@@ -85,6 +92,7 @@ impl ArchiverKind {
     /// # Errors
     ///
     /// Returns an error if the S3 archiver cannot be initialized.
+    #[cfg(feature = "s3-backup")]
     pub fn get_s3_archiver(config: S3ArchiverConfig) -> Result<Self, ArchiverError> {
         let archiver = S3Archiver::new(config)?;
         Ok(Self::S3(archiver))
@@ -98,6 +106,7 @@ impl ArchiverKind {
     pub async fn init(&self) -> Result<(), ArchiverError> {
         match self {
             Self::Disk(a) => a.init().await,
+            #[cfg(feature = "s3-backup")]
             Self::S3(a) => a.init().await,
         }
     }
@@ -114,6 +123,7 @@ impl ArchiverKind {
     ) -> Result<bool, ArchiverError> {
         match self {
             Self::Disk(d) => d.is_archived(file, base_directory).await,
+            #[cfg(feature = "s3-backup")]
             Self::S3(d) => d.is_archived(file, base_directory).await,
         }
     }
@@ -130,6 +140,7 @@ impl ArchiverKind {
     ) -> Result<(), ArchiverError> {
         match self {
             Self::Disk(d) => d.archive(files, base_directory).await,
+            #[cfg(feature = "s3-backup")]
             Self::S3(d) => d.archive(files, base_directory).await,
         }
     }

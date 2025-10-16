@@ -28,7 +28,7 @@ use iggy_common::join_consumer_group::JoinConsumerGroup;
 use iggy_common::leave_consumer_group::LeaveConsumerGroup;
 use iggy_common::{ConsumerGroup, ConsumerGroupDetails, Identifier, IggyError};
 
-#[async_trait::async_trait]
+#[maybe_async::maybe_async(Send)]
 impl<B: BinaryClient> ConsumerGroupClient for B {
     async fn get_consumer_group(
         &self,

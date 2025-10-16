@@ -19,7 +19,6 @@
 use crate::Client;
 use crate::cli::cli_command::{CliCommand, PRINT_TARGET};
 use anyhow::Context;
-use async_trait::async_trait;
 use comfy_table::Table;
 use iggy_common::get_personal_access_tokens::GetPersonalAccessTokens;
 use tracing::{Level, event};
@@ -43,7 +42,7 @@ impl GetPersonalAccessTokensCmd {
     }
 }
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl CliCommand for GetPersonalAccessTokensCmd {
     fn explain(&self) -> String {
         let mode = match self.output {

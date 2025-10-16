@@ -18,14 +18,13 @@
 
 use crate::cli::common::{IggyCmdCommand, IggyCmdTest, IggyCmdTestCase};
 use assert_cmd::assert::Assert;
-use async_trait::async_trait;
 use iggy::prelude::Client;
 use predicates::str::starts_with;
 use serial_test::parallel;
 
 struct TestNoCredentialsCmd {}
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl IggyCmdTestCase for TestNoCredentialsCmd {
     async fn prepare_server_state(&mut self, _client: &dyn Client) {}
 
@@ -46,7 +45,8 @@ impl IggyCmdTestCase for TestNoCredentialsCmd {
     async fn verify_server_state(&self, _client: &dyn Client) {}
 }
 
-#[tokio::test]
+#[cfg_attr(feature = "sync", serial_test::serial)]
+#[maybe_async::test(feature = "sync", async(feature = "async", tokio::test))]
 #[parallel]
 pub async fn should_fail_with_error_message() {
     let mut iggy_cmd_test = IggyCmdTest::default();

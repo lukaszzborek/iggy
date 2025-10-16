@@ -18,14 +18,13 @@
 
 use crate::cli::common::{IggyCmdCommand, IggyCmdTest, IggyCmdTestCase};
 use assert_cmd::assert::Assert;
-use async_trait::async_trait;
 use iggy::prelude::Client;
 use predicates::str::diff;
 use serial_test::parallel;
 
 struct TestQuietModCmd {}
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl IggyCmdTestCase for TestQuietModCmd {
     async fn prepare_server_state(&mut self, _client: &dyn Client) {}
 
@@ -40,7 +39,8 @@ impl IggyCmdTestCase for TestQuietModCmd {
     async fn verify_server_state(&self, _client: &dyn Client) {}
 }
 
-#[tokio::test]
+#[cfg_attr(feature = "sync", serial_test::serial)]
+#[maybe_async::test(feature = "sync", async(feature = "async", tokio::test))]
 #[parallel]
 pub async fn should_be_no_output() {
     let mut iggy_cmd_test = IggyCmdTest::default();

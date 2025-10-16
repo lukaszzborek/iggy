@@ -16,9 +16,18 @@
  * under the License.
  */
 
+#[cfg(feature = "sync")]
+pub mod tcp_client_sync;
+
+#[cfg(not(feature = "sync"))]
 pub(crate) mod tcp_client;
+#[cfg(not(feature = "sync"))]
 pub(crate) mod tcp_connection_stream;
+#[cfg(not(feature = "sync"))]
 pub(crate) mod tcp_connection_stream_kind;
+#[cfg(not(feature = "sync"))]
 pub(crate) mod tcp_stream;
+#[cfg(not(feature = "sync"))]
 pub(crate) mod tcp_tls_connection_stream;
+
 pub(crate) mod tcp_tls_verifier;

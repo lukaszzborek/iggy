@@ -21,19 +21,25 @@ version = "0.0.5"
 edition = "2024"
 license = "Apache-2.0"
 
+[features]
+default = ["async"]
+async = ["iggy/async", "dep:futures-util", "dep:tokio"]
+sync = ["iggy/sync"]
+
 [dependencies]
 ahash = { workspace = true }
 anyhow = { workspace = true }
+async-trait = { workspace = true }
 bytes = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
-futures-util = { workspace = true }
+futures-util = { workspace = true, optional = true }
 iggy = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, optional = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
@@ -108,3 +114,13 @@ path = "src/stream-builder/stream-producer-config/main.rs"
 [[example]]
 name = "sink-data-producer"
 path = "src/sink-data-producer/main.rs"
+
+[[example]]
+name = "new-sdk-sync-consumer"
+path = "src/new-sdk-sync/consumer/main.rs"
+required-features = ["sync"]
+
+[[example]]
+name = "new-sdk-sync-producer"
+path = "src/new-sdk-sync/producer/main.rs"
+required-features = ["sync"]

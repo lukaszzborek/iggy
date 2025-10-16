@@ -19,7 +19,6 @@
 use crate::Client;
 use crate::cli::cli_command::{CliCommand, PRINT_TARGET};
 use anyhow::Context;
-use async_trait::async_trait;
 use core::fmt;
 use iggy_common::create_topic::CreateTopic;
 use iggy_common::{CompressionAlgorithm, Identifier, IggyExpiry, MaxTopicSize};
@@ -69,7 +68,7 @@ impl CreateTopicCmd {
     }
 }
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl CliCommand for CreateTopicCmd {
     fn explain(&self) -> String {
         format!("{self}")

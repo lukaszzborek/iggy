@@ -334,8 +334,14 @@ fn get_command(
     }
 }
 
-#[tokio::main]
+#[maybe_async::maybe_async]
+#[cfg_attr(not(feature = "sync"), tokio::main)]
 async fn main() -> Result<(), IggyCmdError> {
+    main_impl().await
+}
+
+#[maybe_async::maybe_async]
+async fn main_impl() -> Result<(), IggyCmdError> {
     let args = IggyConsoleArgs::parse();
 
     if let Some(generator) = args.cli.generator {

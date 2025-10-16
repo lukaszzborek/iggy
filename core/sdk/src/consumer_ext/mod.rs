@@ -16,16 +16,19 @@
  * under the License.
  */
 
-mod consumer_message_ext;
 mod consumer_message_trait;
+mod helpers;
+
+#[cfg(not(feature = "sync"))]
+mod async_impl;
+#[cfg(feature = "sync")]
+mod sync_impl;
 
 use crate::{clients::consumer::ReceivedMessage, prelude::IggyError};
 pub use consumer_message_trait::IggyConsumerMessageExt;
 
-/// Trait for message consumer
-#[allow(dead_code)] // Clippy can't see that the trait is used
-#[trait_variant::make(MessageConsumer: Send)]
-pub trait LocalMessageConsumer {
+#[maybe_async::maybe_async(Send)]
+pub trait MessageConsumer {
     /// Consume a message from the message bus.
     ///
     /// # Arguments
@@ -38,8 +41,8 @@ pub trait LocalMessageConsumer {
     async fn consume(&self, message: ReceivedMessage) -> Result<(), IggyError>;
 }
 
-// Default implementation for `&T`
-// https://users.rust-lang.org/t/hashmap-get-dereferenced/33558
+// Default implementation for `&T` - async version
+#[maybe_async::maybe_async]
 impl<T: MessageConsumer + Send + Sync> MessageConsumer for &T {
     /// Consume a message from the message bus.
     ///

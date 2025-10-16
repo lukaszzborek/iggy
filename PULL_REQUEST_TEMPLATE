@@ -10,11 +10,18 @@ To help us incorporate your changes efficiently, please adhere to the following 
 ## General Coding Remarks
 
 - **Code Formatting**: Run `cargo fmt` to ensure your code adheres to the project's style.
-- **Code Linting**: Run `cargo clippy --all-targets --all-features -- -D warnings` to make sure your code is lint-free.
+- **Code Linting**: Run linting checks for both async (default) and sync modes:
+  - **Async mode (default)**: `cargo clippy --all-targets -- -D warnings`
+  - **Sync mode**: `cargo clippy -p iggy -p iggy_binary_protocol -p iggy_common -p integration --all-targets --no-default-features --features sync -- -D warnings`
+  - **Note**: For sync mode, exclude `server` (always async). Sync and async features are mutually exclusive.
 - **Unit Testing**: Write or update unit tests to cover your changes.
 - **Integration Testing**: Write or update integration tests to cover your changes.
+  - **Async mode (default)**: `cargo test --package integration`
+  - **Sync mode**: `cargo test --no-default-features --features sync --package integration`
 - **Project Structure**: Follow the `iggy` project's structure and coding style.
-- **Build Integrity**: Ensure your code compiles and runs error-free.
+- **Build Integrity**: Ensure your code compiles and runs error-free:
+  - **Async mode (default)**: `cargo check --all-targets`
+  - **Sync mode**: `cargo check -p iggy -p iggy_binary_protocol -p iggy_common -p integration --all-targets --no-default-features --features sync`
 - **Check unused dependencies**: Run `cargo machete` to make sure no unused dependencies made their way into your changeset.
 - **Sort dependencies**: Run `cargo sort --workspace` so that the content of the toml files stay ordered.
 
@@ -27,6 +34,21 @@ To help us incorporate your changes efficiently, please adhere to the following 
 - **Details**: Use the body to elaborate on the 'how' of your changes.
 - **Context**: Include 'before' and 'after' scenarios if applicable.
 - **References**: Link any relevant issues or PRs in the message body.
+
+## Important Notes on Sync/Async Modes
+
+The Iggy Rust SDK supports both **synchronous** and **asynchronous** runtime modes:
+
+- **Async mode (default)**: Uses tokio and async/await. Activate with `--features async` (default).
+- **Sync mode**: Blocking operations without async runtime. Activate with `--no-default-features --features sync`.
+
+**These features are mutually exclusive** – you cannot enable both simultaneously. When making changes that affect both modes:
+1. Test with async mode (default): `cargo test`
+2. Test with sync mode: `cargo test --no-default-features --features sync`
+
+This ensures your changes work correctly in both runtime contexts.
+
+---
 
 **Remember:** Your contribution is essential to the success of `iggy`. Please ensure that your PR conforms to these guidelines for a swift and smooth integration process.
 

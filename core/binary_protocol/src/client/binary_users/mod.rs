@@ -33,7 +33,7 @@ use iggy_common::{
     UserInfoDetails, UserStatus,
 };
 
-#[async_trait::async_trait]
+#[maybe_async::maybe_async(Send)]
 impl<B: BinaryClient> UserClient for B {
     async fn get_user(&self, user_id: &Identifier) -> Result<Option<UserInfoDetails>, IggyError> {
         fail_if_not_authenticated(self).await?;

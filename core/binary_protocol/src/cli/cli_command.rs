@@ -18,11 +18,10 @@
 
 use crate::Client;
 use anyhow::{Error, Result};
-use async_trait::async_trait;
 
 pub static PRINT_TARGET: &str = "iggy::cli::output";
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 pub trait CliCommand {
     fn explain(&self) -> String;
     fn use_tracing(&self) -> bool {

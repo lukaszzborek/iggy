@@ -15,13 +15,12 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-use async_trait::async_trait;
 use iggy_common::{
     Consumer, Identifier, IggyError, IggyMessage, Partitioning, PolledMessages, PollingStrategy,
 };
 
 /// This trait defines the methods to interact with the messaging module.
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 pub trait MessageClient {
     /// Poll given amount of messages using the specified consumer and strategy from the specified stream and topic by unique IDs or names.
     ///

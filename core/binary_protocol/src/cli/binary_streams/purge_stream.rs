@@ -19,7 +19,6 @@
 use crate::Client;
 use crate::cli::cli_command::{CliCommand, PRINT_TARGET};
 use anyhow::Context;
-use async_trait::async_trait;
 use iggy_common::Identifier;
 use iggy_common::purge_stream::PurgeStream;
 use tracing::{Level, event};
@@ -36,7 +35,7 @@ impl PurgeStreamCmd {
     }
 }
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl CliCommand for PurgeStreamCmd {
     fn explain(&self) -> String {
         format!("purge stream with ID: {}", self.purge_stream.stream_id)

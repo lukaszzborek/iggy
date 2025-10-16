@@ -28,7 +28,7 @@ use iggy_common::{
     RawPersonalAccessToken,
 };
 
-#[async_trait::async_trait]
+#[maybe_async::maybe_async(Send)]
 impl<B: BinaryClient> PersonalAccessTokenClient for B {
     async fn get_personal_access_tokens(&self) -> Result<Vec<PersonalAccessTokenInfo>, IggyError> {
         fail_if_not_authenticated(self).await?;

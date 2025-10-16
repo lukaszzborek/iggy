@@ -153,6 +153,7 @@ impl System {
                         .clone()
                         .expect("Disk archiver config is missing"),
                 ))),
+                #[cfg(feature = "s3-backup")]
                 ArchiverKindType::S3 => Some(Arc::new(
                     ArchiverKind::get_s3_archiver(
                         archiver_config

@@ -16,4 +16,5 @@
  * under the License.
  */
 
+#[cfg(not(feature = "sync"))]
 mod producer;

@@ -16,14 +16,13 @@
  * under the License.
  */
 
-use async_trait::async_trait;
 use iggy_common::{
     ClientInfo, ClientInfoDetails, IggyDuration, IggyError, Snapshot, SnapshotCompression, Stats,
     SystemSnapshotType,
 };
 
 /// This trait defines the methods to interact with the system module.
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 pub trait SystemClient {
     /// Get the stats of the system such as PID, memory usage, streams count etc.
     ///

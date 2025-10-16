@@ -29,22 +29,29 @@
 
 pub use crate::client_provider;
 pub use crate::client_provider::ClientProviderConfig;
-pub use crate::client_wrappers::client_wrapper::ClientWrapper;
+pub use crate::client_wrappers::ClientWrapper;
 pub use crate::clients::client::IggyClient;
 pub use crate::clients::client_builder::IggyClientBuilder;
 pub use crate::clients::consumer::{
     AutoCommit, AutoCommitAfter, AutoCommitWhen, IggyConsumer, ReceivedMessage,
 };
 pub use crate::clients::consumer_builder::IggyConsumerBuilder;
+#[cfg(not(feature = "sync"))]
+pub use crate::clients::dispatchers::background::BackgroundConfig;
+pub use crate::clients::dispatchers::direct::DirectConfig;
 pub use crate::clients::producer::IggyProducer;
+pub use crate::clients::producer::IggyProducerInner;
 pub use crate::clients::producer_builder::IggyProducerBuilder;
-pub use crate::clients::producer_config::{BackgroundConfig, DirectConfig};
 pub use crate::consumer_ext::IggyConsumerMessageExt;
 pub use crate::stream_builder::IggyConsumerConfig;
 pub use crate::stream_builder::IggyStreamConsumer;
 pub use crate::stream_builder::{IggyProducerConfig, IggyStreamProducer};
 pub use crate::stream_builder::{IggyStream, IggyStreamConfig};
+#[cfg(not(feature = "sync"))]
 pub use crate::tcp::tcp_client::TcpClient;
+
+#[cfg(feature = "sync")]
+pub use crate::tcp::tcp_client_sync::{TcpClient, TcpTlsClient};
 pub use iggy_binary_protocol::{
     Client, ConsumerGroupClient, ConsumerOffsetClient, MessageClient, PartitionClient,
     PersonalAccessTokenClient, SegmentClient, StreamClient, SystemClient, TopicClient, UserClient,

@@ -19,7 +19,6 @@
 use crate::Client;
 use crate::cli::cli_command::{CliCommand, PRINT_TARGET};
 use anyhow::Context;
-use async_trait::async_trait;
 use iggy_common::Identifier;
 use iggy_common::create_consumer_group::CreateConsumerGroup;
 use tracing::{Level, event};
@@ -53,7 +52,7 @@ impl CreateConsumerGroupCmd {
     }
 }
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl CliCommand for CreateConsumerGroupCmd {
     fn explain(&self) -> String {
         format!(

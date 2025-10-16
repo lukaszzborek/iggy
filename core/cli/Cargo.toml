@@ -31,8 +31,14 @@ readme = "../../README.md"
 pkg-url = "{ repo }/releases/download/{ name }-{ version }/{ name }-{ target }{ archive-suffix }"
 bin-dir = "{ bin }{ binary-ext }"
 
+[[bin]]
+name = "iggy"
+path = "src/main.rs"
+
 [features]
-default = ["login-session"]
+default = ["async", "login-session"]
+async = ["iggy/async", "iggy_binary_protocol/async", "dep:tokio"]
+sync = ["iggy/sync", "iggy_binary_protocol/sync", "maybe-async/is_sync"]
 login-session = ["dep:keyring"]
 
 [dependencies]
@@ -41,16 +47,13 @@ anyhow = { workspace = true }
 clap = { workspace = true }
 clap_complete = "4.5.57"
 figlet-rs = { workspace = true }
-iggy = { workspace = true }
-iggy_binary_protocol = { workspace = true }
+iggy = { workspace = true, default-features = false }
+iggy_binary_protocol = { workspace = true, default-features = false }
 keyring = { workspace = true, optional = true }
+maybe-async = { workspace = true }
 passterm = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, optional = true }
 tracing = { workspace = true }
 tracing-appender = { workspace = true }
 tracing-subscriber = { workspace = true, default-features = false }
-
-[[bin]]
-name = "iggy"
-path = "src/main.rs"

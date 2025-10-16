@@ -27,10 +27,13 @@ pub(crate) struct IggyCmdCommand {
 
 impl IggyCmdCommand {
     pub(crate) fn new() -> Self {
+        let mut env = HashMap::new();
+        env.insert("COLUMNS".to_string(), "300".to_string());
+
         Self {
             opts: vec![],
             args: vec![],
-            env: HashMap::new(),
+            env,
         }
     }
 

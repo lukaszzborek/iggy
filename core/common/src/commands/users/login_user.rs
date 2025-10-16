@@ -20,11 +20,11 @@ use super::defaults::*;
 use crate::BytesSerializable;
 use crate::Validatable;
 use crate::error::IggyError;
+use crate::wire::auth::{decode_login_auth, encode_login_auth};
 use crate::{Command, LOGIN_USER_CODE};
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
-use std::str::from_utf8;
 
 /// `LoginUser` command is used to login a user by username and password.
 /// It has additional payload:
@@ -81,98 +81,19 @@ impl Validatable<IggyError> for LoginUser {
 
 impl BytesSerializable for LoginUser {
     fn to_bytes(&self) -> Bytes {
-        let mut bytes = BytesMut::with_capacity(2 + self.username.len() + self.password.len());
-        #[allow(clippy::cast_possible_truncation)]
-        bytes.put_u8(self.username.len() as u8);
-        bytes.put_slice(self.username.as_bytes());
-        #[allow(clippy::cast_possible_truncation)]
-        bytes.put_u8(self.password.len() as u8);
-        bytes.put_slice(self.password.as_bytes());
-        match &self.version {
-            Some(version) => {
-                bytes.put_u32_le(version.len() as u32);
-                bytes.put_slice(version.as_bytes());
-            }
-            None => {
-                bytes.put_u32_le(0);
-            }
-        }
-        match &self.context {
-            Some(context) => {
-                bytes.put_u32_le(context.len() as u32);
-                bytes.put_slice(context.as_bytes());
-            }
-            None => {
-                bytes.put_u32_le(0);
-            }
-        }
-        bytes.freeze()
+        // Delegate to wire::auth module for centralized binary protocol handling
+        encode_login_auth(&self.username, &self.password, &self.version, &self.context)
     }
 
     fn from_bytes(bytes: Bytes) -> Result<LoginUser, IggyError> {
-        if bytes.len() < 4 {
-            return Err(IggyError::InvalidCommand);
-        }
-
-        let username_length = bytes[0];
-        let username = from_utf8(&bytes[1..=(username_length as usize)])
-            .map_err(|_| IggyError::InvalidUtf8)?
-            .to_string();
-        if username.len() != username_length as usize {
-            return Err(IggyError::InvalidCommand);
-        }
-
-        let password_length = bytes[1 + username_length as usize];
-        let password = from_utf8(
-            &bytes[2 + username_length as usize
-                ..2 + username_length as usize + password_length as usize],
-        )
-        .map_err(|_| IggyError::InvalidUtf8)?
-        .to_string();
-        if password.len() != password_length as usize {
-            return Err(IggyError::InvalidCommand);
-        }
-
-        let position = 2 + username_length as usize + password_length as usize;
-        let version_length = u32::from_le_bytes(
-            bytes[position..position + 4]
-                .try_into()
-                .map_err(|_| IggyError::InvalidNumberEncoding)?,
-        );
-        let version = match version_length {
-            0 => None,
-            _ => {
-                let version =
-                    from_utf8(&bytes[position + 4..position + 4 + version_length as usize])
-                        .map_err(|_| IggyError::InvalidUtf8)?
-                        .to_string();
-                Some(version)
-            }
-        };
-        let position = position + 4 + version_length as usize;
-        let context_length = u32::from_le_bytes(
-            bytes[position..position + 4]
-                .try_into()
-                .map_err(|_| IggyError::InvalidNumberEncoding)?,
-        );
-        let context = match context_length {
-            0 => None,
-            _ => {
-                let context =
-                    from_utf8(&bytes[position + 4..position + 4 + context_length as usize])
-                        .map_err(|_| IggyError::InvalidUtf8)?
-                        .to_string();
-                Some(context)
-            }
-        };
-
-        let command = LoginUser {
+        // Delegate to wire::auth module for centralized binary protocol handling
+        let (username, password, version, context) = decode_login_auth(bytes)?;
+        Ok(LoginUser {
             username,
             password,
             version,
             context,
-        };
-        Ok(command)
+        })
     }
 }
 
@@ -185,6 +106,8 @@ impl Display for LoginUser {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bytes::{BufMut, BytesMut};
+    use std::str::from_utf8;
 
     #[test]
     fn should_be_serialized_as_bytes() {

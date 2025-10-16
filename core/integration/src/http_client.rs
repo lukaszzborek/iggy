@@ -16,7 +16,7 @@
  * under the License.
  */
 
-use crate::test_server::{ClientFactory, Transport};
+use crate::common_types::{ClientFactory, Transport};
 use async_trait::async_trait;
 use iggy::http::http_client::HttpClient;
 use iggy::prelude::{ClientWrapper, HttpClientConfig};

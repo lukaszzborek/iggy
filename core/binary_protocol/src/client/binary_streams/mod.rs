@@ -27,7 +27,7 @@ use iggy_common::purge_stream::PurgeStream;
 use iggy_common::update_stream::UpdateStream;
 use iggy_common::{Identifier, IggyError, Stream, StreamDetails};
 
-#[async_trait::async_trait]
+#[maybe_async::maybe_async(Send)]
 impl<B: BinaryClient> StreamClient for B {
     async fn get_stream(&self, stream_id: &Identifier) -> Result<Option<StreamDetails>, IggyError> {
         fail_if_not_authenticated(self).await?;

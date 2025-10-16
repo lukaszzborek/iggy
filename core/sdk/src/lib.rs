@@ -16,13 +16,31 @@
  * under the License.
  */
 
+#![allow(deprecated)]
+// Sync mode generates some unavoidable warnings from maybe_async transformation
+#![cfg_attr(
+    feature = "sync",
+    allow(
+        clippy::collapsible_if,
+        clippy::too_many_arguments,
+        unused,
+        clippy::let_unit_value,
+    )
+)]
+
 #[allow(deprecated)]
 pub mod client_provider;
 pub mod client_wrappers;
 pub mod clients;
+pub mod connection;
 pub mod consumer_ext;
+#[cfg(not(feature = "sync"))]
 pub mod http;
 pub mod prelude;
+#[cfg(feature = "sync")]
+pub mod protocol;
+#[cfg(not(feature = "sync"))]
 pub mod quic;
+pub mod runtime;
 pub mod stream_builder;
 pub mod tcp;

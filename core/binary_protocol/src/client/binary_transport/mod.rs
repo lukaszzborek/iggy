@@ -16,11 +16,10 @@
  * under the License.
  */
 
-use async_trait::async_trait;
 use bytes::Bytes;
 use iggy_common::{ClientState, Command, DiagnosticEvent, IggyDuration, IggyError};
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 pub trait BinaryTransport {
     /// Gets the state of the client.
     async fn get_state(&self) -> ClientState;

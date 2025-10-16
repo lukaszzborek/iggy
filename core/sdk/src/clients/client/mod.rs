@@ -17,28 +17,25 @@
  */
 
 use crate::clients::client_builder::IggyClientBuilder;
+use crate::runtime::Runtime;
+use crate::runtime::default_runtime;
 use iggy_common::locking::{IggySharedMut, IggySharedMutFn};
 
-use crate::client_wrappers::client_wrapper::ClientWrapper;
-use crate::http::http_client::HttpClient;
+#[cfg(not(feature = "sync"))]
+mod async_impl;
+
+#[cfg(feature = "sync")]
+mod sync_impl;
+
+use crate::client_wrappers::ClientWrapper;
 use crate::prelude::EncryptorKind;
 use crate::prelude::IggyConsumerBuilder;
 use crate::prelude::IggyError;
 use crate::prelude::IggyProducerBuilder;
-use crate::quic::quic_client::QuicClient;
-use crate::tcp::tcp_client::TcpClient;
-use async_broadcast::Receiver;
-use async_trait::async_trait;
-use iggy_binary_protocol::{Client, SystemClient};
-use iggy_common::{
-    ConnectionStringUtils, Consumer, DiagnosticEvent, Partitioner, TransportProtocol,
-};
+use iggy_common::{Consumer, Partitioner};
 use std::fmt::Debug;
 use std::sync::Arc;
-use tokio::spawn;
-use tokio::time::sleep;
-use tracing::log::warn;
-use tracing::{debug, error, info};
+use tracing::info;
 
 /// The main client struct which implements all the `Client` traits and wraps the underlying low-level client for the specific transport.
 ///
@@ -49,12 +46,7 @@ pub struct IggyClient {
     pub(crate) client: IggySharedMut<ClientWrapper>,
     partitioner: Option<Arc<dyn Partitioner>>,
     pub(crate) encryptor: Option<Arc<EncryptorKind>>,
-}
-
-impl Default for IggyClient {
-    fn default() -> Self {
-        IggyClient::new(ClientWrapper::Tcp(TcpClient::default()))
-    }
+    rt: Arc<Runtime>,
 }
 
 impl IggyClient {
@@ -77,21 +69,7 @@ impl IggyClient {
             client,
             partitioner: None,
             encryptor: None,
-        }
-    }
-
-    /// Creates a new `IggyClient` from the provided connection string.
-    pub fn from_connection_string(connection_string: &str) -> Result<Self, IggyError> {
-        match ConnectionStringUtils::parse_protocol(connection_string)? {
-            TransportProtocol::Tcp => Ok(IggyClient::new(ClientWrapper::Tcp(
-                TcpClient::from_connection_string(connection_string)?,
-            ))),
-            TransportProtocol::Quic => Ok(IggyClient::new(ClientWrapper::Quic(
-                QuicClient::from_connection_string(connection_string)?,
-            ))),
-            TransportProtocol::Http => Ok(IggyClient::new(ClientWrapper::Http(
-                HttpClient::from_connection_string(connection_string)?,
-            ))),
+            rt: Arc::new(default_runtime()),
         }
     }
 
@@ -113,6 +91,7 @@ impl IggyClient {
             client,
             partitioner,
             encryptor,
+            rt: Arc::new(default_runtime()),
         }
     }
 
@@ -174,50 +153,10 @@ impl IggyClient {
     }
 }
 
-#[async_trait]
-impl Client for IggyClient {
-    async fn connect(&self) -> Result<(), IggyError> {
-        let heartbeat_interval;
-        {
-            let client = self.client.read().await;
-            client.connect().await?;
-            heartbeat_interval = client.heartbeat_interval().await;
-        }
-
-        let client = self.client.clone();
-        spawn(async move {
-            loop {
-                debug!("Sending the heartbeat...");
-                if let Err(error) = client.read().await.ping().await {
-                    error!("There was an error when sending a heartbeat. {error}");
-                    if error == IggyError::ClientShutdown {
-                        warn!("The client has been shut down - stopping the heartbeat.");
-                        return;
-                    }
-                } else {
-                    debug!("Heartbeat was sent successfully.");
-                }
-                sleep(heartbeat_interval.get_duration()).await
-            }
-        });
-        Ok(())
-    }
-
-    async fn disconnect(&self) -> Result<(), IggyError> {
-        self.client.read().await.disconnect().await
-    }
-
-    async fn shutdown(&self) -> Result<(), IggyError> {
-        self.client.read().await.shutdown().await
-    }
-
-    async fn subscribe_events(&self) -> Receiver<DiagnosticEvent> {
-        self.client.read().await.subscribe_events().await
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use iggy_common::TransportProtocol;
+
     use super::*;
 
     #[test]
@@ -343,6 +282,7 @@ mod tests {
         assert!(client.is_ok());
     }
 
+    #[cfg(not(feature = "sync"))]
     #[tokio::test]
     async fn should_succeed_with_quic_protocol() {
         let connection_string_prefix = "iggy+";
@@ -358,6 +298,7 @@ mod tests {
         assert!(client.is_ok());
     }
 
+    #[cfg(not(feature = "sync"))]
     #[tokio::test]
     async fn should_succeed_with_quic_protocol_using_pat() {
         let connection_string_prefix = "iggy+";
@@ -370,6 +311,7 @@ mod tests {
         assert!(client.is_ok());
     }
 
+    #[cfg(not(feature = "sync"))]
     #[test]
     fn should_succeed_with_http_protocol() {
         let connection_string_prefix = "iggy+";
@@ -385,6 +327,7 @@ mod tests {
         assert!(client.is_ok());
     }
 
+    #[cfg(not(feature = "sync"))]
     #[test]
     fn should_succeed_with_http_protocol_with_pat() {
         let connection_string_prefix = "iggy+";

@@ -18,8 +18,7 @@
 
 use crate::http::http_transport::HttpTransport;
 use crate::prelude::{Client, HttpClientConfig, IggyDuration, IggyError};
-use async_broadcast::{Receiver, Sender, broadcast};
-use async_trait::async_trait;
+use iggy_common::broadcast::{Recv, Snd, channel};
 use iggy_common::locking::{IggySharedMut, IggySharedMutFn};
 use iggy_common::{
     ConnectionString, ConnectionStringUtils, DiagnosticEvent, HttpConnectionStringOptions,
@@ -52,10 +51,10 @@ pub struct HttpClient {
     pub(crate) heartbeat_interval: IggyDuration,
     client: ClientWithMiddleware,
     access_token: IggySharedMut<String>,
-    events: (Sender<DiagnosticEvent>, Receiver<DiagnosticEvent>),
+    events: (Snd<DiagnosticEvent>, Recv<DiagnosticEvent>),
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl Client for HttpClient {
     async fn connect(&self) -> Result<(), IggyError> {
         HttpClient::connect(self).await
@@ -69,7 +68,7 @@ impl Client for HttpClient {
         Ok(())
     }
 
-    async fn subscribe_events(&self) -> Receiver<DiagnosticEvent> {
+    async fn subscribe_events(&self) -> Recv<DiagnosticEvent> {
         self.events.1.clone()
     }
 }
@@ -83,7 +82,7 @@ impl Default for HttpClient {
     }
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl HttpTransport for HttpClient {
     /// Get full URL for the provided path.
     fn get_url(&self, path: &str) -> Result<Url, IggyError> {
@@ -281,7 +280,7 @@ impl HttpClient {
             client,
             heartbeat_interval: IggyDuration::from_str("5s").unwrap(),
             access_token: IggySharedMut::new("".to_string()),
-            events: broadcast(1000),
+            events: channel(1000),
         })
     }
 

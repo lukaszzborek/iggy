@@ -18,8 +18,7 @@
 
 use crate::BinaryTransport;
 use crate::client::binary_clients::client::Client;
-use async_trait::async_trait;
 
 /// A client that can send and receive binary messages.
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 pub trait BinaryClient: BinaryTransport + Client {}

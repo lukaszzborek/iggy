@@ -19,11 +19,9 @@
 use crate::Client;
 use crate::cli::cli_command::{CliCommand, PRINT_TARGET};
 use anyhow::Context;
-use async_trait::async_trait;
 use iggy_common::ping::Ping;
 use std::fmt::{Display, Formatter, Result};
-use std::time::Duration;
-use tokio::time::{Instant, sleep};
+use std::time::{Duration, Instant};
 use tracing::{Level, event};
 
 pub struct PingCmd {
@@ -106,7 +104,7 @@ impl Display for PingStats {
     }
 }
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl CliCommand for PingCmd {
     fn explain(&self) -> String {
         "ping command".to_owned()
@@ -129,7 +127,10 @@ impl CliCommand for PingCmd {
             let ping_duration = time_start.elapsed();
             ping_stats.add(&ping_duration);
             event!(target: PRINT_TARGET, Level::INFO, "Ping sequence id: {:width$} time: {:.2} ms", i, nano_to_ms(ping_duration.as_nanos()), width = print_width);
-            sleep(Duration::from_secs(1)).await;
+            #[cfg(not(feature = "sync"))]
+            let _ = tokio::time::sleep(Duration::from_secs(1)).await;
+            #[cfg(feature = "sync")]
+            std::thread::sleep(Duration::from_secs(1));
         }
 
         event!(target: PRINT_TARGET, Level::INFO, "");

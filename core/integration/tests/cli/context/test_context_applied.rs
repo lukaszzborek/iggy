@@ -19,11 +19,10 @@
 use std::collections::HashMap;
 
 use assert_cmd::assert::Assert;
-use async_trait::async_trait;
 use iggy::prelude::ArgsOptional;
 use iggy::prelude::Client;
 use iggy_binary_protocol::cli::binary_context::common::ContextConfig;
-use integration::test_server::TestServer;
+use integration::test_server_provider::TestServerProvider;
 use predicates::str::{contains, starts_with};
 use serial_test::parallel;
 
@@ -69,7 +68,7 @@ impl TestContextApplied {
     }
 }
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl IggyCmdTestCase for TestContextApplied {
     async fn prepare_server_state(&mut self, _client: &dyn Client) {
         self.test_iggy_context.prepare().await;
@@ -116,7 +115,7 @@ impl IggyCmdTestCase for TestContextApplied {
 
     async fn verify_server_state(&self, _client: &dyn Client) {}
 
-    fn protocol(&self, server: &TestServer) -> Vec<String> {
+    fn protocol(&self, server: &dyn TestServerProvider) -> Vec<String> {
         let transport = self
             .set_transport_arg
             .as_ref()
@@ -138,8 +137,9 @@ impl IggyCmdTestCase for TestContextApplied {
     }
 }
 
+// QUIC test: async-only
+#[cfg(not(feature = "sync"))]
 #[tokio::test]
-#[parallel]
 pub async fn should_apply_context() {
     let mut iggy_cmd_test = IggyCmdTest::new(true);
     iggy_cmd_test.setup().await;
@@ -149,7 +149,8 @@ pub async fn should_apply_context() {
         .await;
 }
 
-#[tokio::test]
+#[cfg_attr(feature = "sync", serial_test::serial)]
+#[maybe_async::test(feature = "sync", async(feature = "async", tokio::test))]
 #[parallel]
 pub async fn should_allow_args_to_override_context() {
     let mut iggy_cmd_test = IggyCmdTest::new(true);

@@ -15,16 +15,18 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
+use super::{
+    BackgroundConfig, BackpressureMode, ErrorCtx, Shard, ShardMessage, ShardMessageWithPermits,
+};
 use crate::clients::producer::ProducerCoreBackend;
-use crate::clients::producer_config::{BackgroundConfig, BackpressureMode};
-use crate::clients::producer_error_callback::ErrorCtx;
-use crate::clients::producer_sharding::{Shard, ShardMessage, ShardMessageWithPermits};
+use crate::runtime::JoinHandle;
 use futures::FutureExt;
+use iggy_common::locking::semaphore::Semaphore;
 use iggy_common::{Identifier, IggyError, IggyMessage, Partitioning, Sizeable};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tokio::sync::{Semaphore, broadcast};
-use tokio::task::JoinHandle;
+use tokio::sync::broadcast;
 
 pub struct ProducerDispatcher {
     shards: Vec<Shard>,
@@ -33,7 +35,7 @@ pub struct ProducerDispatcher {
     slots_permit: Arc<Semaphore>,
     bytes_permit: Arc<Semaphore>,
     stop_tx: broadcast::Sender<()>,
-    _join_handle: JoinHandle<()>,
+    _join_handle: Option<JoinHandle<()>>,
 }
 
 impl ProducerDispatcher {
@@ -98,7 +100,7 @@ impl ProducerDispatcher {
             bytes_permit: Arc::new(Semaphore::new(bytes_permit)),
             slots_permit: Arc::new(Semaphore::new(slot_permit)),
             stop_tx,
-            _join_handle: handle,
+            _join_handle: Some(handle),
         }
     }
 
@@ -211,20 +213,19 @@ impl ProducerDispatcher {
             .await
     }
 
-    pub async fn shutdown(mut self) {
+    pub async fn shutdown(&mut self) {
         if self.closed.swap(true, Ordering::Relaxed) {
             return;
         }
-
         let _ = self.stop_tx.send(());
-
-        for shard in self.shards.drain(..) {
+        for shard in std::mem::take(&mut self.shards).into_iter() {
             if let Err(e) = shard._handle.await {
                 tracing::error!("shard panicked: {e:?}");
             }
         }
-
-        if let Err(e) = self._join_handle.await {
+        if let Some(j) = self._join_handle.take()
+            && let Err(e) = j.await
+        {
             tracing::error!("error-worker panicked: {e:?}");
         }
     }
@@ -239,9 +240,8 @@ mod tests {
     use bytes::Bytes;
     use tokio::time::sleep;
 
+    use crate::clients::dispatchers::background::{ErrorCallback, Sharding};
     use crate::clients::producer::MockProducerCoreBackend;
-    use crate::clients::producer_error_callback::ErrorCallback;
-    use crate::clients::producer_sharding::Sharding;
 
     use super::*;
 

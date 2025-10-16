@@ -15,12 +15,14 @@
 // specific language governing permissions and limitations
 // under the License.
 
+pub mod adapters;
 mod certificates;
 mod commands;
 mod error;
 mod traits;
 mod types;
 mod utils;
+pub mod wire;
 
 // Errors
 pub use error::client_error::ClientError;
@@ -92,3 +94,5 @@ pub use utils::personal_access_token_expiry::PersonalAccessTokenExpiry;
 pub use utils::text;
 pub use utils::timestamp::*;
 pub use utils::topic_size::MaxTopicSize;
+// adapters
+pub use adapters::broadcast;

@@ -18,7 +18,6 @@
 
 use crate::cli::common::{IggyCmdCommand, IggyCmdTestCase};
 use assert_cmd::assert::Assert;
-use async_trait::async_trait;
 use iggy::prelude::Client;
 use iggy::prelude::PersonalAccessTokenExpiry;
 use iggy_binary_protocol::cli::binary_system::session::ServerSession;
@@ -47,7 +46,7 @@ impl TestLoginCmd {
     }
 }
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl IggyCmdTestCase for TestLoginCmd {
     async fn prepare_server_state(&mut self, client: &dyn Client) {
         let login_session = ServerSession::new(self.server_address.clone());

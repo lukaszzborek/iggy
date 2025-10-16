@@ -15,8 +15,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
-use async_trait::async_trait;
 use tracing::{Level, event};
 
 use crate::Client;
@@ -42,7 +40,7 @@ impl Default for UseContextCmd {
     }
 }
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl CliCommand for UseContextCmd {
     fn explain(&self) -> String {
         let context_name = &self.context_name;
@@ -66,6 +64,6 @@ impl CliCommand for UseContextCmd {
 
         event!(target: PRINT_TARGET, Level::INFO, "active context set to '{}'", self.context_name);
 
-        return Ok(());
+        Ok(())
     }
 }

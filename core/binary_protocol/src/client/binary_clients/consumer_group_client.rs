@@ -16,11 +16,10 @@
  * under the License.
  */
 
-use async_trait::async_trait;
 use iggy_common::{ConsumerGroup, ConsumerGroupDetails, Identifier, IggyError};
 
 /// This trait defines the methods to interact with the consumer group module.
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 pub trait ConsumerGroupClient {
     /// Get the info about a specific consumer group by unique ID or name for the given stream and topic by unique IDs or names.
     ///

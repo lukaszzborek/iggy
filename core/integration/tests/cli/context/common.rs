@@ -44,6 +44,7 @@ impl TestIggyContext {
         }
     }
 
+    #[maybe_async::maybe_async]
     pub async fn prepare(&self) {
         if let Some(contexts) = &self.maybe_contexts {
             self.context_manager
@@ -60,6 +61,7 @@ impl TestIggyContext {
         }
     }
 
+    #[maybe_async::maybe_async]
     pub async fn read_saved_context_key(&self) -> Option<String> {
         self.context_manager.read_active_context().await.unwrap()
     }

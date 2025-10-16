@@ -15,17 +15,31 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::client_wrappers::client_wrapper::ClientWrapper;
-use crate::clients::producer_config::{BackgroundConfig, DirectConfig};
-use crate::prelude::IggyProducer;
+use crate::client_wrappers::ClientWrapper;
+#[cfg(not(feature = "sync"))]
+use crate::clients::dispatchers::background::BackgroundConfig;
+use crate::clients::dispatchers::direct::DirectConfig;
+use crate::clients::producer::IggyProducer;
 use iggy_common::locking::IggySharedMut;
 use iggy_common::{
     EncryptorKind, Identifier, IggyDuration, IggyExpiry, MaxTopicSize, Partitioner, Partitioning,
 };
 use std::sync::Arc;
 
+// Async-specific implementation
+#[cfg(not(feature = "sync"))]
+mod async_impl;
+
+// Sync-specific implementation
+#[cfg(feature = "sync")]
+mod sync_impl;
+
+/// Producer send mode configuration
 pub enum SendMode {
+    /// Direct mode - sends messages immediately without batching
     Direct(DirectConfig),
+    /// Background mode - batches and shards messages for async sending (async only)
+    #[cfg(not(feature = "sync"))]
     Background(BackgroundConfig),
 }
 
@@ -36,23 +50,23 @@ impl Default for SendMode {
 }
 
 pub struct IggyProducerBuilder {
-    client: IggySharedMut<ClientWrapper>,
-    stream: Identifier,
-    stream_name: String,
-    topic: Identifier,
-    topic_name: String,
-    encryptor: Option<Arc<EncryptorKind>>,
-    partitioner: Option<Arc<dyn Partitioner>>,
-    create_stream_if_not_exists: bool,
-    create_topic_if_not_exists: bool,
-    topic_partitions_count: u32,
-    topic_replication_factor: Option<u8>,
-    send_retries_count: Option<u32>,
-    send_retries_interval: Option<IggyDuration>,
-    topic_message_expiry: IggyExpiry,
-    topic_max_size: MaxTopicSize,
-    partitioning: Option<Partitioning>,
-    mode: SendMode,
+    pub(super) client: IggySharedMut<ClientWrapper>,
+    pub(super) stream: Identifier,
+    pub(super) stream_name: String,
+    pub(super) topic: Identifier,
+    pub(super) topic_name: String,
+    pub(super) encryptor: Option<Arc<EncryptorKind>>,
+    pub(super) partitioner: Option<Arc<dyn Partitioner>>,
+    pub(super) create_stream_if_not_exists: bool,
+    pub(super) create_topic_if_not_exists: bool,
+    pub(super) topic_partitions_count: u32,
+    pub(super) topic_replication_factor: Option<u8>,
+    pub(super) send_retries_count: Option<u32>,
+    pub(super) send_retries_interval: Option<IggyDuration>,
+    pub(super) topic_message_expiry: IggyExpiry,
+    pub(super) topic_max_size: MaxTopicSize,
+    pub(super) partitioning: Option<Partitioning>,
+    pub(super) mode: SendMode,
 }
 
 impl IggyProducerBuilder {
@@ -92,7 +106,7 @@ impl IggyProducerBuilder {
         Self { stream, ..self }
     }
 
-    /// Sets the stream name.
+    /// Sets the topic identifier.
     pub fn topic(self, topic: Identifier) -> Self {
         Self { topic, ..self }
     }
@@ -206,32 +220,7 @@ impl IggyProducerBuilder {
         self
     }
 
-    /// Sets the producer to use background message sending.
-    /// This mode buffers messages and sends them in the background.
-    pub fn background(mut self, config: BackgroundConfig) -> Self {
-        self.mode = SendMode::Background(config);
-        self
-    }
-
     pub fn build(self) -> IggyProducer {
-        IggyProducer::new(
-            self.client,
-            self.stream,
-            self.stream_name,
-            self.topic,
-            self.topic_name,
-            self.partitioning,
-            self.encryptor,
-            self.partitioner,
-            self.create_stream_if_not_exists,
-            self.create_topic_if_not_exists,
-            self.topic_partitions_count,
-            self.topic_replication_factor,
-            self.topic_message_expiry,
-            self.topic_max_size,
-            self.send_retries_count,
-            self.send_retries_interval,
-            self.mode,
-        )
+        self.build_default()
     }
 }

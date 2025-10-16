@@ -21,7 +21,6 @@ use crate::cli::binary_system::session::ServerSession;
 use crate::cli::cli_command::{CliCommand, PRINT_TARGET};
 use crate::cli::utils::login_session_expiry::LoginSessionExpiry;
 use anyhow::Context;
-use async_trait::async_trait;
 use iggy_common::SEC_IN_MICRO;
 use tracing::{Level, event};
 
@@ -41,7 +40,7 @@ impl LoginCmd {
     }
 }
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl CliCommand for LoginCmd {
     fn explain(&self) -> String {
         "login command".to_owned()

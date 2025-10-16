@@ -16,13 +16,12 @@
  * under the License.
  */
 
-use async_trait::async_trait;
 use iggy_common::{
     Identifier, IdentityInfo, IggyError, Permissions, UserInfo, UserInfoDetails, UserStatus,
 };
 
 /// This trait defines the methods to interact with the user module.
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 pub trait UserClient {
     /// Get the info about a specific user by unique ID or username.
     ///

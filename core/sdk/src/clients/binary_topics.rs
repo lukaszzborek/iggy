@@ -17,14 +17,13 @@
  */
 
 use crate::prelude::IggyClient;
-use async_trait::async_trait;
 use iggy_binary_protocol::TopicClient;
 use iggy_common::locking::IggySharedMutFn;
 use iggy_common::{
     CompressionAlgorithm, Identifier, IggyError, IggyExpiry, MaxTopicSize, Topic, TopicDetails,
 };
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl TopicClient for IggyClient {
     async fn get_topic(
         &self,

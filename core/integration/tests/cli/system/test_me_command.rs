@@ -18,9 +18,8 @@
 
 use crate::cli::common::{IggyCmdCommand, IggyCmdTest, IggyCmdTestCase, TestHelpCmd, USAGE_PREFIX};
 use assert_cmd::assert::Assert;
-use async_trait::async_trait;
 use iggy::prelude::Client;
-use integration::test_server::TestServer;
+use integration::test_server_provider::TestServerProvider;
 use predicates::str::{contains, diff, starts_with};
 use serial_test::parallel;
 use std::fmt::Display;
@@ -29,6 +28,7 @@ use std::fmt::Display;
 pub(super) enum Protocol {
     #[default]
     Tcp,
+    #[cfg(not(feature = "sync"))]
     Quic,
 }
 
@@ -45,6 +45,7 @@ impl Protocol {
     fn as_arg(&self) -> Vec<&str> {
         match self {
             Self::Tcp => vec!["--transport", "tcp"],
+            #[cfg(not(feature = "sync"))]
             Self::Quic => vec!["--transport", "quic"],
         }
     }
@@ -54,6 +55,7 @@ impl Display for Protocol {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Tcp => write!(f, "TCP"),
+            #[cfg(not(feature = "sync"))]
             Self::Quic => write!(f, "QUIC"),
         }
     }
@@ -71,7 +73,7 @@ impl TestMeCmd {
     }
 }
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl IggyCmdTestCase for TestMeCmd {
     async fn prepare_server_state(&mut self, _client: &dyn Client) {}
 
@@ -107,12 +109,13 @@ impl IggyCmdTestCase for TestMeCmd {
 
     async fn verify_server_state(&self, _client: &dyn Client) {}
 
-    fn protocol(&self, server: &TestServer) -> Vec<String> {
+    fn protocol(&self, server: &dyn TestServerProvider) -> Vec<String> {
         match &self.protocol {
             Protocol::Tcp => vec![
                 "--tcp-server-address".into(),
                 server.get_raw_tcp_addr().unwrap(),
             ],
+            #[cfg(not(feature = "sync"))]
             Protocol::Quic => vec![
                 "--quic-server-address".into(),
                 server.get_quic_udp_addr().unwrap(),
@@ -121,7 +124,8 @@ impl IggyCmdTestCase for TestMeCmd {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(feature = "sync", serial_test::serial)]
+#[maybe_async::test(feature = "sync", async(feature = "async", tokio::test))]
 #[parallel]
 pub async fn should_be_successful() {
     let mut iggy_cmd_test = IggyCmdTest::default();
@@ -130,7 +134,8 @@ pub async fn should_be_successful() {
     iggy_cmd_test.execute_test(TestMeCmd::default()).await;
 }
 
-#[tokio::test]
+#[cfg_attr(feature = "sync", serial_test::serial)]
+#[maybe_async::test(feature = "sync", async(feature = "async", tokio::test))]
 #[parallel]
 pub async fn should_be_successful_using_transport_tcp() {
     let mut iggy_cmd_test = IggyCmdTest::default();
@@ -144,8 +149,9 @@ pub async fn should_be_successful_using_transport_tcp() {
         .await;
 }
 
+// QUIC test: async-only
+#[cfg(not(feature = "sync"))]
 #[tokio::test]
-#[parallel]
 pub async fn should_be_successful_using_transport_quic() {
     let mut iggy_cmd_test = IggyCmdTest::default();
 
@@ -158,7 +164,8 @@ pub async fn should_be_successful_using_transport_quic() {
         .await;
 }
 
-#[tokio::test]
+#[cfg_attr(feature = "sync", serial_test::serial)]
+#[maybe_async::test(feature = "sync", async(feature = "async", tokio::test))]
 #[parallel]
 pub async fn should_be_unsuccessful_using_transport_tcp() {
     let mut iggy_cmd_test = IggyCmdTest::default();
@@ -172,7 +179,8 @@ pub async fn should_be_unsuccessful_using_transport_tcp() {
         .await;
 }
 
-#[tokio::test]
+#[cfg_attr(feature = "sync", serial_test::serial)]
+#[maybe_async::test(feature = "sync", async(feature = "async", tokio::test))]
 #[parallel]
 pub async fn should_help_match() {
     let mut iggy_cmd_test = IggyCmdTest::help_message();
@@ -197,7 +205,8 @@ Options:
         .await;
 }
 
-#[tokio::test]
+#[cfg_attr(feature = "sync", serial_test::serial)]
+#[maybe_async::test(feature = "sync", async(feature = "async", tokio::test))]
 #[parallel]
 pub async fn should_short_help_match() {
     let mut iggy_cmd_test = IggyCmdTest::help_message();

@@ -17,7 +17,6 @@
  */
 
 use crate::tcp::tcp_stream::ConnectionStream;
-use async_trait::async_trait;
 use iggy_common::IggyError;
 use std::net::SocketAddr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
@@ -43,7 +42,7 @@ impl TcpConnectionStream {
     }
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl ConnectionStream for TcpConnectionStream {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, IggyError> {
         self.reader.read_exact(buf).await.map_err(|error| {

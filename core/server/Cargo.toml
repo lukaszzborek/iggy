@@ -28,11 +28,19 @@ normal = ["tracing-appender"]
 [package.metadata.cargo-machete]
 ignored = ["rust-s3"]
 
+[[bin]]
+name = "iggy-server"
+path = "src/main.rs"
+
 [features]
 default = ["mimalloc"]
 tokio-console = ["dep:console-subscriber", "tokio/tracing"]
 disable-mimalloc = []
 mimalloc = ["dep:mimalloc"]
+s3-backup = ["dep:rust-s3"]
+
+# Disable s3-backup in sync mode to avoid async-only dependency conflicts
+# s3-backup requires tokio and async runtime which are not available in sync mode
 
 [dependencies]
 ahash = { workspace = true }
@@ -58,7 +66,7 @@ figment = { version = "0.10.19", features = ["toml", "env"] }
 flume = { workspace = true }
 futures = { workspace = true }
 human-repr = { workspace = true }
-iggy_common = { workspace = true }
+iggy_common = { workspace = true, features = ["async", "tokio_lock"] }
 jsonwebtoken = "9.3.1"
 lending-iterator = "0.1.7"
 mimalloc = { workspace = true, optional = true }
@@ -90,7 +98,7 @@ prometheus-client = "0.23.1"
 quinn = { workspace = true }
 reqwest = { workspace = true, features = ["rustls-tls-no-provider"] }
 ring = "0.17.14"
-rust-s3 = { workspace = true }
+rust-s3 = { version = "0.36.0-beta.2", default-features = false, features = ["tokio-rustls-tls", "tags"], optional = true }
 rustls = { workspace = true }
 rustls-pemfile = "2.2.0"
 serde = { workspace = true }
@@ -125,7 +133,3 @@ vergen-git2 = { version = "1.0.7", features = [
 [dev-dependencies]
 mockall = { workspace = true }
 serial_test = { workspace = true }
-
-[[bin]]
-name = "iggy-server"
-path = "src/main.rs"

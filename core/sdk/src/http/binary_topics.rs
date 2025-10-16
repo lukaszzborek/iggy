@@ -19,13 +19,12 @@
 use crate::http::http_client::HttpClient;
 use crate::http::http_transport::HttpTransport;
 use crate::prelude::{CompressionAlgorithm, Identifier, IggyError, IggyExpiry, MaxTopicSize};
-use async_trait::async_trait;
 use iggy_binary_protocol::TopicClient;
 use iggy_common::create_topic::CreateTopic;
 use iggy_common::update_topic::UpdateTopic;
 use iggy_common::{Topic, TopicDetails};
 
-#[async_trait]
+#[async_trait::async_trait]
 impl TopicClient for HttpClient {
     async fn get_topic(
         &self,

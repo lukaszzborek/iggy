@@ -19,7 +19,6 @@
 use crate::Client;
 use crate::cli::cli_command::{CliCommand, PRINT_TARGET};
 use anyhow::Context;
-use async_trait::async_trait;
 use iggy_common::Identifier;
 use iggy_common::delete_user::DeleteUser;
 use tracing::{Level, event};
@@ -36,7 +35,7 @@ impl DeleteUserCmd {
     }
 }
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl CliCommand for DeleteUserCmd {
     fn explain(&self) -> String {
         format!("delete user with ID: {}", self.delete_user.user_id)

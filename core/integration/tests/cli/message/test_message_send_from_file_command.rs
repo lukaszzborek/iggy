@@ -18,13 +18,14 @@
 
 use crate::cli::common::{IggyCmdCommand, IggyCmdTest, IggyCmdTestCase};
 use assert_cmd::assert::Assert;
-use async_trait::async_trait;
 use bytes::Bytes;
 use iggy::prelude::*;
 use predicates::str::{ends_with, is_match, starts_with};
 use serial_test::parallel;
 use std::collections::HashMap;
 use std::str::FromStr;
+
+#[cfg(not(feature = "sync"))]
 use tokio::io::AsyncWriteExt;
 
 pub(super) struct TestMessageSendFromFileCmd<'a> {
@@ -74,7 +75,7 @@ impl<'a> TestMessageSendFromFileCmd<'a> {
     }
 }
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl IggyCmdTestCase for TestMessageSendFromFileCmd<'_> {
     async fn prepare_server_state(&mut self, client: &dyn Client) {
         let stream = client.create_stream(&self.stream_name, None).await;
@@ -102,45 +103,93 @@ impl IggyCmdTestCase for TestMessageSendFromFileCmd<'_> {
         assert!(topic_id.is_ok());
 
         if self.initialize {
-            let file = tokio::fs::OpenOptions::new()
-                .append(true)
-                .create(true)
-                .open(&self.input_file)
-                .await;
-            assert!(
-                file.is_ok(),
-                "Problem opening file for writing: {}",
-                self.input_file
-            );
-            let mut file = file.unwrap();
-
-            let messages = self
-                .messages
-                .iter()
-                .map(|s| {
-                    let payload = Bytes::from(s.as_bytes().to_vec());
-                    IggyMessage::builder()
-                        .payload(payload)
-                        .user_headers(self.headers.clone())
-                        .build()
-                        .expect("Failed to create message with headers")
-                })
-                .collect::<Vec<_>>();
-
-            for message in messages.iter() {
-                let message = IggyMessage::builder()
-                    .id(message.header.id)
-                    .payload(message.payload.clone())
-                    .user_headers(message.user_headers_map().unwrap().unwrap())
-                    .build()
-                    .expect("Failed to create message with headers");
-
-                let write_result = file.write_all(&message.to_bytes()).await;
+            #[cfg(not(feature = "sync"))]
+            {
+                let file_result = tokio::fs::OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .open(&self.input_file)
+                    .await;
                 assert!(
-                    write_result.is_ok(),
-                    "Problem writing message to file: {}",
+                    file_result.is_ok(),
+                    "Problem opening file for writing: {}",
                     self.input_file
                 );
+                let mut file = file_result.unwrap();
+
+                let messages = self
+                    .messages
+                    .iter()
+                    .map(|s| {
+                        let payload = Bytes::from(s.as_bytes().to_vec());
+                        IggyMessage::builder()
+                            .payload(payload)
+                            .user_headers(self.headers.clone())
+                            .build()
+                            .expect("Failed to create message with headers")
+                    })
+                    .collect::<Vec<_>>();
+
+                for message in messages.iter() {
+                    let message = IggyMessage::builder()
+                        .id(message.header.id)
+                        .payload(message.payload.clone())
+                        .user_headers(message.user_headers_map().unwrap().unwrap())
+                        .build()
+                        .expect("Failed to create message with headers");
+
+                    let write_result = file.write_all(&message.to_bytes()).await;
+                    assert!(
+                        write_result.is_ok(),
+                        "Problem writing message to file: {}",
+                        self.input_file
+                    );
+                }
+            }
+
+            #[cfg(feature = "sync")]
+            {
+                use std::io::Write;
+
+                let file_result = std::fs::OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .open(&self.input_file);
+                assert!(
+                    file_result.is_ok(),
+                    "Problem opening file for writing: {}",
+                    self.input_file
+                );
+                let mut file = file_result.unwrap();
+
+                let messages = self
+                    .messages
+                    .iter()
+                    .map(|s| {
+                        let payload = Bytes::from(s.as_bytes().to_vec());
+                        IggyMessage::builder()
+                            .payload(payload)
+                            .user_headers(self.headers.clone())
+                            .build()
+                            .expect("Failed to create message with headers")
+                    })
+                    .collect::<Vec<_>>();
+
+                for message in messages.iter() {
+                    let message = IggyMessage::builder()
+                        .id(message.header.id)
+                        .payload(message.payload.clone())
+                        .user_headers(message.user_headers_map().unwrap().unwrap())
+                        .build()
+                        .expect("Failed to create message with headers");
+
+                    let write_result = file.write_all(&message.to_bytes());
+                    assert!(
+                        write_result.is_ok(),
+                        "Problem writing message to file: {}",
+                        self.input_file
+                    );
+                }
             }
         }
     }
@@ -229,7 +278,8 @@ impl IggyCmdTestCase for TestMessageSendFromFileCmd<'_> {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(feature = "sync", serial_test::serial)]
+#[maybe_async::test(feature = "sync", async(feature = "async", tokio::test))]
 #[parallel]
 pub async fn should_be_successful() {
     let mut iggy_cmd_test = IggyCmdTest::default();

@@ -16,40 +16,69 @@
  * under the License.
  */
 
-use crate::client_wrappers::client_wrapper::ClientWrapper;
-use async_trait::async_trait;
+use crate::client_wrappers::ClientWrapper;
 use iggy_binary_protocol::SegmentClient;
 use iggy_common::{Identifier, IggyError};
 
-#[async_trait]
-impl SegmentClient for ClientWrapper {
-    async fn delete_segments(
-        &self,
-        stream_id: &Identifier,
-        topic_id: &Identifier,
-        partition_id: u32,
-        segments_count: u32,
-    ) -> Result<(), IggyError> {
-        match self {
-            ClientWrapper::Iggy(client) => {
-                client
-                    .delete_segments(stream_id, topic_id, partition_id, segments_count)
-                    .await
+#[cfg(not(feature = "sync"))]
+pub mod async_impl {
+    use super::*;
+
+    #[async_trait::async_trait]
+    impl SegmentClient for ClientWrapper {
+        async fn delete_segments(
+            &self,
+            stream_id: &Identifier,
+            topic_id: &Identifier,
+            partition_id: u32,
+            segments_count: u32,
+        ) -> Result<(), IggyError> {
+            match self {
+                ClientWrapper::Iggy(client) => {
+                    client
+                        .delete_segments(stream_id, topic_id, partition_id, segments_count)
+                        .await
+                }
+                ClientWrapper::Http(client) => {
+                    client
+                        .delete_segments(stream_id, topic_id, partition_id, segments_count)
+                        .await
+                }
+                ClientWrapper::Tcp(client) => {
+                    client
+                        .delete_segments(stream_id, topic_id, partition_id, segments_count)
+                        .await
+                }
+                ClientWrapper::Quic(client) => {
+                    client
+                        .delete_segments(stream_id, topic_id, partition_id, segments_count)
+                        .await
+                }
             }
-            ClientWrapper::Http(client) => {
-                client
-                    .delete_segments(stream_id, topic_id, partition_id, segments_count)
-                    .await
-            }
-            ClientWrapper::Tcp(client) => {
-                client
-                    .delete_segments(stream_id, topic_id, partition_id, segments_count)
-                    .await
-            }
-            ClientWrapper::Quic(client) => {
-                client
-                    .delete_segments(stream_id, topic_id, partition_id, segments_count)
-                    .await
+        }
+    }
+}
+
+#[cfg(feature = "sync")]
+pub mod sync_impl {
+    use super::*;
+
+    impl SegmentClient for ClientWrapper {
+        fn delete_segments(
+            &self,
+            stream_id: &Identifier,
+            topic_id: &Identifier,
+            partition_id: u32,
+            segments_count: u32,
+        ) -> Result<(), IggyError> {
+            match self {
+                ClientWrapper::Tcp(client) => {
+                    client.delete_segments(stream_id, topic_id, partition_id, segments_count)
+                }
+                ClientWrapper::TcpTls(client) => {
+                    client.delete_segments(stream_id, topic_id, partition_id, segments_count)
+                }
+                ClientWrapper::Iggy(_) => Err(IggyError::InvalidConfiguration),
             }
         }
     }

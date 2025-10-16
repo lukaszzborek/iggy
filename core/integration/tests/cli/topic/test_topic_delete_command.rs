@@ -21,7 +21,6 @@ use crate::cli::common::{
     TestTopicId, USAGE_PREFIX,
 };
 use assert_cmd::assert::Assert;
-use async_trait::async_trait;
 use iggy::prelude::Client;
 use iggy::prelude::IggyExpiry;
 use iggy::prelude::MaxTopicSize;
@@ -71,7 +70,7 @@ impl TestTopicDeleteCmd {
     }
 }
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl IggyCmdTestCase for TestTopicDeleteCmd {
     async fn prepare_server_state(&mut self, client: &dyn Client) {
         let stream = client
@@ -131,7 +130,8 @@ impl IggyCmdTestCase for TestTopicDeleteCmd {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(feature = "sync", serial_test::serial)]
+#[maybe_async::test(feature = "sync", async(feature = "async", tokio::test))]
 #[parallel]
 pub async fn should_be_successful() {
     let mut iggy_cmd_test = IggyCmdTest::default();
@@ -179,7 +179,8 @@ pub async fn should_be_successful() {
         .await;
 }
 
-#[tokio::test]
+#[cfg_attr(feature = "sync", serial_test::serial)]
+#[maybe_async::test(feature = "sync", async(feature = "async", tokio::test))]
 #[parallel]
 pub async fn should_help_match() {
     let mut iggy_cmd_test = IggyCmdTest::help_message();
@@ -221,7 +222,8 @@ Options:
         .await;
 }
 
-#[tokio::test]
+#[cfg_attr(feature = "sync", serial_test::serial)]
+#[maybe_async::test(feature = "sync", async(feature = "async", tokio::test))]
 #[parallel]
 pub async fn should_short_help_match() {
     let mut iggy_cmd_test = IggyCmdTest::default();

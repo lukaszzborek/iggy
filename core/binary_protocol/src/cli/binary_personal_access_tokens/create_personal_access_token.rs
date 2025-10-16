@@ -19,7 +19,6 @@
 use crate::Client;
 use crate::cli::cli_command::{CliCommand, PRINT_TARGET};
 use anyhow::Context;
-use async_trait::async_trait;
 use iggy_common::PersonalAccessTokenExpiry;
 use iggy_common::create_personal_access_token::CreatePersonalAccessToken;
 use keyring::Entry;
@@ -57,7 +56,7 @@ impl CreatePersonalAccessTokenCmd {
     }
 }
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl CliCommand for CreatePersonalAccessTokenCmd {
     fn explain(&self) -> String {
         let expiry_text = match &self.token_expiry {

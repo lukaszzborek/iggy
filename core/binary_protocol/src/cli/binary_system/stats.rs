@@ -19,7 +19,6 @@
 use crate::Client;
 use crate::cli::cli_command::{CliCommand, PRINT_TARGET};
 use anyhow::Context;
-use async_trait::async_trait;
 use comfy_table::Table;
 use iggy_common::get_stats::GetStats;
 use std::fmt::Display;
@@ -61,7 +60,7 @@ impl GetStatsCmd {
     }
 }
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl CliCommand for GetStatsCmd {
     fn explain(&self) -> String {
         "stats command".to_owned()

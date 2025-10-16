@@ -18,7 +18,6 @@
 use crate::Client;
 use crate::cli::cli_command::{CliCommand, PRINT_TARGET};
 use anyhow::Context;
-use async_trait::async_trait;
 use iggy_common::Identifier;
 use iggy_common::delete_segments::DeleteSegments;
 use tracing::{Level, event};
@@ -45,7 +44,7 @@ impl DeleteSegmentsCmd {
     }
 }
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl CliCommand for DeleteSegmentsCmd {
     fn explain(&self) -> String {
         let mut segments = String::from("segment");

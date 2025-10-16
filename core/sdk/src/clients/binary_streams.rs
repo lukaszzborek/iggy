@@ -17,12 +17,11 @@
  */
 
 use crate::prelude::IggyClient;
-use async_trait::async_trait;
 use iggy_binary_protocol::StreamClient;
 use iggy_common::locking::IggySharedMutFn;
 use iggy_common::{Identifier, IggyError, Stream, StreamDetails};
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl StreamClient for IggyClient {
     async fn get_stream(&self, stream_id: &Identifier) -> Result<Option<StreamDetails>, IggyError> {
         self.client.read().await.get_stream(stream_id).await

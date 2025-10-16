@@ -19,13 +19,13 @@
 use crate::Client;
 use crate::cli::cli_command::{CliCommand, PRINT_TARGET};
 use anyhow::Context;
-use async_trait::async_trait;
 use bytes::Bytes;
 use iggy_common::{
     BytesSerializable, HeaderKey, HeaderValue, Identifier, IggyMessage, Partitioning, Sizeable,
 };
 use std::collections::HashMap;
 use std::io::{self, Read};
+#[cfg(not(feature = "sync"))]
 use tokio::io::AsyncReadExt;
 use tracing::{Level, event};
 
@@ -83,7 +83,7 @@ impl SendMessagesCmd {
     }
 }
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl CliCommand for SendMessagesCmd {
     fn explain(&self) -> String {
         format!(
@@ -94,11 +94,19 @@ impl CliCommand for SendMessagesCmd {
 
     async fn execute_cmd(&mut self, client: &dyn Client) -> anyhow::Result<(), anyhow::Error> {
         let mut messages = if let Some(input_file) = &self.input_file {
+            #[cfg(not(feature = "sync"))]
             let mut file = tokio::fs::OpenOptions::new()
                 .read(true)
                 .open(input_file)
                 .await
                 .with_context(|| format!("Problem opening file for reading: {input_file}"))?;
+
+            #[cfg(feature = "sync")]
+            let mut file = std::fs::OpenOptions::new()
+                .read(true)
+                .open(input_file)
+                .with_context(|| format!("Problem opening file for reading: {input_file}"))?;
+
             let mut buffer = Vec::new();
             file.read_to_end(&mut buffer)
                 .await

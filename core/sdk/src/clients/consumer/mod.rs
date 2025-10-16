@@ -16,14 +16,13 @@
  * under the License.
  */
 
-use crate::client_wrappers::client_wrapper::ClientWrapper;
-use bytes::Bytes;
+use crate::client_wrappers::ClientWrapper;
+use crate::runtime::{Interval, Runtime, RuntimeExecutor};
 use dashmap::DashMap;
-use futures::Stream;
-use futures_util::{FutureExt, StreamExt};
 use iggy_binary_protocol::{
     Client, ConsumerGroupClient, ConsumerOffsetClient, MessageClient, StreamClient, TopicClient,
 };
+use iggy_common::broadcast::Recv;
 use iggy_common::locking::{IggySharedMut, IggySharedMutFn};
 use iggy_common::{
     Consumer, ConsumerKind, DiagnosticEvent, EncryptorKind, IdKind, Identifier, IggyDuration,
@@ -34,15 +33,23 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64};
-use std::task::{Context, Poll};
-use std::time::Duration;
-use tokio::time;
-use tokio::time::sleep;
 use tracing::{error, info, trace, warn};
 
-const ORDERING: std::sync::atomic::Ordering = std::sync::atomic::Ordering::SeqCst;
-type PollMessagesFuture = Pin<Box<dyn Future<Output = Result<PolledMessages, IggyError>>>>;
+// StreamExt trait needed for .next() on AsyncReceiver in async mode
+#[cfg(not(feature = "sync"))]
+use futures::StreamExt;
 
+// Async-specific implementation (Stream, async polling)
+#[cfg(not(feature = "sync"))]
+mod async_impl;
+
+// Sync-specific implementation (Iterator, blocking polling)
+#[cfg(feature = "sync")]
+mod sync_impl;
+
+const ORDERING: std::sync::atomic::Ordering = std::sync::atomic::Ordering::SeqCst;
+type PollMessagesFuture =
+    Pin<Box<dyn Future<Output = Result<PolledMessages, IggyError>> + Send + 'static>>;
 /// The auto-commit configuration for storing the offset on the server.
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum AutoCommit {
@@ -90,10 +97,15 @@ pub enum AutoCommitAfter {
     ConsumingEveryNthMessage(u32),
 }
 
-unsafe impl Send for IggyConsumer {}
-unsafe impl Sync for IggyConsumer {}
+unsafe impl<R: RuntimeExecutor> Send for IggyConsumerInner<R> {}
+unsafe impl<R: RuntimeExecutor> Sync for IggyConsumerInner<R> {}
 
-pub struct IggyConsumer {
+pub type IggyConsumer = IggyConsumerInner<Runtime>;
+
+// Clean alias that hides the Raw suffix and runtime generics
+pub type IggyConsumerWithRuntime<R> = IggyConsumerInner<R>;
+
+pub struct IggyConsumerInner<R: RuntimeExecutor + 'static> {
     initialized: bool,
     can_poll: Arc<AtomicBool>,
     client: IggySharedMut<ClientWrapper>,
@@ -127,9 +139,10 @@ pub struct IggyConsumer {
     init_retries: Option<u32>,
     init_retry_interval: IggyDuration,
     allow_replay: bool,
+    rt: Arc<R>,
 }
 
-impl IggyConsumer {
+impl<R: RuntimeExecutor> IggyConsumerInner<R> {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         client: IggySharedMut<ClientWrapper>,
@@ -149,6 +162,7 @@ impl IggyConsumer {
         init_retries: Option<u32>,
         init_retry_interval: IggyDuration,
         allow_replay: bool,
+        rt: Arc<R>,
     ) -> Self {
         let (store_offset_sender, _) = flume::unbounded();
         Self {
@@ -203,6 +217,7 @@ impl IggyConsumer {
             init_retries,
             init_retry_interval,
             allow_replay,
+            rt,
         }
     }
 
@@ -231,6 +246,7 @@ impl IggyConsumer {
     }
 
     /// Stores the consumer offset on the server either for the current partition or the provided partition ID.
+    #[maybe_async::maybe_async]
     pub async fn store_offset(
         &self,
         offset: u64,
@@ -262,6 +278,7 @@ impl IggyConsumer {
     }
 
     /// Deletes the consumer offset on the server either for the current partition or the provided partition ID.
+    #[maybe_async::maybe_async]
     pub async fn delete_offset(&self, partition_id: Option<u32>) -> Result<(), IggyError> {
         let client = self.client.read().await;
         client
@@ -284,6 +301,7 @@ impl IggyConsumer {
     /// Initializes the consumer by subscribing to diagnostic events, initializing the consumer group if needed, storing the offsets in the background etc.
     ///
     /// Note: This method must be called before polling messages.
+    #[maybe_async::maybe_async]
     pub async fn init(&mut self) -> Result<(), IggyError> {
         if self.initialized {
             return Ok(());
@@ -302,8 +320,8 @@ impl IggyConsumer {
             let init_retries = self.init_retries.unwrap_or_default();
             let interval = self.init_retry_interval;
 
-            let mut timer = time::interval(interval.get_duration());
-            timer.tick().await;
+            let mut timer = self.rt.interval(interval);
+            let _ = timer.tick().await;
 
             let client = self.client.read().await;
             let mut stream_exists = client.get_stream(&stream_id).await?.is_some();
@@ -326,7 +344,7 @@ impl IggyConsumer {
                     warn!(
                         "Stream: {stream_id} does not exist. Retrying ({retries}/{init_retries}) in {interval}...",
                     );
-                    timer.tick().await;
+                    let _ = timer.tick().await;
                     stream_exists = client.get_stream(&stream_id).await?.is_some();
                 }
 
@@ -342,7 +360,7 @@ impl IggyConsumer {
                 warn!(
                     "Topic: {topic_id} does not exist in stream: {stream_id}. Retrying ({retries}/{init_retries}) in {interval}...",
                 );
-                timer.tick().await;
+                let _ = timer.tick().await;
             }
 
             if !stream_exists {
@@ -379,24 +397,15 @@ impl IggyConsumer {
         let (store_offset_sender, store_offset_receiver) = flume::unbounded();
         self.store_offset_sender = store_offset_sender;
 
-        tokio::spawn(async move {
-            while let Ok((partition_id, offset)) = store_offset_receiver.recv_async().await {
-                trace!(
-                    "Received offset to store: {offset}, partition ID: {partition_id}, stream: {stream_id}, topic: {topic_id}"
-                );
-                _ = Self::store_consumer_offset(
-                    &client,
-                    &consumer,
-                    &stream_id,
-                    &topic_id,
-                    partition_id,
-                    offset,
-                    &last_stored_offsets,
-                    false,
-                )
-                .await
-            }
-        });
+        Self::spawn_store_offset_receiver_loop(
+            self.rt.clone(),
+            store_offset_receiver,
+            client,
+            consumer,
+            stream_id,
+            topic_id,
+            last_stored_offsets,
+        );
 
         self.initialized = true;
         info!(
@@ -406,6 +415,7 @@ impl IggyConsumer {
         Ok(())
     }
 
+    #[maybe_async::maybe_async]
     #[allow(clippy::too_many_arguments)]
     async fn store_consumer_offset(
         client: &IggySharedMut<ClientWrapper>,
@@ -463,26 +473,52 @@ impl IggyConsumer {
         let topic_id = self.topic_id.clone();
         let last_consumed_offsets = self.last_consumed_offsets.clone();
         let last_stored_offsets = self.last_stored_offsets.clone();
-        tokio::spawn(async move {
-            loop {
-                sleep(interval.get_duration()).await;
-                for entry in last_consumed_offsets.iter() {
-                    let partition_id = *entry.key();
-                    let consumed_offset = entry.load(ORDERING);
-                    _ = Self::store_consumer_offset(
-                        &client,
-                        &consumer,
-                        &stream_id,
-                        &topic_id,
-                        partition_id,
-                        consumed_offset,
-                        &last_stored_offsets,
-                        false,
-                    )
-                    .await;
-                }
+        let rt = self.rt.clone();
+        let rt_inner = rt.clone();
+
+        Self::spawn_offset_storage_loop(
+            rt,
+            rt_inner,
+            interval,
+            client,
+            consumer,
+            stream_id,
+            topic_id,
+            last_consumed_offsets,
+            last_stored_offsets,
+        );
+    }
+
+    #[maybe_async::maybe_async]
+    #[allow(clippy::too_many_arguments)]
+    async fn offset_storage_loop(
+        rt: Arc<R>,
+        interval: IggyDuration,
+        client: IggySharedMut<ClientWrapper>,
+        consumer: Arc<Consumer>,
+        stream_id: Arc<Identifier>,
+        topic_id: Arc<Identifier>,
+        last_consumed_offsets: Arc<DashMap<u32, AtomicU64>>,
+        last_stored_offsets: Arc<DashMap<u32, AtomicU64>>,
+    ) {
+        loop {
+            rt.sleep(interval).await;
+            for entry in last_consumed_offsets.iter() {
+                let partition_id = *entry.key();
+                let consumed_offset = entry.load(ORDERING);
+                _ = Self::store_consumer_offset(
+                    &client,
+                    &consumer,
+                    &stream_id,
+                    &topic_id,
+                    partition_id,
+                    consumed_offset,
+                    &last_stored_offsets,
+                    false,
+                )
+                .await;
             }
-        });
+        }
     }
 
     pub(crate) fn send_store_offset(&self, partition_id: u32, offset: u64) {
@@ -493,6 +529,7 @@ impl IggyConsumer {
         }
     }
 
+    #[maybe_async::maybe_async]
     async fn init_consumer_group(&self) -> Result<(), IggyError> {
         if !self.is_consumer_group {
             return Ok(());
@@ -515,9 +552,10 @@ impl IggyConsumer {
         .await
     }
 
+    #[maybe_async::maybe_async]
     async fn subscribe_events(&self) {
         trace!("Subscribing to diagnostic events");
-        let mut receiver;
+        let receiver;
         {
             let client = self.client.read().await;
             receiver = client.subscribe_events().await;
@@ -533,238 +571,122 @@ impl IggyConsumer {
         let consumer_name = self.consumer_name.clone();
         let can_poll = self.can_poll.clone();
         let joined_consumer_group = self.joined_consumer_group.clone();
+
+        Self::spawn_try_recv(
+            self.rt.clone(),
+            receiver,
+            joined_consumer_group,
+            can_poll,
+            is_consumer_group,
+            can_join_consumer_group,
+            consumer_name,
+            stream_id,
+            topic_id,
+            client,
+            create_consumer_group_if_not_exists,
+            consumer,
+        );
+    }
+
+    #[maybe_async::maybe_async]
+    #[allow(clippy::too_many_arguments, clippy::while_let_on_iterator)]
+    async fn try_recv(
+        mut receiver: Recv<DiagnosticEvent>,
+        joined_consumer_group: Arc<AtomicBool>,
+        can_poll: Arc<AtomicBool>,
+        is_consumer_group: bool,
+        can_join_consumer_group: bool,
+        consumer_name: String,
+        stream_id: Arc<Identifier>,
+        topic_id: Arc<Identifier>,
+        client: IggySharedMut<ClientWrapper>,
+        create_consumer_group_if_not_exists: bool,
+        consumer: Arc<Consumer>,
+    ) {
         let mut reconnected = false;
         let mut disconnected = false;
 
-        tokio::spawn(async move {
-            while let Some(event) = receiver.next().await {
-                trace!("Received diagnostic event: {event}");
-                match event {
-                    DiagnosticEvent::Shutdown => {
-                        warn!("Consumer has been shutdown");
-                        joined_consumer_group.store(false, ORDERING);
-                        can_poll.store(false, ORDERING);
-                        break;
+        while let Some(event) = receiver.next().await {
+            trace!("Received diagnostic event: {event}");
+            match event {
+                DiagnosticEvent::Shutdown => {
+                    warn!("Consumer has been shutdown");
+                    joined_consumer_group.store(false, ORDERING);
+                    can_poll.store(false, ORDERING);
+                    break;
+                }
+
+                DiagnosticEvent::Connected => {
+                    trace!("Connected to the server");
+                    joined_consumer_group.store(false, ORDERING);
+                    if disconnected {
+                        reconnected = true;
+                        disconnected = false;
                     }
-
-                    DiagnosticEvent::Connected => {
-                        trace!("Connected to the server");
-                        joined_consumer_group.store(false, ORDERING);
-                        if disconnected {
-                            reconnected = true;
-                            disconnected = false;
-                        }
-                    }
-                    DiagnosticEvent::Disconnected => {
-                        disconnected = true;
-                        reconnected = false;
-                        joined_consumer_group.store(false, ORDERING);
-                        can_poll.store(false, ORDERING);
-                        warn!("Disconnected from the server");
-                    }
-                    DiagnosticEvent::SignedIn => {
-                        if !is_consumer_group {
-                            can_poll.store(true, ORDERING);
-                            continue;
-                        }
-
-                        if !can_join_consumer_group {
-                            can_poll.store(true, ORDERING);
-                            trace!("Auto join consumer group is disabled");
-                            continue;
-                        }
-
-                        if !reconnected {
-                            can_poll.store(true, ORDERING);
-                            continue;
-                        }
-
-                        if joined_consumer_group.load(ORDERING) {
-                            can_poll.store(true, ORDERING);
-                            continue;
-                        }
-
-                        info!(
-                            "Rejoining consumer group: {consumer_name} for stream: {stream_id}, topic: {topic_id}..."
-                        );
-                        if let Err(error) = Self::initialize_consumer_group(
-                            client.clone(),
-                            create_consumer_group_if_not_exists,
-                            stream_id.clone(),
-                            topic_id.clone(),
-                            consumer.clone(),
-                            &consumer_name,
-                            joined_consumer_group.clone(),
-                        )
-                        .await
-                        {
-                            error!(
-                                "Failed to join consumer group: {consumer_name} for stream: {stream_id}, topic: {topic_id}. {error}"
-                            );
-                            continue;
-                        }
-                        info!(
-                            "Rejoined consumer group: {consumer_name} for stream: {stream_id}, topic: {topic_id}"
-                        );
+                }
+                DiagnosticEvent::Disconnected => {
+                    disconnected = true;
+                    reconnected = false;
+                    joined_consumer_group.store(false, ORDERING);
+                    can_poll.store(false, ORDERING);
+                    warn!("Disconnected from the server");
+                }
+                DiagnosticEvent::SignedIn => {
+                    if !is_consumer_group {
                         can_poll.store(true, ORDERING);
+                        continue;
                     }
-                    DiagnosticEvent::SignedOut => {
-                        joined_consumer_group.store(false, ORDERING);
-                        can_poll.store(false, ORDERING);
+
+                    if !can_join_consumer_group {
+                        can_poll.store(true, ORDERING);
+                        trace!("Auto join consumer group is disabled");
+                        continue;
                     }
-                }
-            }
-        });
-    }
 
-    fn create_poll_messages_future(
-        &self,
-    ) -> impl Future<Output = Result<PolledMessages, IggyError>> + use<> {
-        let stream_id = self.stream_id.clone();
-        let topic_id = self.topic_id.clone();
-        let partition_id = self.partition_id;
-        let consumer = self.consumer.clone();
-        let polling_strategy = self.polling_strategy;
-        let client = self.client.clone();
-        let count = self.batch_length;
-        let auto_commit_after_polling = self.auto_commit_after_polling;
-        let auto_commit_enabled = self.auto_commit != AutoCommit::Disabled;
-        let interval = self.poll_interval_micros;
-        let last_polled_at = self.last_polled_at.clone();
-        let can_poll = self.can_poll.clone();
-        let retry_interval = self.reconnection_retry_interval;
-        let last_stored_offset = self.last_stored_offsets.clone();
-        let last_consumed_offset = self.last_consumed_offsets.clone();
-        let allow_replay = self.allow_replay;
-
-        async move {
-            if interval > 0 {
-                Self::wait_before_polling(interval, last_polled_at.load(ORDERING)).await;
-            }
-
-            if !can_poll.load(ORDERING) {
-                trace!("Trying to poll messages in {retry_interval}...");
-                sleep(retry_interval.get_duration()).await;
-            }
-
-            trace!("Sending poll messages request");
-            last_polled_at.store(IggyTimestamp::now().into(), ORDERING);
-            let polled_messages = client
-                .read()
-                .await
-                .poll_messages(
-                    &stream_id,
-                    &topic_id,
-                    partition_id,
-                    &consumer,
-                    &polling_strategy,
-                    count,
-                    auto_commit_after_polling,
-                )
-                .await;
-
-            if let Ok(mut polled_messages) = polled_messages {
-                if polled_messages.messages.is_empty() {
-                    return Ok(polled_messages);
-                }
-
-                let partition_id = polled_messages.partition_id;
-                let consumed_offset;
-                let has_consumed_offset;
-                if let Some(offset_entry) = last_consumed_offset.get(&partition_id) {
-                    has_consumed_offset = true;
-                    consumed_offset = offset_entry.load(ORDERING);
-                } else {
-                    consumed_offset = 0;
-                    has_consumed_offset = false;
-                    last_consumed_offset.insert(partition_id, AtomicU64::new(0));
-                }
-
-                if !allow_replay && has_consumed_offset {
-                    polled_messages
-                        .messages
-                        .retain(|message| message.header.offset > consumed_offset);
-                    if polled_messages.messages.is_empty() {
-                        return Ok(PolledMessages::empty());
+                    if !reconnected {
+                        can_poll.store(true, ORDERING);
+                        continue;
                     }
-                }
 
-                let stored_offset;
-                if let Some(stored_offset_entry) = last_stored_offset.get(&partition_id) {
-                    if auto_commit_after_polling {
-                        stored_offset_entry.store(consumed_offset, ORDERING);
-                        stored_offset = consumed_offset;
-                    } else {
-                        stored_offset = stored_offset_entry.load(ORDERING);
+                    if joined_consumer_group.load(ORDERING) {
+                        can_poll.store(true, ORDERING);
+                        continue;
                     }
-                } else {
-                    if auto_commit_after_polling {
-                        stored_offset = consumed_offset;
-                    } else {
-                        stored_offset = 0;
-                    }
-                    last_stored_offset.insert(partition_id, AtomicU64::new(stored_offset));
-                }
 
-                trace!(
-                    "Last consumed offset: {consumed_offset}, current offset: {}, stored offset: {stored_offset}, in partition ID: {partition_id}, topic: {topic_id}, stream: {stream_id}, consumer: {consumer}",
-                    polled_messages.current_offset
-                );
-
-                if !allow_replay
-                    && (has_consumed_offset && polled_messages.current_offset == consumed_offset)
-                {
-                    trace!(
-                        "No new messages to consume in partition ID: {partition_id}, topic: {topic_id}, stream: {stream_id}, consumer: {consumer}"
+                    info!(
+                        "Rejoining consumer group: {consumer_name} for stream: {stream_id}, topic: {topic_id}..."
                     );
-                    if auto_commit_enabled && stored_offset < consumed_offset {
-                        trace!(
-                            "Auto-committing the offset: {consumed_offset} in partition ID: {partition_id}, topic: {topic_id}, stream: {stream_id}, consumer: {consumer}"
+                    if let Err(error) = Self::initialize_consumer_group(
+                        client.clone(),
+                        create_consumer_group_if_not_exists,
+                        stream_id.clone(),
+                        topic_id.clone(),
+                        consumer.clone(),
+                        &consumer_name,
+                        joined_consumer_group.clone(),
+                    )
+                    .await
+                    {
+                        error!(
+                            "Failed to join consumer group: {consumer_name} for stream: {stream_id}, topic: {topic_id}. {error}"
                         );
-                        client
-                            .read()
-                            .await
-                            .store_consumer_offset(
-                                &consumer,
-                                &stream_id,
-                                &topic_id,
-                                Some(partition_id),
-                                consumed_offset,
-                            )
-                            .await?;
-                        if let Some(stored_offset_entry) = last_stored_offset.get(&partition_id) {
-                            stored_offset_entry.store(consumed_offset, ORDERING);
-                        } else {
-                            last_stored_offset
-                                .insert(partition_id, AtomicU64::new(consumed_offset));
-                        }
+                        continue;
                     }
-
-                    return Ok(PolledMessages {
-                        messages: vec![],
-                        current_offset: polled_messages.current_offset,
-                        partition_id,
-                        count: 0,
-                    });
+                    info!(
+                        "Rejoined consumer group: {consumer_name} for stream: {stream_id}, topic: {topic_id}"
+                    );
+                    can_poll.store(true, ORDERING);
                 }
-
-                return Ok(polled_messages);
+                DiagnosticEvent::SignedOut => {
+                    joined_consumer_group.store(false, ORDERING);
+                    can_poll.store(false, ORDERING);
+                }
             }
-
-            let error = polled_messages.unwrap_err();
-            error!("Failed to poll messages: {error}");
-            if matches!(
-                error,
-                IggyError::Disconnected | IggyError::Unauthenticated | IggyError::StaleClient
-            ) {
-                trace!("Retrying to poll messages in {retry_interval}...");
-                sleep(retry_interval.get_duration()).await;
-            }
-            Err(error)
         }
     }
 
-    async fn wait_before_polling(interval: u64, last_sent_at: u64) {
+    #[maybe_async::maybe_async]
+    async fn wait_before_polling(interval: u64, last_sent_at: u64, rt: Arc<R>) {
         if interval == 0 {
             return;
         }
@@ -774,7 +696,7 @@ impl IggyConsumer {
             warn!(
                 "Returned monotonic time went backwards, now < last_sent_at: ({now} < {last_sent_at})"
             );
-            sleep(Duration::from_micros(interval)).await;
+            rt.sleep(IggyDuration::from(interval)).await;
             return;
         }
 
@@ -788,9 +710,10 @@ impl IggyConsumer {
         trace!(
             "Waiting for {remaining} microseconds before polling messages... {interval} - {elapsed} = {remaining}"
         );
-        sleep(Duration::from_micros(remaining)).await;
+        rt.sleep(IggyDuration::from(remaining)).await;
     }
 
+    #[maybe_async::maybe_async]
     async fn initialize_consumer_group(
         client: IggySharedMut<ClientWrapper>,
         create_consumer_group_if_not_exists: bool,
@@ -865,6 +788,74 @@ impl IggyConsumer {
         );
         Ok(())
     }
+
+    #[inline]
+    fn update_last_consumed_offset(
+        last_consumed_offsets: &Arc<DashMap<u32, AtomicU64>>,
+        partition_id: u32,
+        offset: u64,
+    ) {
+        if let Some(entry) = last_consumed_offsets.get(&partition_id) {
+            entry.store(offset, ORDERING);
+        } else {
+            last_consumed_offsets.insert(partition_id, AtomicU64::new(offset));
+        }
+    }
+
+    #[inline]
+    fn update_current_offset(
+        current_offsets: &Arc<DashMap<u32, AtomicU64>>,
+        partition_id: u32,
+        offset: u64,
+    ) {
+        if let Some(entry) = current_offsets.get(&partition_id) {
+            entry.store(offset, ORDERING);
+        } else {
+            current_offsets.insert(partition_id, AtomicU64::new(offset));
+        }
+    }
+
+    #[inline]
+    fn get_current_offset(
+        current_offsets: &Arc<DashMap<u32, AtomicU64>>,
+        partition_id: u32,
+    ) -> u64 {
+        current_offsets
+            .get(&partition_id)
+            .map_or(0, |entry| entry.load(ORDERING))
+    }
+
+    #[inline]
+    fn should_store_offset(
+        store_after_every_nth_message: u64,
+        store_offset_after_each_message: bool,
+        store_offset_after_all_messages: bool,
+        message_offset: u64,
+        buffered_messages_empty: bool,
+    ) -> bool {
+        (store_after_every_nth_message > 0 && message_offset % store_after_every_nth_message == 0)
+            || store_offset_after_each_message
+            || (store_offset_after_all_messages && buffered_messages_empty)
+    }
+
+    fn decrypt_messages(
+        messages: &mut [IggyMessage],
+        encryptor: &EncryptorKind,
+        partition_id: u32,
+    ) -> Result<(), IggyError> {
+        for message in messages {
+            let payload = encryptor.decrypt(&message.payload).inspect_err(|_| {
+                error!(
+                    "Failed to decrypt the message payload at offset: {}, partition ID: {}",
+                    message.header.offset, partition_id
+                );
+            })?;
+
+            message.payload = bytes::Bytes::from(payload);
+            message.header.payload_length = message.payload.len() as u32;
+        }
+        Ok(())
+    }
 }
 
 pub struct ReceivedMessage {
@@ -880,143 +871,5 @@ impl ReceivedMessage {
             current_offset,
             partition_id,
         }
-    }
-}
-
-impl Stream for IggyConsumer {
-    type Item = Result<ReceivedMessage, IggyError>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let partition_id = self.current_partition_id.load(ORDERING);
-        if let Some(message) = self.buffered_messages.pop_front() {
-            {
-                if let Some(last_consumed_offset_entry) =
-                    self.last_consumed_offsets.get(&partition_id)
-                {
-                    last_consumed_offset_entry.store(message.header.offset, ORDERING);
-                } else {
-                    self.last_consumed_offsets
-                        .insert(partition_id, AtomicU64::new(message.header.offset));
-                }
-
-                if (self.store_after_every_nth_message > 0
-                    && message.header.offset % self.store_after_every_nth_message == 0)
-                    || self.store_offset_after_each_message
-                {
-                    self.send_store_offset(partition_id, message.header.offset);
-                }
-            }
-
-            if self.buffered_messages.is_empty() {
-                if self.polling_strategy.kind == PollingKind::Offset {
-                    self.polling_strategy = PollingStrategy::offset(message.header.offset + 1);
-                }
-
-                if self.store_offset_after_all_messages {
-                    self.send_store_offset(partition_id, message.header.offset);
-                }
-            }
-
-            let current_offset;
-            if let Some(current_offset_entry) = self.current_offsets.get(&partition_id) {
-                current_offset = current_offset_entry.load(ORDERING);
-            } else {
-                current_offset = 0;
-            }
-
-            return Poll::Ready(Some(Ok(ReceivedMessage::new(
-                message,
-                current_offset,
-                partition_id,
-            ))));
-        }
-
-        if self.poll_future.is_none() {
-            let future = self.create_poll_messages_future();
-            self.poll_future = Some(Box::pin(future));
-        }
-
-        while let Some(future) = self.poll_future.as_mut() {
-            match future.poll_unpin(cx) {
-                Poll::Ready(Ok(mut polled_messages)) => {
-                    let partition_id = polled_messages.partition_id;
-                    self.current_partition_id.store(partition_id, ORDERING);
-                    if polled_messages.messages.is_empty() {
-                        self.poll_future = Some(Box::pin(self.create_poll_messages_future()));
-                    } else {
-                        if let Some(ref encryptor) = self.encryptor {
-                            for message in &mut polled_messages.messages {
-                                let payload = encryptor.decrypt(&message.payload);
-                                if let Err(error) = payload {
-                                    self.poll_future = None;
-                                    error!(
-                                        "Failed to decrypt the message payload at offset: {}, partition ID: {}",
-                                        message.header.offset, partition_id
-                                    );
-                                    return Poll::Ready(Some(Err(error)));
-                                }
-
-                                let payload = payload.unwrap();
-                                message.payload = Bytes::from(payload);
-                                message.header.payload_length = message.payload.len() as u32;
-                            }
-                        }
-
-                        if let Some(current_offset_entry) = self.current_offsets.get(&partition_id)
-                        {
-                            current_offset_entry.store(polled_messages.current_offset, ORDERING);
-                        } else {
-                            self.current_offsets.insert(
-                                partition_id,
-                                AtomicU64::new(polled_messages.current_offset),
-                            );
-                        }
-
-                        let message = polled_messages.messages.remove(0);
-                        self.buffered_messages.extend(polled_messages.messages);
-
-                        if self.polling_strategy.kind == PollingKind::Offset {
-                            self.polling_strategy =
-                                PollingStrategy::offset(message.header.offset + 1);
-                        }
-
-                        if let Some(last_consumed_offset_entry) =
-                            self.last_consumed_offsets.get(&partition_id)
-                        {
-                            last_consumed_offset_entry.store(message.header.offset, ORDERING);
-                        } else {
-                            self.last_consumed_offsets
-                                .insert(partition_id, AtomicU64::new(message.header.offset));
-                        }
-
-                        if (self.store_after_every_nth_message > 0
-                            && message.header.offset % self.store_after_every_nth_message == 0)
-                            || self.store_offset_after_each_message
-                            || (self.store_offset_after_all_messages
-                                && self.buffered_messages.is_empty())
-                        {
-                            self.send_store_offset(
-                                polled_messages.partition_id,
-                                message.header.offset,
-                            );
-                        }
-
-                        self.poll_future = None;
-                        return Poll::Ready(Some(Ok(ReceivedMessage::new(
-                            message,
-                            polled_messages.current_offset,
-                            polled_messages.partition_id,
-                        ))));
-                    }
-                }
-                Poll::Ready(Err(err)) => {
-                    self.poll_future = None;
-                    return Poll::Ready(Some(Err(err)));
-                }
-                Poll::Pending => return Poll::Pending,
-            }
-        }
-
-        Poll::Pending
     }
 }

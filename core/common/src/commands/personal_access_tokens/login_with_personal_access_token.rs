@@ -20,11 +20,11 @@ use crate::BytesSerializable;
 use crate::Validatable;
 use crate::defaults::*;
 use crate::error::IggyError;
+use crate::wire::auth::{decode_pat_auth, encode_pat_auth};
 use crate::{Command, LOGIN_WITH_PERSONAL_ACCESS_TOKEN_CODE};
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
-use std::str::from_utf8;
 
 /// `LoginWithPersonalAccessToken` command is used to login the user with a personal access token, instead of the username and password.
 /// It has additional payload:
@@ -61,28 +61,14 @@ impl Validatable<IggyError> for LoginWithPersonalAccessToken {
 
 impl BytesSerializable for LoginWithPersonalAccessToken {
     fn to_bytes(&self) -> Bytes {
-        let mut bytes = BytesMut::with_capacity(5 + self.token.len());
-        #[allow(clippy::cast_possible_truncation)]
-        bytes.put_u8(self.token.len() as u8);
-        bytes.put_slice(self.token.as_bytes());
-        bytes.freeze()
+        // Delegate to wire::auth module for centralized binary protocol handling
+        encode_pat_auth(&self.token)
     }
 
     fn from_bytes(bytes: Bytes) -> Result<LoginWithPersonalAccessToken, IggyError> {
-        if bytes.len() < 4 {
-            return Err(IggyError::InvalidCommand);
-        }
-
-        let token_length = bytes[0];
-        let token = from_utf8(&bytes[1..1 + token_length as usize])
-            .map_err(|_| IggyError::InvalidUtf8)?
-            .to_string();
-        if token.len() != token_length as usize {
-            return Err(IggyError::InvalidCommand);
-        }
-
-        let command = LoginWithPersonalAccessToken { token };
-        Ok(command)
+        // Delegate to wire::auth module for centralized binary protocol handling
+        let token = decode_pat_auth(bytes)?;
+        Ok(LoginWithPersonalAccessToken { token })
     }
 }
 
@@ -95,6 +81,8 @@ impl Display for LoginWithPersonalAccessToken {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bytes::{BufMut, BytesMut};
+    use std::str::from_utf8;
 
     #[test]
     fn should_be_serialized_as_bytes() {

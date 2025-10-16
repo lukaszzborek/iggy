@@ -17,7 +17,6 @@
  */
 
 use crate::prelude::IggyClient;
-use async_trait::async_trait;
 use bytes::Bytes;
 use iggy_binary_protocol::MessageClient;
 use iggy_common::locking::IggySharedMutFn;
@@ -25,7 +24,7 @@ use iggy_common::{
     Consumer, Identifier, IggyError, IggyMessage, Partitioning, PolledMessages, PollingStrategy,
 };
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl MessageClient for IggyClient {
     async fn poll_messages(
         &self,

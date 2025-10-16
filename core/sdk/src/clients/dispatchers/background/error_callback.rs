@@ -15,6 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 use iggy_common::{Identifier, IggyError, IggyMessage, Partitioning};
 use std::fmt::Debug;
 use std::pin::Pin;

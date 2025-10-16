@@ -27,25 +27,38 @@ documentation = "https://iggy.apache.org/docs"
 repository = "https://github.com/apache/iggy"
 readme = "../../README.md"
 
+[package.metadata.cargo-machete]
+ignored = ["async-trait"]
+
 [features]
-default = ["tokio_lock"]
-tokio_lock = []
+default = []
+async = ["tokio_lock", "dep:futures-core", "dep:async-trait"]
+sync = ["std_sync_lock", "dep:crossbeam-channel"]
+
+tokio_lock = ["dep:tokio"]
 fast_async_lock = ["dep:fast-async-mutex"]
+std_sync_lock = []
 
 [dependencies]
 aes-gcm = { workspace = true }
 ahash = { workspace = true }
+async-broadcast = { workspace = true }
+async-trait = { workspace = true, optional = true }
 base64 = { workspace = true }
 bon = { workspace = true }
 byte-unit = { workspace = true }
 bytes = { workspace = true }
+cfg-if = "1.0.3"
 chrono = { workspace = true }
 clap = { workspace = true }
 comfy-table = { workspace = true }
 crc32fast = { workspace = true }
+crossbeam-channel = { version = "0.5.14", optional = true }
 derive_more = { workspace = true }
 fast-async-mutex = { version = "0.6.7", optional = true }
+futures-core = { version = "0.3.31", optional = true }
 humantime = { workspace = true }
+maybe-async = { workspace = true }
 rcgen = "0.14.3"
 rustls = { workspace = true }
 serde = { workspace = true }
@@ -53,5 +66,5 @@ serde_json = { workspace = true }
 serde_with = { workspace = true, features = ["base64"] }
 strum = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, optional = true }
 tracing = { workspace = true }

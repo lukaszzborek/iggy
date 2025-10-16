@@ -16,6 +16,12 @@
  * under the License.
  */
 
+// Sync mode generates some warnings from maybe_async transformation
+#![cfg_attr(
+    feature = "sync",
+    allow(clippy::too_many_arguments, unused, clippy::let_unit_value,)
+)]
+
 pub mod cli;
 mod client;
 mod utils;

@@ -15,11 +15,9 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
-use async_trait::async_trait;
 use iggy_common::IggyError;
 
-#[async_trait]
+#[async_trait::async_trait]
 pub trait ConnectionStream {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, IggyError>;
     async fn write(&mut self, buf: &[u8]) -> Result<(), IggyError>;

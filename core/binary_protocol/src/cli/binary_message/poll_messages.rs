@@ -19,13 +19,15 @@
 use crate::Client;
 use crate::cli::cli_command::{CliCommand, PRINT_TARGET};
 use anyhow::Context;
-use async_trait::async_trait;
 use comfy_table::{Cell, CellAlignment, Row, Table};
 use iggy_common::{
     BytesSerializable, Consumer, HeaderKey, HeaderKind, HeaderValue, Identifier, IggyByteSize,
     IggyDuration, IggyMessage, IggyTimestamp, PollMessages, PollingStrategy, Sizeable,
 };
 use std::collections::{HashMap, HashSet};
+#[cfg(feature = "sync")]
+use std::io::Write;
+#[cfg(not(feature = "sync"))]
 use tokio::io::AsyncWriteExt;
 use tracing::{Level, event};
 
@@ -160,7 +162,7 @@ impl PollMessagesCmd {
     }
 }
 
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 impl CliCommand for PollMessagesCmd {
     fn explain(&self) -> String {
         format!(
@@ -215,12 +217,25 @@ impl CliCommand for PollMessagesCmd {
             event!(target: PRINT_TARGET, Level::INFO, "Storing messages to {output_file} binary file");
 
             let mut saved_size = IggyByteSize::default();
-            let mut file = tokio::fs::OpenOptions::new()
-                .append(true)
-                .create(true)
-                .open(output_file)
-                .await
-                .with_context(|| format!("Problem opening file for writing: {output_file}"))?;
+
+            #[cfg(not(feature = "sync"))]
+            let mut file = {
+                tokio::fs::OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .open(output_file)
+                    .await
+                    .with_context(|| format!("Problem opening file for writing: {output_file}"))?
+            };
+
+            #[cfg(feature = "sync")]
+            let mut file = {
+                std::fs::OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .open(output_file)
+                    .with_context(|| format!("Problem opening file for writing: {output_file}"))?
+            };
 
             for message in polled_messages.messages.iter() {
                 let message = message.to_bytes();

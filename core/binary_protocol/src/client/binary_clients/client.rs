@@ -20,15 +20,13 @@ use crate::{
     ConsumerGroupClient, ConsumerOffsetClient, MessageClient, PartitionClient,
     PersonalAccessTokenClient, SegmentClient, StreamClient, SystemClient, TopicClient, UserClient,
 };
-use async_broadcast::Receiver;
-use async_trait::async_trait;
-use iggy_common::{DiagnosticEvent, IggyError};
+use iggy_common::{DiagnosticEvent, IggyError, broadcast::Recv};
 use std::fmt::Debug;
 
 /// The client trait which is the main interface to the Iggy server.
 /// It consists of multiple modules, each of which is responsible for a specific set of commands.
 /// Except the ping, login and get me, all the other methods require authentication.
-#[async_trait]
+#[maybe_async::maybe_async(Send)]
 pub trait Client:
     SystemClient
     + UserClient
@@ -55,5 +53,5 @@ pub trait Client:
     async fn shutdown(&self) -> Result<(), IggyError>;
 
     /// Subscribe to diagnostic events.
-    async fn subscribe_events(&self) -> Receiver<DiagnosticEvent>;
+    async fn subscribe_events(&self) -> Recv<DiagnosticEvent>;
 }
