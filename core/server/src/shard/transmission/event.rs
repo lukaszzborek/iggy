@@ -12,9 +12,11 @@ use iggy_common::{
     UserStatus,
 };
 use std::net::SocketAddr;
+use strum::Display;
 
 #[allow(clippy::large_enum_variant)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Display)]
+#[strum(serialize_all = "PascalCase")]
 pub enum ShardEvent {
     FlushUnsavedBuffer {
         stream_id: Identifier,

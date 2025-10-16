@@ -135,7 +135,7 @@ pub async fn spawn_quic_server(
                 protocol: iggy_common::TransportProtocol::Quic,
                 address: actual_addr,
             };
-            shard.broadcast_event_to_all_shards(event).await;
+            shard.broadcast_event_to_all_shards(event).await?;
         }
     } else {
         shard.quic_bound_address.set(Some(actual_addr));

@@ -36,7 +36,7 @@ use crate::{
             message::{ShardMessage, ShardRequest, ShardRequestPayload, ShardSendRequestResult},
         },
     },
-    shard_error, shard_info,
+    shard_error, shard_info, shard_warn,
     slab::{streams::Streams, traits_ext::EntityMarker, users::Users},
     state::file::FileState,
     streaming::{
@@ -49,6 +49,7 @@ use builder::IggyShardBuilder;
 use compio::io::AsyncWriteAtExt;
 use dashmap::DashMap;
 use error_set::ErrContext;
+use futures::future::join_all;
 use hash32::{Hasher, Murmur3Hasher};
 use iggy_common::{EncryptorKind, Identifier, IggyError, TransportProtocol};
 use std::hash::Hasher as _;
@@ -64,6 +65,7 @@ use transmission::connector::{Receiver, ShardConnector, StopReceiver};
 
 pub const COMPONENT: &str = "SHARD";
 pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
+pub const BROADCAST_TIMEOUT: Duration = Duration::from_secs(20);
 
 pub(crate) struct Shard {
     id: u16,
@@ -86,7 +88,7 @@ impl Shard {
         //TODO: Fixme
         let response = receiver.recv().await.map_err(|err| {
             error!("Failed to receive response from shard: {err}");
-            IggyError::ShardCommunicationError(self.id)
+            IggyError::ShardCommunicationError
         })?;
         Ok(response)
     }
@@ -672,7 +674,9 @@ impl IggyShard {
                 Ok(())
             }
             ShardEvent::CreatedTopic2 { stream_id, topic } => {
-                let _topic_id = self.create_topic2_bypass_auth(&stream_id, topic);
+                let topic_id_from_event = topic.id();
+                let topic_id = self.create_topic2_bypass_auth(&stream_id, topic.clone());
+                assert_eq!(topic_id, topic_id_from_event);
                 Ok(())
             }
             ShardEvent::CreatedPartitions2 {
@@ -898,59 +902,68 @@ impl IggyShard {
         }
     }
 
-    pub async fn broadcast_event_to_all_shards(&self, event: ShardEvent) -> Vec<ShardResponse> {
-        let mut responses = Vec::with_capacity(self.get_available_shards_count() as usize);
-        for maybe_receiver in self
+    pub async fn broadcast_event_to_all_shards(&self, event: ShardEvent) -> Result<(), IggyError> {
+        if self.is_shutting_down() {
+            shard_info!(
+                self.id,
+                "Skipping broadcast during shutdown for event: {}",
+                event
+            );
+            return Ok(());
+        }
+
+        let event_type = event.to_string();
+        let futures = self
             .shards
             .iter()
-            .filter_map(|shard| {
-                if shard.id != self.id {
-                    Some(shard.connection.clone())
-                } else {
-                    None
-                }
-            })
-            .map(|conn| {
-                // TODO: Fixme, maybe we should send response_sender
-                // and propagate errors back.
+            .filter(|s| s.id != self.id)
+            .map(|shard| {
                 let event = event.clone();
-                /*
-                if matches!(
-                    &event,
-                    ShardEvent::CreatedStream2 { .. }
-                        | ShardEvent::DeletedStream2 { .. }
-                        | ShardEvent::CreatedTopic2 { .. }
-                        | ShardEvent::DeletedTopic2 { .. }
-                        | ShardEvent::UpdatedTopic2 { .. }
-                        | ShardEvent::CreatedPartitions2 { .. }
-                        | ShardEvent::DeletedPartitions2 { .. }
-                        | ShardEvent::CreatedConsumerGroup2 { .. }
-                        | ShardEvent::CreatedPersonalAccessToken { .. }
-                        | ShardEvent::DeletedConsumerGroup2 { .. }
-                ) {
-                */
-                let (sender, receiver) = async_channel::bounded(1);
-                conn.send(ShardFrame::new(event.into(), Some(sender.clone())));
-                Some(receiver.clone())
-                /*
-                } else {
-                    conn.send(ShardFrame::new(event.into(), None));
-                    None
+                let conn = shard.connection.clone();
+                let shard_id = shard.id;
+                let self_id = self.id;
+                let event_type = event_type.clone();
+
+                async move {
+                    let (sender, receiver) = async_channel::bounded(1);
+                    conn.send(ShardFrame::new(ShardMessage::Event(event), Some(sender)));
+
+                    match compio::time::timeout(BROADCAST_TIMEOUT, receiver.recv()).await {
+                        Ok(Ok(_)) => Ok(()),
+                        Ok(Err(e)) => {
+                            shard_warn!(
+                                self_id,
+                                "Broadcast to shard {} failed for event {}: channel error: {}",
+                                shard_id, event_type, e
+                            );
+                            Err(())
+                        }
+                        Err(_) => {
+                            shard_warn!(
+                                self_id,
+                                "Broadcast to shard {} failed for event {}: timeout waiting for response after {:?}",
+                                shard_id, event_type,
+                                BROADCAST_TIMEOUT
+                            );
+                            Err(())
+                        }
+                    }
                 }
-                */
             })
-        {
-            match maybe_receiver {
-                Some(receiver) => {
-                    let response = receiver.recv().await.unwrap();
-                    responses.push(response);
-                }
-                None => {
-                    responses.push(ShardResponse::Event);
-                }
-            }
+            .collect::<Vec<_>>();
+
+        if futures.is_empty() {
+            return Ok(());
         }
-        responses
+
+        let results = join_all(futures).await;
+        let has_failures = results.iter().any(|r| r.is_err());
+
+        if has_failures {
+            Err(IggyError::ShardCommunicationError)
+        } else {
+            Ok(())
+        }
     }
 
     pub fn add_active_session(&self, session: Rc<Session>) {

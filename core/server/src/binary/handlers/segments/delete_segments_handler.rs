@@ -19,6 +19,7 @@
 use crate::binary::command::{BinaryServerCommand, ServerCommand, ServerCommandHandler};
 use crate::binary::handlers::utils::receive_and_validate;
 use crate::binary::{handlers::partitions::COMPONENT, sender::SenderKind};
+
 use crate::shard::IggyShard;
 use crate::shard::transmission::event::ShardEvent;
 use crate::state::command::EntryCommand;
@@ -68,7 +69,7 @@ impl ServerCommandHandler for DeleteSegments {
             partition_id: self.partition_id as usize,
             segments_count: self.segments_count,
         };
-        let _responses = shard.broadcast_event_to_all_shards(event).await;
+        shard.broadcast_event_to_all_shards(event).await?;
 
         shard
             .state

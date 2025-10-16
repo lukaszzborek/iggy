@@ -16,20 +16,19 @@
  * under the License.
  */
 
-use std::rc::Rc;
-
 use crate::binary::command::{BinaryServerCommand, ServerCommand, ServerCommandHandler};
 use crate::binary::handlers::utils::receive_and_validate;
 use crate::binary::mapper;
 use crate::binary::{handlers::users::COMPONENT, sender::SenderKind};
 use crate::shard::IggyShard;
 use crate::shard::transmission::event::ShardEvent;
-use crate::shard_info;
 use crate::streaming::session::Session;
+use crate::{shard_info, shard_warn};
 use anyhow::Result;
 use error_set::ErrContext;
 use iggy_common::IggyError;
 use iggy_common::login_user::LoginUser;
+use std::rc::Rc;
 use tracing::{debug, instrument};
 
 impl ServerCommandHandler for LoginUser {
@@ -45,6 +44,11 @@ impl ServerCommandHandler for LoginUser {
         session: &Rc<Session>,
         shard: &Rc<IggyShard>,
     ) -> Result<(), IggyError> {
+        if shard.is_shutting_down() {
+            shard_warn!(shard.id, "Rejecting login request during shutdown");
+            return Err(IggyError::Disconnected);
+        }
+
         debug!("session: {session}, command: {self}");
         let LoginUser {
             username, password, ..
@@ -70,7 +74,7 @@ impl ServerCommandHandler for LoginUser {
             password,
         };
         // Broadcast the event to all shards.
-        let _responses = shard.broadcast_event_to_all_shards(event).await;
+        shard.broadcast_event_to_all_shards(event).await?;
 
         let identity_info = mapper::map_identity_info(user.id);
         sender.send_ok_response(&identity_info).await?;

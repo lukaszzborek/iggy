@@ -79,7 +79,7 @@ pub(crate) async fn start(
                 protocol: TransportProtocol::Tcp,
                 address: actual_addr,
             };
-            shard.broadcast_event_to_all_shards(event).await;
+            shard.broadcast_event_to_all_shards(event).await?;
         }
     }
 

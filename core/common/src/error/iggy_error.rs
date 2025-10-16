@@ -485,8 +485,8 @@ pub enum IggyError {
 
     #[error("Shard not found for stream ID: {0}, topic ID: {1}, partition ID: {2}")]
     ShardNotFound(usize, usize, usize) = 11000,
-    #[error("Shard communication error, shard ID: {0}")]
-    ShardCommunicationError(u16) = 11001,
+    #[error("Shard communication error")]
+    ShardCommunicationError = 11001,
 
     #[error("Cannot bind to socket with addr: {0}")]
     CannotBindToSocket(String) = 12000,

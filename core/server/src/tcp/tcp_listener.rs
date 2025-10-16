@@ -18,6 +18,7 @@
 
 use crate::binary::sender::SenderKind;
 use crate::configs::tcp::TcpSocketConfig;
+
 use crate::shard::IggyShard;
 use crate::shard::task_registry::ShutdownToken;
 use crate::shard::transmission::event::ShardEvent;
@@ -111,7 +112,7 @@ pub async fn start(
                 protocol: TransportProtocol::Tcp,
                 address: actual_addr,
             };
-            shard.broadcast_event_to_all_shards(event).await;
+            shard.broadcast_event_to_all_shards(event).await?;
         }
     }
 
@@ -148,8 +149,9 @@ async fn accept_loop(
                         shard_clone.add_active_session(session.clone());
                         // Broadcast session to all shards.
                         let event = ShardEvent::NewSession { address, transport };
-                        // TODO: Fixme look inside of broadcast_event_to_all_shards method.
-                        let _responses = shard_clone.broadcast_event_to_all_shards(event).await;
+                        if let Err(err) = shard_clone.broadcast_event_to_all_shards(event).await {
+                            shard_error!(shard.id, "Failed to broadcast NewSession: {:?}", err);
+                        }
 
                         let client_id = session.client_id;
                         let user_id = session.get_user_id();
@@ -168,7 +170,9 @@ async fn accept_loop(
                             }
                             registry_clone.remove_connection(&client_id);
                             let event = ShardEvent::ClientDisconnected { client_id, user_id };
-                            let _responses = shard_for_conn.broadcast_event_to_all_shards(event).await;
+                            if let Err(err) = shard_for_conn.broadcast_event_to_all_shards(event).await {
+                                shard_error!(shard_for_conn.id, "Failed to broadcast ClientDisconnected: {:?}", err);
+                            }
 
                             if let Err(error) = sender.shutdown().await {
                                 shard_error!(shard.id, "Failed to shutdown TCP stream for client: {}, address: {}. {}", client_id, address, error);

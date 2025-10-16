@@ -153,6 +153,7 @@ impl Users {
                     .ok_or_else(|| IggyError::ResourceNotFound(username.to_string()))?
             }
         };
+
         let old_username = {
             let users = self.users.borrow();
             let user = users
@@ -160,15 +161,18 @@ impl Users {
                 .ok_or_else(|| IggyError::ResourceNotFound(identifier.to_string()))?;
             user.username.clone()
         };
+
         if old_username == new_username {
             return Ok(());
         }
+
         tracing::trace!(
             "Updating username: '{}' → '{}' for user ID: {}",
             old_username,
             new_username,
             id
         );
+
         {
             let mut users = self.users.borrow_mut();
             let user = users
@@ -176,9 +180,11 @@ impl Users {
                 .ok_or_else(|| IggyError::ResourceNotFound(identifier.to_string()))?;
             user.username = new_username.clone();
         }
+
         let mut index = self.index.borrow_mut();
         index.remove(&old_username);
         index.insert(new_username, id);
+
         Ok(())
     }
 }
