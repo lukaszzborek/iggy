@@ -450,7 +450,15 @@ impl IggyShard {
     pub async fn trigger_shutdown(&self) -> bool {
         self.is_shutting_down.store(true, Ordering::SeqCst);
         debug!("Shard {} shutdown state set", self.id);
-        self.task_registry.graceful_shutdown(SHUTDOWN_TIMEOUT).await
+        let shutdown_success = self.task_registry.graceful_shutdown(SHUTDOWN_TIMEOUT).await;
+
+        // Clear all wakers from shard connectors to prevent cross-thread drops
+        // of SendWrapper types that may be contained in the wakers
+        for shard in &self.shards {
+            shard.connection.clear_waker();
+        }
+
+        shutdown_success
     }
 
     pub fn get_available_shards_count(&self) -> u32 {

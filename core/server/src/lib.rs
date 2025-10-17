@@ -35,6 +35,7 @@ pub mod http;
 pub mod io;
 pub mod log;
 pub mod quic;
+pub mod run_server;
 pub mod server_error;
 pub mod shard;
 pub mod slab;

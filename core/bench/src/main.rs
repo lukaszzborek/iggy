@@ -66,16 +66,16 @@ async fn main() -> Result<(), IggyError> {
         let file_appender = tracing_appender::rolling::never(benchmark_dir, "bench.log");
         let file_layer = fmt::layer().with_ansi(false).with_writer(file_appender);
 
-        tracing_subscriber::registry()
+        let _ = tracing_subscriber::registry()
             .with(env_filter)
             .with(stdout_layer)
             .with(file_layer)
-            .init();
+            .try_init();
     } else {
-        tracing_subscriber::registry()
+        let _ = tracing_subscriber::registry()
             .with(env_filter)
             .with(stdout_layer)
-            .init();
+            .try_init();
     }
 
     let benchmark_runner = BenchmarkRunner::new(args);

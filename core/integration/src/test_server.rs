@@ -16,25 +16,34 @@
  * under the License.
  */
 
-use assert_cmd::prelude::CommandCargoExt;
 use async_trait::async_trait;
 use derive_more::Display;
 use futures::executor::block_on;
 use iggy::prelude::UserStatus::Active;
 use iggy::prelude::*;
 use iggy_common::TransportProtocol;
-use rand::Rng;
+use server::args::Args;
 use server::configs::config_provider::{ConfigProvider, FileConfigProvider};
+use server::configs::server::ServerConfig;
+use server::run_server::{ServerHandle, run_server};
 use std::collections::HashMap;
 use std::fs;
-use std::fs::{File, OpenOptions};
-use std::io::Write;
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::thread::{available_parallelism, panicking, sleep};
+use std::thread::{JoinHandle, sleep};
 use std::time::Duration;
-use uuid::Uuid;
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
+
+// Initialize tracing once for all tests using ctor
+// This avoids "global default subscriber already initialized" errors
+#[ctor::ctor]
+fn init_test_tracing() {
+    // Use test_writer() to respect --nocapture flag
+    let _ = tracing_subscriber::registry()
+        .with(fmt::layer().with_test_writer())
+        .with(EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new("INFO")))
+        .try_init();
+}
 
 pub const SYSTEM_PATH_ENV_VAR: &str = "IGGY_SYSTEM_PATH";
 pub const TEST_VERBOSITY_ENV_VAR: &str = "IGGY_TEST_VERBOSE";
@@ -44,7 +53,6 @@ pub const IGGY_ROOT_PASSWORD_VAR: &str = "IGGY_ROOT_PASSWORD";
 const USER_PASSWORD: &str = "secret";
 const SLEEP_INTERVAL_MS: u64 = 20;
 const LOCAL_DATA_PREFIX: &str = "local_data_";
-
 const MAX_PORT_WAIT_DURATION_S: u64 = 60;
 
 #[derive(PartialEq)]
@@ -76,213 +84,164 @@ enum ServerProtocolAddr {
 
 #[derive(Debug)]
 pub struct TestServer {
-    local_data_path: String,
-    envs: HashMap<String, String>,
-    child_handle: Option<Child>,
+    config: ServerConfig,
+    server_handle: Option<ServerHandle>,
     server_addrs: Vec<ServerProtocolAddr>,
     stdout_file_path: Option<PathBuf>,
     stderr_file_path: Option<PathBuf>,
     cleanup: bool,
-    server_executable_path: Option<String>,
+    use_external_binary: bool,
+    with_default_root_credentials: bool,
+    join_handle: Option<JoinHandle<()>>,
 }
 
 impl TestServer {
-    pub fn new(
-        extra_envs: Option<HashMap<String, String>>,
+    /// Create a TestServer from a ServerConfig (primary constructor for new code)
+    pub fn from_config(
+        config: ServerConfig,
         cleanup: bool,
-        server_executable_path: Option<String>,
-        ip_kind: IpAddrKind,
+        use_external_binary: bool,
+        with_default_root_credentials: bool,
     ) -> Self {
-        let mut envs = HashMap::new();
-        if let Some(extra) = extra_envs {
-            for (key, value) in extra {
-                envs.insert(key, value);
-            }
-        }
-
-        // Randomly select 4 CPU cores to reduce interference between parallel tests
-        let cpu_allocation = match available_parallelism() {
-            Ok(parallelism) => {
-                let available_cpus = parallelism.get();
-                if available_cpus >= 4 {
-                    let mut rng = rand::thread_rng();
-                    let max_start = available_cpus - 4;
-                    let start = rng.gen_range(0..=max_start);
-                    let end = start + 4;
-                    format!("{}..{}", start, end)
-                } else {
-                    "all".to_string()
-                }
-            }
-            Err(_) => "0..4".to_string(),
-        };
-
-        envs.insert(
-            "IGGY_SYSTEM_SHARDING_CPU_ALLOCATION".to_string(),
-            cpu_allocation,
-        );
-
-        if ip_kind == IpAddrKind::V6 {
-            envs.insert(IPV6_ENV_VAR.to_string(), "true".to_string());
-        }
-
-        if !envs.contains_key(IGGY_ROOT_USERNAME_VAR) {
-            envs.insert(
-                IGGY_ROOT_USERNAME_VAR.to_string(),
-                DEFAULT_ROOT_USERNAME.to_string(),
-            );
-        }
-
-        if !envs.contains_key(IGGY_ROOT_PASSWORD_VAR) {
-            envs.insert(
-                IGGY_ROOT_PASSWORD_VAR.to_string(),
-                DEFAULT_ROOT_PASSWORD.to_string(),
-            );
-        }
-
-        // If IGGY_SYSTEM_PATH is not set, use a random path starting with "local_data_"
-        let local_data_path = if let Some(system_path) = envs.get(SYSTEM_PATH_ENV_VAR) {
-            system_path.to_string()
-        } else {
-            TestServer::get_random_path()
-        };
-
-        Self::create(
-            local_data_path,
-            envs,
-            cleanup,
-            server_executable_path,
-            ip_kind,
-        )
-    }
-
-    pub fn create(
-        local_data_path: String,
-        envs: HashMap<String, String>,
-        cleanup: bool,
-        server_executable_path: Option<String>,
-        ip_kind: IpAddrKind,
-    ) -> Self {
-        let mut server_addrs = Vec::new();
-
-        if let Some(tcp_addr) = envs.get("IGGY_TCP_ADDRESS") {
-            server_addrs.push(ServerProtocolAddr::RawTcp(tcp_addr.parse().unwrap()));
-        }
-
-        if let Some(http_addr) = envs.get("IGGY_HTTP_ADDRESS") {
-            server_addrs.push(ServerProtocolAddr::HttpTcp(http_addr.parse().unwrap()));
-        }
-
-        if let Some(quic_addr) = envs.get("IGGY_QUIC_ADDRESS") {
-            server_addrs.push(ServerProtocolAddr::QuicUdp(quic_addr.parse().unwrap()));
-        }
-
-        if server_addrs.is_empty() {
-            server_addrs = match ip_kind {
-                IpAddrKind::V6 => Self::get_server_ipv6_addrs_with_random_port(),
-                _ => Self::get_server_ipv4_addrs_with_random_port(),
-            }
-        }
-
         Self {
-            local_data_path,
-            envs,
-            child_handle: None,
-            server_addrs,
+            config,
+            server_handle: None,
+            server_addrs: Vec::new(),
             stdout_file_path: None,
             stderr_file_path: None,
             cleanup,
-            server_executable_path,
+            use_external_binary,
+            with_default_root_credentials,
+            join_handle: None,
         }
     }
 
+    /// Legacy constructor - deprecated, use TestServerBuilder instead
+    #[deprecated(note = "Use TestServerBuilder instead for cleaner configuration")]
+    pub fn new(
+        extra_envs: Option<HashMap<String, String>>,
+        cleanup: bool,
+        use_external_binary: Option<String>,
+        ip_kind: IpAddrKind,
+    ) -> Self {
+        // Use builder to create config from legacy parameters
+        use crate::test_server_builder::TestServerBuilder;
+
+        let mut builder = TestServerBuilder::new()
+            .with_cleanup(cleanup)
+            .with_external_binary(use_external_binary.is_some())
+            .with_ip_kind(ip_kind);
+
+        // Apply TCP nodelay if present in extra_envs
+        if let Some(ref envs) = extra_envs {
+            if envs.get("IGGY_TCP_SOCKET_NODELAY").map(|s| s.as_str()) == Some("true") {
+                builder = builder.with_tcp_nodelay();
+            }
+        }
+
+        builder.build()
+    }
+
     pub fn start(&mut self) {
-        self.set_server_addrs_from_env();
         self.cleanup();
 
         // Remove the config file if it exists from a previous run.
         // Without this, starting the server on existing data will not work, because
         // port detection mechanism will use port from previous runtime.
-        let config_path = format!("{}/runtime/current_config.toml", self.local_data_path);
+        let config_path = format!(
+            "{}/runtime/current_config.toml",
+            self.config.system.get_system_path()
+        );
         if Path::new(&config_path).exists() {
             fs::remove_file(&config_path).ok();
         }
 
-        let files_path = self.local_data_path.clone();
-        let mut command = if let Some(server_executable_path) = &self.server_executable_path {
-            Command::new(server_executable_path)
+        if self.use_external_binary {
+            // Old behavior - spawn external process (kept for compatibility)
+            self.start_external_process();
         } else {
-            Command::cargo_bin("iggy-server").unwrap()
-        };
-        command.env(SYSTEM_PATH_ENV_VAR, files_path);
-        command.envs(self.envs.clone());
-
-        // By default, server all logs are redirected to files,
-        // and dumped to stderr when test fails. With IGGY_TEST_VERBOSE=1
-        // logs are dumped to stdout during test execution.
-        if std::env::var(TEST_VERBOSITY_ENV_VAR).is_ok()
-            || self.envs.contains_key(TEST_VERBOSITY_ENV_VAR)
-        {
-            command.stdout(Stdio::inherit());
-            command.stderr(Stdio::inherit());
-        } else {
-            command.stdout(self.get_stdout_file());
-            self.stdout_file_path = Some(fs::canonicalize(self.get_stdout_file_path()).unwrap());
-            command.stderr(self.get_stderr_file());
-            self.stderr_file_path = Some(fs::canonicalize(self.get_stderr_file_path()).unwrap());
+            // New behavior - run server in-process
+            self.start_in_process();
         }
 
-        let child = command.spawn().unwrap();
-        self.child_handle = Some(child);
         self.wait_until_server_has_bound();
     }
 
-    pub fn stop(&mut self) {
-        #[allow(unused_mut)]
-        if let Some(mut child_handle) = self.child_handle.take() {
-            #[cfg(unix)]
-            unsafe {
-                use libc::SIGTERM;
-                use libc::kill;
-                kill(child_handle.id() as libc::pid_t, SIGTERM);
+    fn start_external_process(&mut self) {
+        // External binary mode is no longer supported by default
+        // This is kept for backward compatibility but will panic
+        panic!(
+            "External binary mode is deprecated. Use in-process mode instead or set use_external_binary to true in test setup."
+        );
+    }
+
+    fn start_in_process(&mut self) {
+        let config = self.config.clone();
+        let with_default_root_credentials = self.with_default_root_credentials;
+
+        // Use a channel to receive the ServerHandle from the server thread
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+
+        let join_handle = std::thread::Builder::new()
+            .name("iggy-test-server".to_string())
+            .spawn(move || {
+                let args = Args {
+                    config_provider: "file".to_string(),
+                    fresh: false,
+                    with_default_root_credentials,
+                    config: Some(config), // Pass config directly, no env vars needed!
+                };
+
+                // Run the server in compio runtime
+                compio::runtime::Runtime::new().unwrap().block_on(async {
+                    match run_server(args, false).await {
+                        Ok(server_handle) => {
+                            // Send the handle back to the main thread
+                            let _ = tx.send(server_handle);
+                        }
+                        Err(e) => {
+                            eprintln!("Server error: {}", e);
+                        }
+                    }
+                });
+            })
+            .expect("Failed to spawn server thread");
+
+        // Wait for the ServerHandle to be returned (with timeout)
+        // Note: The server will start asynchronously, so this just waits for the handle
+        // The actual binding happens after this, in wait_until_server_has_bound()
+        match rx.recv_timeout(Duration::from_secs(30)) {
+            Ok(handle) => {
+                self.server_handle = Some(handle);
             }
+            Err(_) => {
+                panic!("Failed to receive ServerHandle from server thread within timeout");
+            }
+        }
 
-            #[cfg(not(unix))]
-            child_handle.kill().unwrap();
+        self.join_handle = Some(join_handle);
+    }
 
-            if let Ok(output) = child_handle.wait_with_output() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                if let Some(stderr_file_path) = &self.stderr_file_path {
-                    OpenOptions::new()
-                        .append(true)
-                        .create(true)
-                        .open(stderr_file_path)
-                        .unwrap()
-                        .write_all(stderr.as_bytes())
-                        .unwrap();
-                }
-
-                if let Some(stdout_file_path) = &self.stdout_file_path {
-                    OpenOptions::new()
-                        .append(true)
-                        .create(true)
-                        .open(stdout_file_path)
-                        .unwrap()
-                        .write_all(stdout.as_bytes())
-                        .unwrap();
-                }
+    pub fn stop(&mut self) {
+        if let Some(handle) = self.server_handle.take() {
+            // Use ServerHandle to gracefully shut down the server
+            if let Err(e) = handle.shutdown() {
+                eprintln!("Error shutting down server: {}", e);
+            }
+            if let Some(join_handle) = self.join_handle.take() {
+                join_handle.join().unwrap();
             }
         }
         self.cleanup();
     }
 
     pub fn is_started(&self) -> bool {
-        self.child_handle.is_some()
+        self.server_handle.is_some()
     }
 
     pub fn pid(&self) -> u32 {
-        self.child_handle.as_ref().unwrap().id()
+        // Return current process ID for in-process server
+        std::process::id()
     }
 
     fn cleanup(&self) {
@@ -290,54 +249,17 @@ impl TestServer {
             return;
         }
 
-        if fs::metadata(&self.local_data_path).is_ok() {
-            fs::remove_dir_all(&self.local_data_path).unwrap();
-        }
-    }
-
-    fn get_server_ipv4_addrs_with_random_port() -> Vec<ServerProtocolAddr> {
-        let addr = SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 0);
-        vec![
-            ServerProtocolAddr::QuicUdp(addr),
-            ServerProtocolAddr::RawTcp(addr),
-            ServerProtocolAddr::HttpTcp(addr),
-            ServerProtocolAddr::WebSocket(addr),
-        ]
-    }
-
-    fn get_server_ipv6_addrs_with_random_port() -> Vec<ServerProtocolAddr> {
-        let addr = SocketAddr::new(Ipv6Addr::LOCALHOST.into(), 0);
-        vec![
-            ServerProtocolAddr::QuicUdp(addr),
-            ServerProtocolAddr::RawTcp(addr),
-            ServerProtocolAddr::HttpTcp(addr),
-            ServerProtocolAddr::WebSocket(addr),
-        ]
-    }
-
-    fn set_server_addrs_from_env(&mut self) {
-        for server_protocol_addr in &self.server_addrs {
-            let key = match server_protocol_addr {
-                ServerProtocolAddr::RawTcp(addr) => {
-                    ("IGGY_TCP_ADDRESS".to_string(), addr.to_string())
-                }
-                ServerProtocolAddr::HttpTcp(addr) => {
-                    ("IGGY_HTTP_ADDRESS".to_string(), addr.to_string())
-                }
-                ServerProtocolAddr::QuicUdp(addr) => {
-                    ("IGGY_QUIC_ADDRESS".to_string(), addr.to_string())
-                }
-                ServerProtocolAddr::WebSocket(addr) => {
-                    ("IGGY_WEBSOCKET_ADDRESS".to_string(), addr.to_string())
-                }
-            };
-
-            self.envs.entry(key.0).or_insert(key.1);
+        let data_path = self.config.system.get_system_path();
+        if fs::metadata(&data_path).is_ok() {
+            fs::remove_dir_all(&data_path).unwrap();
         }
     }
 
     fn wait_until_server_has_bound(&mut self) {
-        let config_path = format!("{}/runtime/current_config.toml", self.local_data_path);
+        let config_path = format!(
+            "{}/runtime/current_config.toml",
+            self.config.system.get_system_path()
+        );
         let file_config_provider = FileConfigProvider::new(config_path.clone());
 
         let max_attempts = (MAX_PORT_WAIT_DURATION_S * 1000) / SLEEP_INTERVAL_MS;
@@ -348,11 +270,6 @@ impl TestServer {
 
             for _ in 0..max_attempts {
                 if !Path::new(&config_path).exists() {
-                    if let Some(exit_status) =
-                        self.child_handle.as_mut().unwrap().try_wait().unwrap()
-                    {
-                        panic!("Server process has exited with status {exit_status}!");
-                    }
                     sleep(Duration::from_millis(SLEEP_INTERVAL_MS));
                     continue;
                 }
@@ -450,32 +367,13 @@ impl TestServer {
         }
     }
 
-    fn get_stdout_file_path(&self) -> PathBuf {
-        format!("{}_stdout.txt", self.local_data_path).into()
-    }
-
-    fn get_stderr_file_path(&self) -> PathBuf {
-        format!("{}_stderr.txt", self.local_data_path).into()
-    }
-
-    fn get_stdout_file(&self) -> File {
-        File::create(self.get_stdout_file_path()).unwrap()
-    }
-
-    fn get_stderr_file(&self) -> File {
-        File::create(self.get_stderr_file_path()).unwrap()
-    }
-
-    fn read_file_to_string(path: &str) -> String {
-        fs::read_to_string(path).unwrap()
-    }
-
     pub fn get_local_data_path(&self) -> &str {
-        &self.local_data_path
+        &self.config.system.path
     }
 
+    /// Generate a random unique path for test data
     pub fn get_random_path() -> String {
-        format!("{}{}", LOCAL_DATA_PREFIX, Uuid::now_v7().to_u128_le())
+        crate::test_server_builder::TestServerBuilder::get_random_path()
     }
 
     pub fn get_http_api_addr(&self) -> Option<String> {
@@ -535,33 +433,13 @@ impl TestServer {
 impl Drop for TestServer {
     fn drop(&mut self) {
         self.stop();
-        if panicking() {
-            if let Some(stdout_file_path) = &self.stdout_file_path {
-                eprintln!(
-                    "Iggy server stdout:\n{}",
-                    Self::read_file_to_string(stdout_file_path.to_str().unwrap())
-                );
-            }
-
-            if let Some(stderr_file_path) = &self.stderr_file_path {
-                eprintln!(
-                    "Iggy server stderr:\n{}",
-                    Self::read_file_to_string(stderr_file_path.to_str().unwrap())
-                );
-            }
-        }
-        if let Some(stdout_file_path) = &self.stdout_file_path {
-            fs::remove_file(stdout_file_path).unwrap();
-        }
-        if let Some(stderr_file_path) = &self.stderr_file_path {
-            fs::remove_file(stderr_file_path).unwrap();
-        }
     }
 }
 
 impl Default for TestServer {
     fn default() -> Self {
-        TestServer::new(None, true, None, IpAddrKind::V4)
+        use crate::test_server_builder::TestServerBuilder;
+        TestServerBuilder::new().build()
     }
 }
 

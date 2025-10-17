@@ -60,24 +60,24 @@ fn setup() {
     });
     logger.init();
 
-    // Set up a custom panic hook to catch test failures
-    let default_hook = panic::take_hook();
-    panic::set_hook(Box::new(move |info| {
-        // store failed test name
-        let thread = thread::current();
-        let thread_name = thread.name().unwrap_or(UNKNOWN_TEST_NAME);
-        let failed_tests = FAILED_TEST_CASES.clone();
-        failed_tests
-            .write()
-            .unwrap()
-            .insert(thread_name.to_string());
+    // // Set up a custom panic hook to catch test failures
+    // let default_hook = panic::take_hook();
+    // panic::set_hook(Box::new(move |info| {
+    //     // store failed test name
+    //     let thread = thread::current();
+    //     let thread_name = thread.name().unwrap_or(UNKNOWN_TEST_NAME);
+    //     let failed_tests = FAILED_TEST_CASES.clone();
+    //     failed_tests
+    //         .write()
+    //         .unwrap()
+    //         .insert(thread_name.to_string());
 
-        // If a test panics, set the failure flag to true
-        TESTS_FAILED.store(true, Ordering::SeqCst);
+    //     // If a test panics, set the failure flag to true
+    //     TESTS_FAILED.store(true, Ordering::SeqCst);
 
-        // Call the default panic hook to continue normal behavior
-        default_hook(info);
-    }));
+    //     // Call the default panic hook to continue normal behavior
+    //     default_hook(info);
+    // }));
 }
 
 struct LogWriter(Arc<RwLock<HashMap<String, Vec<u8>>>>);

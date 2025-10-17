@@ -27,7 +27,8 @@ use integration::{
     http_client::HttpClientFactory,
     quic_client::QuicClientFactory,
     tcp_client::TcpClientFactory,
-    test_server::{ClientFactory, IpAddrKind, TestServer},
+    test_server::{ClientFactory, TestServer},
+    test_server_builder::TestServerBuilder,
     websocket_client::WebSocketClientFactory,
 };
 use scenarios::{
@@ -36,8 +37,8 @@ use scenarios::{
     consumer_group_with_single_client_polling_messages_scenario, create_message_payload,
     message_headers_scenario, stream_size_validation_scenario, system_scenario, user_scenario,
 };
+use std::future::Future;
 use std::pin::Pin;
-use std::{collections::HashMap, future::Future};
 
 type ScenarioFn = fn(&dyn ClientFactory) -> Pin<Box<dyn Future<Output = ()> + '_>>;
 
@@ -78,15 +79,11 @@ fn bench_scenario() -> ScenarioFn {
 }
 
 async fn run_scenario(transport: TransportProtocol, scenario: ScenarioFn) {
-    // TODO: Need to enable `TCP_NODELAY` flag for TCP transports, due to small messages being used in the test.
-    // For some reason TCP in compio can't deal with it, but in tokio it works fine.
-    let mut extra_envs = HashMap::new();
-    extra_envs.insert(
-        "IGGY_TCP_SOCKET_OVERRIDE_DEFAULTS".to_string(),
-        "true".to_string(),
-    );
-    extra_envs.insert("IGGY_TCP_SOCKET_NODELAY".to_string(), "true".to_string());
-    let mut test_server = TestServer::new(Some(extra_envs), true, None, IpAddrKind::V4);
+    // Need to enable `TCP_NODELAY` flag for TCP transports, due to small messages being used in the test.
+    let mut test_server = TestServerBuilder::new()
+        .with_tcp_nodelay()
+        .with_cleanup(true)
+        .build();
     test_server.start();
 
     let client_factory: Box<dyn ClientFactory> = match transport {

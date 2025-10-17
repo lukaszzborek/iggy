@@ -31,4 +31,5 @@ pub mod websocket_client;
 pub mod test_mcp_server;
 #[allow(deprecated)]
 pub mod test_server;
+pub mod test_server_builder;
 pub mod test_tls_utils;

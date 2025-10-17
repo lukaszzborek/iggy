@@ -4544,6 +4544,7 @@ dependencies = [
  "tempfile",
  "test-case",
  "tokio",
+ "tracing-subscriber",
  "twox-hash",
  "uuid",
  "zip",

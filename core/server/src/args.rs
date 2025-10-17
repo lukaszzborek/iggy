@@ -16,6 +16,7 @@
  * under the License.
  */
 
+use crate::configs::server::ServerConfig;
 use clap::Parser;
 
 #[derive(Parser, Debug)]
@@ -105,4 +106,11 @@ pub struct Args {
     ///   iggy-server --with-default-root-credentials     # Use 'iggy/iggy' as root credentials
     #[arg(long, default_value_t = false, verbatim_doc_comment)]
     pub with_default_root_credentials: bool,
+
+    /// Direct configuration (used for testing, not exposed via CLI)
+    ///
+    /// When provided, this configuration will be used directly instead of loading from a file.
+    /// This is primarily used for integration tests to avoid environment variable conflicts.
+    #[arg(skip)]
+    pub config: Option<ServerConfig>,
 }

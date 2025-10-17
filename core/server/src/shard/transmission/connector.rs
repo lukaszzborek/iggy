@@ -64,6 +64,12 @@ impl<T> ShardConnector<T> {
     pub fn send(&self, data: T) {
         self.sender.send(data);
     }
+
+    /// Clear any registered wakers in the underlying channel.
+    /// This should be called during shutdown to prevent cross-thread waker drops.
+    pub fn clear_waker(&self) {
+        self.sender.channel.clear_waker();
+    }
 }
 
 pub struct Receiver<T> {
@@ -115,6 +121,12 @@ impl<T> ShardedChannel<T> {
             task_queue: AtomicUsize::new(0),
             waker,
         }
+    }
+
+    /// Clear the registered waker to prevent cross-thread drops.
+    /// This should be called during shutdown before dropping ShardConnectors.
+    pub fn clear_waker(&self) {
+        self.waker.take();
     }
 }
 

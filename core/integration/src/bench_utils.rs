@@ -18,12 +18,7 @@
 use assert_cmd::prelude::CommandCargoExt;
 use iggy::prelude::*;
 use iggy_common::TransportProtocol;
-use std::{
-    fs::{self, File, OpenOptions},
-    io::Write,
-    process::{Command, Stdio},
-    thread::panicking,
-};
+use std::process::{Command, Stdio};
 use uuid::Uuid;
 
 const BENCH_FILES_PREFIX: &str = "bench_";
@@ -38,17 +33,6 @@ pub fn run_bench_and_wait_for_finish(
     amount_of_data_to_process: IggyByteSize,
 ) {
     let mut command = Command::cargo_bin("iggy-bench").unwrap();
-
-    let mut stderr_file_path = None;
-    let mut stdout_file_path = None;
-
-    let test_verbosity_env_var = "IGGY_TEST_VERBOSE";
-    if std::env::var(test_verbosity_env_var).is_err() {
-        let stderr_file = get_random_path();
-        let stdout_file = get_random_path();
-        stderr_file_path = Some(stderr_file);
-        stdout_file_path = Some(stdout_file);
-    }
 
     // Calculate message size based on input
     let total_bytes_to_process_per_stream =
@@ -69,84 +53,31 @@ pub fn run_bench_and_wait_for_finish(
         server_addr,
     ]);
 
-    // By default, all iggy-bench logs are redirected to files,
-    // and dumped to stderr when test fails. With IGGY_TEST_VERBOSE=1
-    // logs are dumped to stdout during test execution.
-    if std::env::var(test_verbosity_env_var).is_ok() {
-        command.stdout(Stdio::inherit());
-        command.stderr(Stdio::inherit());
-    } else {
-        command.stdout(File::create(stdout_file_path.as_ref().unwrap()).unwrap());
-        stdout_file_path = Some(
-            fs::canonicalize(stdout_file_path.unwrap())
-                .unwrap()
-                .display()
-                .to_string(),
-        );
-
-        command.stderr(File::create(stderr_file_path.as_ref().unwrap()).unwrap());
-        stderr_file_path = Some(
-            fs::canonicalize(stderr_file_path.unwrap())
-                .unwrap()
-                .display()
-                .to_string(),
-        );
-    }
+    // Always pipe stdout/stderr to see real-time output
+    command.stdout(Stdio::piped());
+    command.stderr(Stdio::piped());
 
     let mut child = command.spawn().unwrap();
-    let result = child.wait().unwrap();
 
-    // Cleanup
-    if let Ok(output) = child.wait_with_output() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        if let Some(stderr_file_path) = &stderr_file_path {
-            OpenOptions::new()
-                .append(true)
-                .create(true)
-                .open(stderr_file_path)
-                .unwrap()
-                .write_all(stderr.as_bytes())
-                .unwrap();
-        }
+    // Capture output for displaying on failure
+    let output = child.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
 
-        if let Some(stdout_file_path) = &stdout_file_path {
-            OpenOptions::new()
-                .append(true)
-                .create(true)
-                .open(stdout_file_path)
-                .unwrap()
-                .write_all(stdout.as_bytes())
-                .unwrap();
-        }
-    } else {
-        panic!("Failed to get output from iggy-bench");
+    // Always print output to help with debugging
+    if !stdout.is_empty() {
+        eprintln!("=== iggy-bench stdout ===\n{}", stdout);
+    }
+    if !stderr.is_empty() {
+        eprintln!("=== iggy-bench stderr ===\n{}", stderr);
     }
 
-    if panicking() {
-        if let Some(stdout_file_path) = &stdout_file_path {
-            eprintln!(
-                "Iggy bench stdout:\n{}",
-                fs::read_to_string(stdout_file_path).unwrap()
-            );
-        }
-
-        if let Some(stderr_file_path) = &stderr_file_path {
-            eprintln!(
-                "Iggy bench stderr:\n{}",
-                fs::read_to_string(stderr_file_path).unwrap()
-            );
-        }
+    if !output.status.success() {
+        panic!(
+            "iggy-bench failed with exit code: {:?}\nSee output above for details",
+            output.status.code()
+        );
     }
-
-    if let Some(stdout_file_path) = &stdout_file_path {
-        fs::remove_file(stdout_file_path).unwrap();
-    }
-    if let Some(stderr_file_path) = &stderr_file_path {
-        fs::remove_file(stderr_file_path).unwrap();
-    }
-
-    assert!(result.success());
 }
 
 pub fn get_random_path() -> String {

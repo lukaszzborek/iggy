@@ -68,5 +68,11 @@ async fn message_pump(
         }
     }
 
+    // Explicitly drop the receiver to ensure any registered wakers in the
+    // underlying AtomicWaker are cleared on the correct thread before this
+    // task completes. This prevents cross-thread SendWrapper drops during
+    // shard shutdown.
+    drop(messages_receiver);
+
     Ok(())
 }

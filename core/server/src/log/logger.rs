@@ -100,11 +100,25 @@ impl EarlyLogDumper for Logging {
     }
 
     fn dump_to_stdout(&self) {
-        let stdout = io::stdout();
-        let mut handle = stdout.lock();
+        // Use std::io::stderr for test mode to respect --nocapture
+        // The tracing test_writer() writes to stderr which is captured by test harness
+        use std::io::IsTerminal;
         let early_logs_buffer = self.early_logs_buffer.lock().unwrap();
-        for log in early_logs_buffer.iter() {
-            handle.write_all(log.as_bytes()).unwrap();
+
+        if std::io::stderr().is_terminal() {
+            // Running as binary - use stdout
+            let stdout = io::stdout();
+            let mut handle = stdout.lock();
+            for log in early_logs_buffer.iter() {
+                handle.write_all(log.as_bytes()).unwrap();
+            }
+        } else {
+            // Running in test - use stderr (matches test_writer behavior)
+            let stderr = io::stderr();
+            let mut handle = stderr.lock();
+            for log in early_logs_buffer.iter() {
+                handle.write_all(log.as_bytes()).unwrap();
+            }
         }
     }
 }
@@ -141,7 +155,8 @@ impl Logging {
         }
     }
 
-    pub fn early_init(&mut self) {
+    /// Returns true if subscriber was successfully initialized, false if already initialized
+    pub fn early_init(&mut self) -> bool {
         // Initialize layers
         // First layer is filtering based on severity
         // Second layer will just consume drain log entries and has first layer as a dependency
@@ -176,12 +191,21 @@ impl Logging {
 
         if !self.telemetry_config.enabled {
             // This is moment when we can start logging something and not worry about losing it.
-            Registry::default()
+            // Use try_init() instead of init() to handle cases where a subscriber is already set
+            // (e.g., when running in test mode with ctor-initialized subscriber)
+            let init_result = Registry::default()
                 .with(layers)
                 .with(EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new("INFO")))
-                .init();
+                .try_init();
+
+            if init_result.is_err() {
+                info!(
+                    "Global tracing subscriber already initialized (test mode). Using existing subscriber."
+                );
+                return false;
+            }
             Self::print_build_info();
-            return;
+            return true;
         }
 
         let service_name = self.telemetry_config.service_name.to_owned();
@@ -261,13 +285,22 @@ impl Logging {
         global::set_tracer_provider(tracer_provider.clone());
         global::set_text_map_propagator(TraceContextPropagator::new());
 
-        Registry::default()
+        // Use try_init() instead of init() to handle cases where a subscriber is already set
+        let init_result = Registry::default()
             .with(layers)
             .with(OpenTelemetryTracingBridge::new(&logger_provider))
             .with(OpenTelemetryLayer::new(tracer))
             .with(EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new("INFO")))
-            .init();
+            .try_init();
+
+        if init_result.is_err() {
+            info!(
+                "Global tracing subscriber already initialized (test mode). Using existing subscriber."
+            );
+            return false;
+        }
         Self::print_build_info();
+        true
     }
 
     pub fn late_init(
@@ -296,14 +329,16 @@ impl Logging {
             .modify(|layer| *layer = filtering_level.boxed())
             .expect("Failed to modify file filtering layer");
 
-        // Initialize non-blocking stdout layer
-        let (non_blocking_stdout, stdout_guard) = tracing_appender::non_blocking(std::io::stdout());
+        // Initialize stdout layer
+        // Use test_writer() to respect Rust test harness output capture
+        // This ensures logs only appear with --nocapture or on test failure
         let stdout_layer = fmt::Layer::default()
             .with_ansi(true)
             .event_format(Self::get_log_format())
-            .with_writer(non_blocking_stdout)
+            .with_test_writer()
             .boxed();
-        self.stdout_guard = Some(stdout_guard);
+        // No guard needed for test_writer as it doesn't spawn background thread
+        self.stdout_guard = None;
 
         self.stdout_reload_handle
             .as_ref()
@@ -311,7 +346,8 @@ impl Logging {
             .modify(|layer| *layer = stdout_layer)
             .expect("Failed to modify stdout layer");
 
-        self.dump_to_stdout();
+        // Don't dump early logs to stdout here - they're already logged through tracing
+        // and will be captured appropriately by the test harness or shown in binary mode
 
         // Initialize directory and file for logs
         let base_directory = PathBuf::from(base_directory);
