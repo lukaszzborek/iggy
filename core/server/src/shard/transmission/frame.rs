@@ -20,15 +20,22 @@ use iggy_common::IggyError;
 
 use crate::{
     binary::handlers::messages::poll_messages_handler::IggyPollMetadata,
-    shard::transmission::message::ShardMessage, streaming::segments::IggyMessagesBatchSet,
+    shard::transmission::message::ShardMessage,
+    streaming::{
+        segments::IggyMessagesBatchSet, streams::stream2, topics::topic2, users::user::User,
+    },
 };
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub enum ShardResponse {
     PollMessages((IggyPollMetadata, IggyMessagesBatchSet)),
     SendMessages,
     FlushUnsavedBuffer,
     Event,
+    CreateStreamResponse(stream2::Stream),
+    CreateTopicResponse(topic2::Topic),
+    CreateUserResponse(User),
     ErrorResponse(IggyError),
 }
 

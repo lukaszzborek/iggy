@@ -17,7 +17,7 @@
  */
 
 use crate::server::scenarios::concurrent_scenario::{
-    self, ClientCount, ResourceType, ScenarioType,
+    self, ResourceType, ScenarioType, barrier_off, barrier_on,
 };
 use iggy_common::TransportProtocol;
 use integration::{
@@ -31,23 +31,23 @@ use test_case::test_matrix;
 // Tests all combinations of:
 // - Transport: TCP, HTTP, QUIC, WebSocket (4)
 // - Resource: User, Stream, Topic (3)
-// - Clients: Single, Multiple (2)
 // - Path: Hot (unique names), Cold (duplicate names) (2)
+// - Barrier: On (synchronized), Off (unsynchronized) (2)
 // Total: 4 × 3 × 2 × 2 = 48 test cases
 
 #[test_matrix(
     [tcp(), http(), quic(), websocket()],
     [user(), stream(), topic()],
-    [single_client(), multiple_clients()],
-    [hot(), cold()]
+    [hot(), cold()],
+    [barrier_on(), barrier_off()]
 )]
 #[tokio::test]
 #[parallel]
 async fn matrix(
     transport: TransportProtocol,
     resource_type: ResourceType,
-    client_count: ClientCount,
     path_type: ScenarioType,
+    use_barrier: bool,
 ) {
     let mut test_server = TestServer::default();
     test_server.start();
@@ -74,7 +74,7 @@ async fn matrix(
         }
     };
 
-    concurrent_scenario::run(&*client_factory, resource_type, client_count, path_type).await;
+    concurrent_scenario::run(&*client_factory, resource_type, path_type, use_barrier).await;
 }
 
 fn tcp() -> TransportProtocol {
@@ -103,14 +103,6 @@ fn stream() -> ResourceType {
 
 fn topic() -> ResourceType {
     ResourceType::Topic
-}
-
-fn single_client() -> ClientCount {
-    ClientCount::Single
-}
-
-fn multiple_clients() -> ClientCount {
-    ClientCount::Multiple(10)
 }
 
 fn hot() -> ScenarioType {

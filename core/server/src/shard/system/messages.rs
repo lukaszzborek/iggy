@@ -105,7 +105,7 @@ impl IggyShard {
         let request = ShardRequest::new(stream_id.clone(), topic_id.clone(), partition_id, payload);
         let message = ShardMessage::Request(request);
         match self
-            .send_request_to_shard_or_recoil(&namespace, message)
+            .send_request_to_shard_or_recoil(Some(&namespace), message)
             .await?
         {
             ShardSendRequestResult::Recoil(message) => {
@@ -214,7 +214,7 @@ impl IggyShard {
         let request = ShardRequest::new(stream_id.clone(), topic_id.clone(), partition_id, payload);
         let message = ShardMessage::Request(request);
         let (metadata, batch) = match self
-            .send_request_to_shard_or_recoil(&namespace, message)
+            .send_request_to_shard_or_recoil(Some(&namespace), message)
             .await?
         {
             ShardSendRequestResult::Recoil(message) => {
@@ -306,7 +306,7 @@ impl IggyShard {
         let request = ShardRequest::new(stream_id.clone(), topic_id.clone(), partition_id, payload);
         let message = ShardMessage::Request(request);
         match self
-            .send_request_to_shard_or_recoil(&namespace, message)
+            .send_request_to_shard_or_recoil(Some(&namespace), message)
             .await?
         {
             ShardSendRequestResult::Recoil(message) => {
