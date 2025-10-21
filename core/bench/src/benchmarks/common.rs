@@ -89,7 +89,8 @@ pub async fn init_consumer_groups(
         );
         if let Err(err) = client
             .create_consumer_group(&stream_id, &topic_id, &consumer_group_name)
-            .await {
+            .await
+        {
             error!("Error when creating consumer group {consumer_group_id}: {err}");
         }
     }

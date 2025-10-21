@@ -65,7 +65,7 @@ use transmission::connector::{Receiver, ShardConnector, StopReceiver};
 
 pub const COMPONENT: &str = "SHARD";
 pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
-pub const BROADCAST_TIMEOUT: Duration = Duration::from_secs(20);
+pub const BROADCAST_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub(crate) struct Shard {
     id: u16,
@@ -516,6 +516,120 @@ impl IggyShard {
                     .await?;
                 Ok(ShardResponse::FlushUnsavedBuffer)
             }
+            ShardRequestPayload::CreateStream { user_id, name } => {
+                assert_eq!(self.id, 0, "CreateStream should only be handled by shard0");
+
+                let session = Session::stateless(
+                    user_id,
+                    std::net::SocketAddr::new(
+                        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+                        0,
+                    ),
+                );
+
+                let stream = self.create_stream2(&session, name.clone()).await?;
+                let created_stream_id = stream.id();
+
+                let event = ShardEvent::CreatedStream2 {
+                    id: created_stream_id,
+                    stream: stream.clone(),
+                };
+
+                self.broadcast_event_to_all_shards(event).await?;
+
+                Ok(ShardResponse::CreateStreamResponse(stream))
+            }
+            ShardRequestPayload::CreateTopic {
+                user_id,
+                stream_id,
+                name,
+                partitions_count,
+                message_expiry,
+                compression_algorithm,
+                max_topic_size,
+                replication_factor,
+            } => {
+                assert_eq!(self.id, 0, "CreateTopic should only be handled by shard0");
+
+                let session = Session::stateless(
+                    user_id,
+                    std::net::SocketAddr::new(
+                        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+                        0,
+                    ),
+                );
+
+                let topic = self
+                    .create_topic2(
+                        &session,
+                        &stream_id,
+                        name.clone(),
+                        message_expiry,
+                        compression_algorithm,
+                        max_topic_size,
+                        replication_factor,
+                    )
+                    .await?;
+
+                let topic_id = topic.id();
+
+                let event = ShardEvent::CreatedTopic2 {
+                    stream_id: stream_id.clone(),
+                    topic: topic.clone(),
+                };
+                self.broadcast_event_to_all_shards(event).await?;
+
+                let partitions = self
+                    .create_partitions2(
+                        &session,
+                        &stream_id,
+                        &Identifier::numeric(topic_id as u32).unwrap(),
+                        partitions_count,
+                    )
+                    .await?;
+
+                let event = ShardEvent::CreatedPartitions2 {
+                    stream_id: stream_id.clone(),
+                    topic_id: Identifier::numeric(topic_id as u32).unwrap(),
+                    partitions,
+                };
+                self.broadcast_event_to_all_shards(event).await?;
+
+                Ok(ShardResponse::CreateTopicResponse(topic))
+            }
+            ShardRequestPayload::CreateUser {
+                user_id,
+                username,
+                password,
+                status,
+                permissions,
+            } => {
+                assert_eq!(self.id, 0, "CreateUser should only be handled by shard0");
+
+                let session = Session::stateless(
+                    user_id,
+                    std::net::SocketAddr::new(
+                        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+                        0,
+                    ),
+                );
+
+                let user =
+                    self.create_user(&session, &username, &password, status, permissions.clone())?;
+
+                let created_user_id = user.id;
+
+                let event = ShardEvent::CreatedUser {
+                    user_id: created_user_id,
+                    username: username.clone(),
+                    password: password.clone(),
+                    status,
+                    permissions: permissions.clone(),
+                };
+                self.broadcast_event_to_all_shards(event).await?;
+
+                Ok(ShardResponse::CreateUserResponse(user))
+            }
         }
     }
 
@@ -871,31 +985,47 @@ impl IggyShard {
 
     pub async fn send_request_to_shard_or_recoil(
         &self,
-        namespace: &IggyNamespace,
+        namespace: Option<&IggyNamespace>,
         message: ShardMessage,
     ) -> Result<ShardSendRequestResult, IggyError> {
-        if let Some(shard) = self.find_shard(namespace) {
-            if shard.id == self.id {
+        if let Some(ns) = namespace {
+            if let Some(shard) = self.find_shard(ns) {
+                if shard.id == self.id {
+                    return Ok(ShardSendRequestResult::Recoil(message));
+                }
+
+                let response = match shard.send_request(message).await {
+                    Ok(response) => response,
+                    Err(err) => {
+                        error!(
+                            "{COMPONENT} - failed to send request to shard with ID: {}, error: {err}",
+                            shard.id
+                        );
+                        return Err(err);
+                    }
+                };
+                Ok(ShardSendRequestResult::Response(response))
+            } else {
+                Err(IggyError::ShardNotFound(
+                    ns.stream_id(),
+                    ns.topic_id(),
+                    ns.partition_id(),
+                ))
+            }
+        } else {
+            if self.id == 0 {
                 return Ok(ShardSendRequestResult::Recoil(message));
             }
 
-            let response = match shard.send_request(message).await {
+            let shard0 = &self.shards[0];
+            let response = match shard0.send_request(message).await {
                 Ok(response) => response,
                 Err(err) => {
-                    error!(
-                        "{COMPONENT} - failed to send request to shard with ID: {}, error: {err}",
-                        shard.id
-                    );
+                    error!("{COMPONENT} - failed to send admin request to shard0, error: {err}");
                     return Err(err);
                 }
             };
             Ok(ShardSendRequestResult::Response(response))
-        } else {
-            Err(IggyError::ShardNotFound(
-                namespace.stream_id(),
-                namespace.topic_id(),
-                namespace.partition_id(),
-            ))
         }
     }
 
@@ -935,12 +1065,13 @@ impl IggyShard {
                             );
                             Err(())
                         }
-                        Err(_) => {
+                        Err(e) => {
                             shard_warn!(
                                 self_id,
-                                "Broadcast to shard {} failed for event {}: timeout waiting for response after {:?}",
+                                "Broadcast to shard {} failed for event {}: timeout waiting for response after {:?}, elapsed: {:?}",
                                 shard_id, event_type,
-                                BROADCAST_TIMEOUT
+                                BROADCAST_TIMEOUT,
+                                e
                             );
                             Err(())
                         }

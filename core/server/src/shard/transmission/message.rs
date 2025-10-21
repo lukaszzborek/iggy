@@ -23,7 +23,9 @@ use crate::{
     slab::partitions,
     streaming::{polling_consumer::PollingConsumer, segments::IggyMessagesBatchMut},
 };
-use iggy_common::Identifier;
+use iggy_common::{
+    CompressionAlgorithm, Identifier, IggyExpiry, MaxTopicSize, Permissions, UserStatus,
+};
 
 #[allow(clippy::large_enum_variant)]
 pub enum ShardSendRequestResult {
@@ -74,6 +76,27 @@ pub enum ShardRequestPayload {
     },
     FlushUnsavedBuffer {
         fsync: bool,
+    },
+    CreateStream {
+        user_id: u32,
+        name: String,
+    },
+    CreateTopic {
+        user_id: u32,
+        stream_id: Identifier,
+        name: String,
+        partitions_count: u32,
+        message_expiry: IggyExpiry,
+        compression_algorithm: CompressionAlgorithm,
+        max_topic_size: MaxTopicSize,
+        replication_factor: Option<u8>,
+    },
+    CreateUser {
+        user_id: u32,
+        username: String,
+        password: String,
+        status: UserStatus,
+        permissions: Option<Permissions>,
     },
 }
 

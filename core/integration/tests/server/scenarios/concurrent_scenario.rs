@@ -19,7 +19,10 @@
 use crate::server::scenarios::create_client;
 use futures::future::join_all;
 use iggy::prelude::*;
+use iggy_common::UserInfo;
 use integration::test_server::{ClientFactory, login_root};
+use std::sync::Arc;
+use tokio::sync::Barrier;
 
 const OPERATIONS_COUNT: usize = 100;
 const MULTIPLE_CLIENT_COUNT: usize = 20;
@@ -38,15 +41,17 @@ pub enum ResourceType {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ClientCount {
-    Single,
-    Multiple(usize),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScenarioType {
     Hot,  // Different names - all should succeed
     Cold, // Same name - only first should succeed
+}
+
+pub fn barrier_on() -> bool {
+    true
+}
+
+pub fn barrier_off() -> bool {
+    false
 }
 
 type OperationResult = Result<(), IggyError>;
@@ -54,8 +59,8 @@ type OperationResult = Result<(), IggyError>;
 pub async fn run(
     client_factory: &dyn ClientFactory,
     resource_type: ResourceType,
-    client_count: ClientCount,
     scenario_type: ScenarioType,
+    use_barrier: bool,
 ) {
     let root_client = create_client(client_factory).await;
     login_root(&root_client).await;
@@ -65,90 +70,53 @@ pub async fn run(
         root_client.create_stream(TEST_STREAM_NAME).await.unwrap();
     }
 
-    let results = match (resource_type, client_count, scenario_type) {
-        (ResourceType::User, ClientCount::Single, ScenarioType::Hot) => {
-            execute_single_client_users_hot(&root_client).await
+    let results = match (resource_type, scenario_type) {
+        (ResourceType::User, ScenarioType::Hot) => {
+            execute_multiple_clients_users_hot(client_factory, use_barrier).await
         }
-        (ResourceType::User, ClientCount::Single, ScenarioType::Cold) => {
-            execute_single_client_users_cold(&root_client).await
+        (ResourceType::User, ScenarioType::Cold) => {
+            execute_multiple_clients_users_cold(client_factory, use_barrier).await
         }
-        (ResourceType::User, ClientCount::Multiple(_), ScenarioType::Hot) => {
-            execute_multiple_clients_users_hot(client_factory).await
+        (ResourceType::Stream, ScenarioType::Hot) => {
+            execute_multiple_clients_streams_hot(client_factory, use_barrier).await
         }
-        (ResourceType::User, ClientCount::Multiple(_), ScenarioType::Cold) => {
-            execute_multiple_clients_users_cold(client_factory).await
+        (ResourceType::Stream, ScenarioType::Cold) => {
+            execute_multiple_clients_streams_cold(client_factory, use_barrier).await
         }
-        (ResourceType::Stream, ClientCount::Single, ScenarioType::Hot) => {
-            execute_single_client_streams_hot(&root_client).await
+        (ResourceType::Topic, ScenarioType::Hot) => {
+            execute_multiple_clients_topics_hot(client_factory, use_barrier).await
         }
-        (ResourceType::Stream, ClientCount::Single, ScenarioType::Cold) => {
-            execute_single_client_streams_cold(&root_client).await
-        }
-        (ResourceType::Stream, ClientCount::Multiple(_), ScenarioType::Hot) => {
-            execute_multiple_clients_streams_hot(client_factory).await
-        }
-        (ResourceType::Stream, ClientCount::Multiple(_), ScenarioType::Cold) => {
-            execute_multiple_clients_streams_cold(client_factory).await
-        }
-        (ResourceType::Topic, ClientCount::Single, ScenarioType::Hot) => {
-            execute_single_client_topics_hot(&root_client).await
-        }
-        (ResourceType::Topic, ClientCount::Single, ScenarioType::Cold) => {
-            execute_single_client_topics_cold(&root_client).await
-        }
-        (ResourceType::Topic, ClientCount::Multiple(_), ScenarioType::Hot) => {
-            execute_multiple_clients_topics_hot(client_factory).await
-        }
-        (ResourceType::Topic, ClientCount::Multiple(_), ScenarioType::Cold) => {
-            execute_multiple_clients_topics_cold(client_factory).await
+        (ResourceType::Topic, ScenarioType::Cold) => {
+            execute_multiple_clients_topics_cold(client_factory, use_barrier).await
         }
     };
 
     validate_results(&results, scenario_type);
-    validate_server_state(&root_client, resource_type, scenario_type).await;
+    validate_server_state(client_factory, resource_type, scenario_type).await;
     cleanup_resources(&root_client, resource_type).await;
-}
-
-async fn execute_single_client_users_hot(client: &IggyClient) -> Vec<OperationResult> {
-    let mut results = Vec::with_capacity(OPERATIONS_COUNT);
-
-    for i in 0..OPERATIONS_COUNT {
-        let username = format!("race-user-{}", i);
-        let result = client
-            .create_user(&username, USER_PASSWORD, UserStatus::Active, None)
-            .await
-            .map(|_| ());
-        results.push(result);
-    }
-
-    results
-}
-
-async fn execute_single_client_users_cold(client: &IggyClient) -> Vec<OperationResult> {
-    let mut results = Vec::with_capacity(OPERATIONS_COUNT);
-    const DUPLICATE_USER: &str = "race-user-duplicate";
-
-    for _ in 0..OPERATIONS_COUNT {
-        let result = client
-            .create_user(DUPLICATE_USER, USER_PASSWORD, UserStatus::Active, None)
-            .await
-            .map(|_| ());
-        results.push(result);
-    }
-
-    results
 }
 
 async fn execute_multiple_clients_users_hot(
     client_factory: &dyn ClientFactory,
+    use_barrier: bool,
 ) -> Vec<OperationResult> {
     let mut handles = Vec::with_capacity(MULTIPLE_CLIENT_COUNT);
+    let barrier = if use_barrier {
+        Some(Arc::new(Barrier::new(MULTIPLE_CLIENT_COUNT)))
+    } else {
+        None
+    };
 
     for client_id in 0..MULTIPLE_CLIENT_COUNT {
         let client = create_client(client_factory).await;
         login_root(&client).await;
 
+        let barrier_clone = barrier.clone();
         let handle = tokio::spawn(async move {
+            if let Some(b) = barrier_clone {
+                b.wait().await;
+            }
+
             let mut results = Vec::with_capacity(OPERATIONS_PER_CLIENT);
             for i in 0..OPERATIONS_PER_CLIENT {
                 let username = format!("race-user-{}-{}", client_id, i);
@@ -164,7 +132,6 @@ async fn execute_multiple_clients_users_hot(
         handles.push(handle);
     }
 
-    // Await all concurrent operations
     let all_results = join_all(handles).await;
     all_results
         .into_iter()
@@ -174,15 +141,26 @@ async fn execute_multiple_clients_users_hot(
 
 async fn execute_multiple_clients_users_cold(
     client_factory: &dyn ClientFactory,
+    use_barrier: bool,
 ) -> Vec<OperationResult> {
     let mut handles = Vec::with_capacity(MULTIPLE_CLIENT_COUNT);
     const DUPLICATE_USER: &str = "race-user-duplicate";
+    let barrier = if use_barrier {
+        Some(Arc::new(Barrier::new(MULTIPLE_CLIENT_COUNT)))
+    } else {
+        None
+    };
 
     for _ in 0..MULTIPLE_CLIENT_COUNT {
         let client = create_client(client_factory).await;
         login_root(&client).await;
 
+        let barrier_clone = barrier.clone();
         let handle = tokio::spawn(async move {
+            if let Some(b) = barrier_clone {
+                b.wait().await;
+            }
+
             let mut results = Vec::with_capacity(OPERATIONS_PER_CLIENT);
             for _ in 0..OPERATIONS_PER_CLIENT {
                 let result = client
@@ -204,44 +182,27 @@ async fn execute_multiple_clients_users_cold(
         .collect()
 }
 
-async fn execute_single_client_streams_hot(client: &IggyClient) -> Vec<OperationResult> {
-    let mut results = Vec::with_capacity(OPERATIONS_COUNT);
-
-    for i in 0..OPERATIONS_COUNT {
-        let stream_name = format!("race-stream-{}", i);
-        let result = client.create_stream(&stream_name).await.map(|_| ());
-        results.push(result);
-    }
-
-    results
-}
-
-async fn execute_single_client_streams_cold(client: &IggyClient) -> Vec<OperationResult> {
-    let mut results = Vec::with_capacity(OPERATIONS_COUNT);
-    const DUPLICATE_STREAM: &str = "race-stream-duplicate";
-
-    for _ in 0..OPERATIONS_COUNT {
-        let result = client.create_stream(DUPLICATE_STREAM).await.map(|_| ());
-        results.push(result);
-    }
-
-    results
-}
-
-// ============================================================================
-// MULTIPLE CLIENTS - STREAMS
-// ============================================================================
-
 async fn execute_multiple_clients_streams_hot(
     client_factory: &dyn ClientFactory,
+    use_barrier: bool,
 ) -> Vec<OperationResult> {
     let mut handles = Vec::with_capacity(MULTIPLE_CLIENT_COUNT);
+    let barrier = if use_barrier {
+        Some(Arc::new(Barrier::new(MULTIPLE_CLIENT_COUNT)))
+    } else {
+        None
+    };
 
     for client_id in 0..MULTIPLE_CLIENT_COUNT {
         let client = create_client(client_factory).await;
         login_root(&client).await;
 
+        let barrier_clone = barrier.clone();
         let handle = tokio::spawn(async move {
+            if let Some(b) = barrier_clone {
+                b.wait().await;
+            }
+
             let mut results = Vec::with_capacity(OPERATIONS_PER_CLIENT);
             for i in 0..OPERATIONS_PER_CLIENT {
                 let stream_name = format!("race-stream-{}-{}", client_id, i);
@@ -263,15 +224,26 @@ async fn execute_multiple_clients_streams_hot(
 
 async fn execute_multiple_clients_streams_cold(
     client_factory: &dyn ClientFactory,
+    use_barrier: bool,
 ) -> Vec<OperationResult> {
     let mut handles = Vec::with_capacity(MULTIPLE_CLIENT_COUNT);
     const DUPLICATE_STREAM: &str = "race-stream-duplicate";
+    let barrier = if use_barrier {
+        Some(Arc::new(Barrier::new(MULTIPLE_CLIENT_COUNT)))
+    } else {
+        None
+    };
 
     for _ in 0..MULTIPLE_CLIENT_COUNT {
         let client = create_client(client_factory).await;
         login_root(&client).await;
 
+        let barrier_clone = barrier.clone();
         let handle = tokio::spawn(async move {
+            if let Some(b) = barrier_clone {
+                b.wait().await;
+            }
+
             let mut results = Vec::with_capacity(OPERATIONS_PER_CLIENT);
             for _ in 0..OPERATIONS_PER_CLIENT {
                 let result = client.create_stream(DUPLICATE_STREAM).await.map(|_| ());
@@ -290,64 +262,27 @@ async fn execute_multiple_clients_streams_cold(
         .collect()
 }
 
-async fn execute_single_client_topics_hot(client: &IggyClient) -> Vec<OperationResult> {
-    let mut results = Vec::with_capacity(OPERATIONS_COUNT);
-    let stream_id = Identifier::named(TEST_STREAM_NAME).unwrap();
-
-    for i in 0..OPERATIONS_COUNT {
-        let topic_name = format!("race-topic-{}", i);
-        let result = client
-            .create_topic(
-                &stream_id,
-                &topic_name,
-                PARTITIONS_COUNT,
-                CompressionAlgorithm::default(),
-                None,
-                IggyExpiry::NeverExpire,
-                MaxTopicSize::ServerDefault,
-            )
-            .await
-            .map(|_| ());
-        results.push(result);
-    }
-
-    results
-}
-
-async fn execute_single_client_topics_cold(client: &IggyClient) -> Vec<OperationResult> {
-    let mut results = Vec::with_capacity(OPERATIONS_COUNT);
-    const DUPLICATE_TOPIC: &str = "race-topic-duplicate";
-    let stream_id = Identifier::named(TEST_STREAM_NAME).unwrap();
-
-    for _ in 0..OPERATIONS_COUNT {
-        let result = client
-            .create_topic(
-                &stream_id,
-                DUPLICATE_TOPIC,
-                PARTITIONS_COUNT,
-                CompressionAlgorithm::default(),
-                None,
-                IggyExpiry::NeverExpire,
-                MaxTopicSize::ServerDefault,
-            )
-            .await
-            .map(|_| ());
-        results.push(result);
-    }
-
-    results
-}
-
 async fn execute_multiple_clients_topics_hot(
     client_factory: &dyn ClientFactory,
+    use_barrier: bool,
 ) -> Vec<OperationResult> {
     let mut handles = Vec::with_capacity(MULTIPLE_CLIENT_COUNT);
+    let barrier = if use_barrier {
+        Some(Arc::new(Barrier::new(MULTIPLE_CLIENT_COUNT)))
+    } else {
+        None
+    };
 
     for client_id in 0..MULTIPLE_CLIENT_COUNT {
         let client = create_client(client_factory).await;
         login_root(&client).await;
 
+        let barrier_clone = barrier.clone();
         let handle = tokio::spawn(async move {
+            if let Some(b) = barrier_clone {
+                b.wait().await;
+            }
+
             let mut results = Vec::with_capacity(OPERATIONS_PER_CLIENT);
             let stream_id = Identifier::named(TEST_STREAM_NAME).unwrap();
 
@@ -382,15 +317,26 @@ async fn execute_multiple_clients_topics_hot(
 
 async fn execute_multiple_clients_topics_cold(
     client_factory: &dyn ClientFactory,
+    use_barrier: bool,
 ) -> Vec<OperationResult> {
     let mut handles = Vec::with_capacity(MULTIPLE_CLIENT_COUNT);
     const DUPLICATE_TOPIC: &str = "race-topic-duplicate";
+    let barrier = if use_barrier {
+        Some(Arc::new(Barrier::new(MULTIPLE_CLIENT_COUNT)))
+    } else {
+        None
+    };
 
     for _ in 0..MULTIPLE_CLIENT_COUNT {
         let client = create_client(client_factory).await;
         login_root(&client).await;
 
+        let barrier_clone = barrier.clone();
         let handle = tokio::spawn(async move {
+            if let Some(b) = barrier_clone {
+                b.wait().await;
+            }
+
             let mut results = Vec::with_capacity(OPERATIONS_PER_CLIENT);
             let stream_id = Identifier::named(TEST_STREAM_NAME).unwrap();
 
@@ -478,21 +424,125 @@ fn validate_results(results: &[OperationResult], scenario_type: ScenarioType) {
 }
 
 async fn validate_server_state(
-    client: &IggyClient,
+    client_factory: &dyn ClientFactory,
     resource_type: ResourceType,
     scenario_type: ScenarioType,
 ) {
+    const VALIDATION_CLIENT_COUNT: usize = 5;
+    let mut clients = Vec::with_capacity(VALIDATION_CLIENT_COUNT);
+
+    // Create multiple clients for validation
+    for _ in 0..VALIDATION_CLIENT_COUNT {
+        let client = create_client(client_factory).await;
+        login_root(&client).await;
+        clients.push(client);
+    }
+
+    // Collect state from all clients
     match resource_type {
-        ResourceType::User => validate_users_state(client, scenario_type).await,
-        ResourceType::Stream => validate_streams_state(client, scenario_type).await,
-        ResourceType::Topic => validate_topics_state(client, scenario_type).await,
+        ResourceType::User => {
+            let mut user_states = Vec::new();
+            for client in &clients {
+                let state = validate_users_state(client, scenario_type).await;
+                user_states.push(state);
+            }
+
+            // Verify all clients see the same state
+            let first_state = &user_states[0];
+            for (i, state) in user_states.iter().enumerate().skip(1) {
+                assert_eq!(
+                    state.len(),
+                    first_state.len(),
+                    "Client {} sees different number of users ({}) than client 0 ({})",
+                    i,
+                    state.len(),
+                    first_state.len()
+                );
+
+                // Sort and compare usernames to ensure same set
+                let mut first_usernames: Vec<_> = first_state.iter().map(|u| &u.username).collect();
+                let mut current_usernames: Vec<_> = state.iter().map(|u| &u.username).collect();
+                first_usernames.sort();
+                current_usernames.sort();
+
+                assert_eq!(
+                    current_usernames, first_usernames,
+                    "Client {} sees different users than client 0",
+                    i
+                );
+            }
+        }
+        ResourceType::Stream => {
+            let mut stream_states = Vec::new();
+            for client in &clients {
+                let state = validate_streams_state(client, scenario_type).await;
+                stream_states.push(state);
+            }
+
+            // Verify all clients see the same state
+            let first_state = &stream_states[0];
+            for (i, state) in stream_states.iter().enumerate().skip(1) {
+                assert_eq!(
+                    state.len(),
+                    first_state.len(),
+                    "Client {} sees different number of streams ({}) than client 0 ({})",
+                    i,
+                    state.len(),
+                    first_state.len()
+                );
+
+                // Sort and compare stream names
+                let mut first_names: Vec<_> = first_state.iter().map(|s| &s.name).collect();
+                let mut current_names: Vec<_> = state.iter().map(|s| &s.name).collect();
+                first_names.sort();
+                current_names.sort();
+
+                assert_eq!(
+                    current_names, first_names,
+                    "Client {} sees different streams than client 0",
+                    i
+                );
+            }
+        }
+        ResourceType::Topic => {
+            let mut topic_states = Vec::new();
+            for client in &clients {
+                let state = validate_topics_state(client, scenario_type).await;
+                topic_states.push(state);
+            }
+
+            // Verify all clients see the same state
+            let first_state = &topic_states[0];
+            for (i, state) in topic_states.iter().enumerate().skip(1) {
+                assert_eq!(
+                    state.len(),
+                    first_state.len(),
+                    "Client {} sees different number of topics ({}) than client 0 ({})",
+                    i,
+                    state.len(),
+                    first_state.len()
+                );
+
+                // Sort and compare topic names
+                let mut first_names: Vec<_> = first_state.iter().map(|t| &t.name).collect();
+                let mut current_names: Vec<_> = state.iter().map(|t| &t.name).collect();
+                first_names.sort();
+                current_names.sort();
+
+                assert_eq!(
+                    current_names, first_names,
+                    "Client {} sees different topics than client 0",
+                    i
+                );
+            }
+        }
     }
 }
 
-async fn validate_users_state(client: &IggyClient, scenario_type: ScenarioType) {
+async fn validate_users_state(client: &IggyClient, scenario_type: ScenarioType) -> Vec<UserInfo> {
     let users = client.get_users().await.expect("Failed to get users");
     let test_users: Vec<_> = users
-        .iter()
+        .into_iter()
         .filter(|u| u.username.starts_with("race-user-"))
         .collect();
 
@@ -538,7 +588,7 @@ async fn validate_users_state(client: &IggyClient, scenario_type: ScenarioType) 
                 test_users.iter().map(|u| &u.username).collect::<Vec<_>>()
             );
 
-            let user = test_users[0];
+            let user = &test_users[0];
             assert_eq!(
                 user.username, "race-user-duplicate",
                 "Cold path: Expected user named 'race-user-duplicate', found '{}'",
@@ -546,12 +596,14 @@ async fn validate_users_state(client: &IggyClient, scenario_type: ScenarioType) 
             );
         }
     }
+
+    test_users
 }
 
-async fn validate_streams_state(client: &IggyClient, scenario_type: ScenarioType) {
+async fn validate_streams_state(client: &IggyClient, scenario_type: ScenarioType) -> Vec<Stream> {
     let streams = client.get_streams().await.expect("Failed to get streams");
     let test_streams: Vec<_> = streams
-        .iter()
+        .into_iter()
         .filter(|s| s.name.starts_with("race-stream-"))
         .collect();
 
@@ -597,7 +649,7 @@ async fn validate_streams_state(client: &IggyClient, scenario_type: ScenarioType
                 test_streams.iter().map(|s| &s.name).collect::<Vec<_>>()
             );
 
-            let stream = test_streams[0];
+            let stream = &test_streams[0];
             assert_eq!(
                 stream.name, "race-stream-duplicate",
                 "Cold path: Expected stream named 'race-stream-duplicate', found '{}'",
@@ -605,9 +657,11 @@ async fn validate_streams_state(client: &IggyClient, scenario_type: ScenarioType
             );
         }
     }
+
+    test_streams
 }
 
-async fn validate_topics_state(client: &IggyClient, scenario_type: ScenarioType) {
+async fn validate_topics_state(client: &IggyClient, scenario_type: ScenarioType) -> Vec<Topic> {
     let stream_id = Identifier::named(TEST_STREAM_NAME).unwrap();
     let stream = client
         .get_stream(&stream_id)
@@ -617,7 +671,7 @@ async fn validate_topics_state(client: &IggyClient, scenario_type: ScenarioType)
 
     let test_topics: Vec<_> = stream
         .topics
-        .iter()
+        .into_iter()
         .filter(|t| t.name.starts_with("race-topic-"))
         .collect();
 
@@ -663,7 +717,7 @@ async fn validate_topics_state(client: &IggyClient, scenario_type: ScenarioType)
                 test_topics.iter().map(|t| &t.name).collect::<Vec<_>>()
             );
 
-            let topic = test_topics[0];
+            let topic = &test_topics[0];
             assert_eq!(
                 topic.name, "race-topic-duplicate",
                 "Cold path: Expected topic named 'race-topic-duplicate', found '{}'",
@@ -671,6 +725,8 @@ async fn validate_topics_state(client: &IggyClient, scenario_type: ScenarioType)
             );
         }
     }
+
+    test_topics
 }
 
 async fn cleanup_resources(client: &IggyClient, resource_type: ResourceType) {

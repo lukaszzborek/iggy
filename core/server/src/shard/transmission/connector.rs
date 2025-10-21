@@ -118,6 +118,22 @@ impl<T> ShardedChannel<T> {
     }
 }
 
+impl<T> Drop for ShardedChannel<T> {
+    fn drop(&mut self) {
+        // TODO(hubcio): Leak the waker to prevent thread affinity violations.
+        //
+        // At this point, I don't have idea how to handle this other way.
+        //
+        // The waker may contain a Waker that was registered on a different thread
+        // (a shard thread), but Drop is being called on the main thread during cleanup.
+        // We cannot safely drop the Waker on a different thread, so we must leak it.
+        // This is acceptable during shutdown as the process is terminating anyway.
+        if let Some(waker) = self.waker.take() {
+            std::mem::forget(waker);
+        }
+    }
+}
+
 pub trait ShardedChannelsSplit<T> {
     fn unbounded(&self) -> (Sender<T>, Receiver<T>);
 
