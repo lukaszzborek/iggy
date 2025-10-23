@@ -83,7 +83,8 @@ impl Shard {
 
     pub async fn send_request(&self, message: ShardMessage) -> Result<ShardResponse, IggyError> {
         let (sender, receiver) = async_channel::bounded(1);
-        self.connection
+        let _ = self
+            .connection
             .sender
             .send(ShardFrame::new(message, Some(sender.clone()))); // Apparently sender needs to be cloned, otherwise channel will close...
         //TODO: Fixme
@@ -312,10 +313,6 @@ impl IggyShard {
     pub async fn run(self: &Rc<Self>) -> Result<(), IggyError> {
         let now: Instant = Instant::now();
 
-        // Workaround to ensure that the statistics are initialized before the server
-        // loads streams and starts accepting connections. This is necessary to
-        // have the correct statistics when the server starts.
-        self.get_stats().await?;
         shard_info!(self.id, "Starting...");
         self.init().await?;
 
@@ -391,6 +388,7 @@ impl IggyShard {
                             |(_, _, _, offset, .., log)| {
                                 *log = loaded_log;
                                 let current_offset = log.active_segment().end_offset;
+                                tracing::warn!("loaded current_offset: {}", current_offset);
                                 offset.store(current_offset, Ordering::Relaxed);
                             },
                         );
@@ -635,6 +633,11 @@ impl IggyShard {
                 self.broadcast_event_to_all_shards(event).await?;
 
                 Ok(ShardResponse::CreateUserResponse(user))
+            }
+            ShardRequestPayload::GetStats { .. } => {
+                assert_eq!(self.id, 0, "GetStats should only be handled by shard0");
+                let stats = self.get_stats().await?;
+                Ok(ShardResponse::GetStatsResponse(stats))
             }
         }
     }

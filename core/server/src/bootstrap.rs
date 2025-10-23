@@ -234,7 +234,7 @@ pub fn create_shard_connections(
 
     // Create connectors with sequential IDs (0, 1, 2, ...) regardless of CPU core numbers
     let connectors: Vec<ShardConnector<ShardFrame>> = (0..shards_count)
-        .map(|idx| ShardConnector::new(idx as u16, shards_count))
+        .map(|idx| ShardConnector::new(idx as u16))
         .collect();
 
     let shutdown_handles = connectors
@@ -648,9 +648,15 @@ async fn load_partition(
 
                 let start_offset = log_file_name.parse::<u64>().unwrap();
 
-                let messages_file_path =
-                    format!("{}/{}.{}", partition_path, start_offset, LOG_EXTENSION);
-                std::fs::metadata(&messages_file_path).is_ok_and(|metadata| metadata.len() > 0)
+                let messages_file_path = config.get_messages_file_path(
+                    stream_id,
+                    topic_id,
+                    partition_id as usize,
+                    start_offset,
+                );
+                let metadata = std::fs::metadata(&messages_file_path)
+                    .expect("failed to get metadata for first segment in log");
+                metadata.len() > 0
             })
             .unwrap_or_else(|| false);
 
