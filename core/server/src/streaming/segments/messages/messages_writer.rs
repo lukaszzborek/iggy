@@ -61,14 +61,14 @@ impl MessagesWriter {
             .map_err(|_| IggyError::CannotReadFile)?;
 
         if file_exists {
-            let _ = file.sync_all().await.with_error_context(|error| {
+            let _ = file.sync_all().await.with_error(|error| {
                 format!("Failed to fsync messages file after creation: {file_path}, error: {error}")
             });
 
             let actual_messages_size = file
                 .metadata()
                 .await
-                .with_error_context(|error| {
+                .with_error(|error| {
                     format!("Failed to get metadata of messages file: {file_path}, error: {error}")
                 })
                 .map_err(|_| IggyError::CannotReadFileMetadata)?

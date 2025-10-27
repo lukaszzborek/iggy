@@ -50,7 +50,7 @@ impl FileSystemInfoStorage {
         let file_size = file
             .metadata()
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - failed to retrieve metadata for file at path: {}",
                     self.path
@@ -89,7 +89,7 @@ impl FileSystemInfoStorage {
         self.persister
             .overwrite(&self.path, data)
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - failed to overwrite file at path: {}",
                     self.path

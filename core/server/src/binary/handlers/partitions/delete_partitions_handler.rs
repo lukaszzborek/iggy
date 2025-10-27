@@ -25,7 +25,7 @@ use crate::shard::transmission::event::ShardEvent;
 use crate::state::command::EntryCommand;
 use crate::streaming::session::Session;
 use anyhow::Result;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::IggyError;
 use iggy_common::delete_partitions::DeletePartitions;
 use std::rc::Rc;
@@ -85,7 +85,7 @@ impl ServerCommandHandler for DeletePartitions {
             &EntryCommand::DeletePartitions(self),
         )
         .await
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - failed to apply delete partitions for stream_id: {stream_id}, topic_id: {topic_id}, session: {session}"
             )

@@ -27,7 +27,7 @@ use crate::state::command::EntryCommand;
 use crate::streaming::session::Session;
 use crate::streaming::{streams, topics};
 use anyhow::Result;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::IggyError;
 use iggy_common::create_partitions::CreatePartitions;
 use std::rc::Rc;
@@ -88,7 +88,7 @@ impl ServerCommandHandler for CreatePartitions {
             &EntryCommand::CreatePartitions(self),
         )
         .await
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - failed to apply create partitions for stream_id: {stream_id}, topic_id: {topic_id}, session: {session}"
             )

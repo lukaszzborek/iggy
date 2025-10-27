@@ -22,7 +22,7 @@ use crate::{
 };
 use ahash::AHashMap;
 use anyhow::Context;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::IggyError;
 use std::sync::Arc;
 use tracing::{error, info};
@@ -57,7 +57,7 @@ impl TokenStorage {
 
         let buffer = compio::fs::read(&self.path)
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - failed to read file into buffer, path: {}",
                     self.path
@@ -107,7 +107,7 @@ impl TokenStorage {
         self.persister
             .overwrite(&self.path, bytes)
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - failed to overwrite file, path: {}",
                     self.path
@@ -120,7 +120,7 @@ impl TokenStorage {
         let tokens = self
             .load_all_revoked_access_tokens()
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!("{COMPONENT} (error: {error}) - failed to load revoked access tokens")
             })?;
         if tokens.is_empty() {
@@ -141,7 +141,7 @@ impl TokenStorage {
         self.persister
             .overwrite(&self.path, bytes)
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - failed to overwrite file, path: {}",
                     self.path

@@ -77,7 +77,7 @@ impl Sender for QuicSender {
         self.send
             .write_all(&headers)
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!("{COMPONENT} (error: {error}) - failed to write headers to stream")
             })
             .map_err(|_| IggyError::QuicError)?;
@@ -90,7 +90,7 @@ impl Sender for QuicSender {
                 self.send
                     .write_all(slice_data)
                     .await
-                    .with_error_context(|error| {
+                    .with_error(|error| {
                         format!("{COMPONENT} (error: {error}) - failed to write slice to stream")
                     })
                     .map_err(|_| IggyError::QuicError)?;
@@ -106,7 +106,7 @@ impl Sender for QuicSender {
 
         self.send
             .finish()
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!("{COMPONENT} (error: {error}) - failed to finish send stream")
             })
             .map_err(|_| IggyError::QuicError)?;
@@ -127,13 +127,13 @@ impl QuicSender {
         self.send
             .write_all(&[status, &length, payload].as_slice().concat())
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!("{COMPONENT} (error: {error}) - failed to write buffer to the stream")
             })
             .map_err(|_| IggyError::QuicError)?;
         self.send
             .finish()
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!("{COMPONENT} (error: {error}) - failed to finish send stream")
             })
             .map_err(|_| IggyError::QuicError)?;

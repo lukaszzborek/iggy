@@ -443,26 +443,31 @@ class ReceiveMessage:
     def offset(self) -> builtins.int:
         r"""
         Retrieves the offset of the received message.
+
         The offset represents the position of the message within its topic.
         """
     def timestamp(self) -> builtins.int:
         r"""
         Retrieves the timestamp of the received message.
+
         The timestamp represents the time of the message within its topic.
         """
     def id(self) -> builtins.int:
         r"""
         Retrieves the id of the received message.
+
         The id represents unique identifier of the message within its topic.
         """
     def checksum(self) -> builtins.int:
         r"""
         Retrieves the checksum of the received message.
+
         The checksum represents the integrity of the message within its topic.
         """
     def length(self) -> builtins.int:
         r"""
         Retrieves the length of the received message.
+
         The length represents the length of the payload.
         """
 

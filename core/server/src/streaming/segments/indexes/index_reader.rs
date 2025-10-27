@@ -51,7 +51,7 @@ impl IndexReader {
             .read(true)
             .open(file_path)
             .await
-            .with_error_context(|error| format!("Failed to open index file: {file_path}. {error}"))
+            .with_error(|error| format!("Failed to open index file: {file_path}. {error}"))
             .map_err(|_| IggyError::CannotReadFile)?;
 
         trace!(

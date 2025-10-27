@@ -16,22 +16,25 @@
  * under the License.
  */
 
+use iggy_common::{ConfigProvider, ConfigurationError, FileConfigProvider};
 use integration::file::{file_exists, get_root_path};
 use serial_test::serial;
-use server::configs::config_provider::{ConfigProvider, FileConfigProvider};
+use server::configs::server::{ServerConfig, ServerEnvProvider};
 use std::env;
 
 async fn scenario_parsing_from_file(extension: &str) {
     let mut config_path = get_root_path().join("../configs/server");
     assert!(config_path.set_extension(extension), "Cannot set extension");
     let config_path = config_path.as_path().display().to_string();
-    let config_provider = FileConfigProvider::new(config_path.clone());
+    let config_provider = get_file_config_provider();
     assert!(
         file_exists(&config_path),
         "Config file not found: {config_path}"
     );
     assert!(
-        config_provider.load_config().await.is_ok(),
+        ConfigProvider::<ServerConfig>::load_config(config_provider)
+            .await
+            .is_ok(),
         "ConfigProvider failed to parse config from {config_path}"
     );
 }
@@ -71,9 +74,8 @@ async fn validate_custom_env_provider() {
         env::set_var("IGGY_SYSTEM_SEGMENT_MESSAGE_EXPIRY", "10s");
     }
 
-    let config_path = get_root_path().join("../configs/server.toml");
-    let file_config_provider = FileConfigProvider::new(config_path.as_path().display().to_string());
-    let config = file_config_provider
+    let file_config_provider = get_file_config_provider();
+    let config: ServerConfig = file_config_provider
         .load_config()
         .await
         .expect("Failed to load default server.toml config");

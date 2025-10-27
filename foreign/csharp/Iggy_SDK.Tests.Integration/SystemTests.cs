@@ -22,6 +22,7 @@ using Apache.Iggy.Kinds;
 using Apache.Iggy.Messages;
 using Apache.Iggy.Tests.Integrations.Attributes;
 using Apache.Iggy.Tests.Integrations.Fixtures;
+using Apache.Iggy.Tests.Integrations.Helpers;
 using Shouldly;
 using Partitioning = Apache.Iggy.Kinds.Partitioning;
 
@@ -126,13 +127,8 @@ public class SystemTests
     [MethodDataSource<IggyServerFixture>(nameof(IggyServerFixture.ProtocolData))]
     public async Task GetStats_Should_ReturnValidResponse(Protocol protocol)
     {
-        await Fixture.Clients[protocol].SendMessagesAsync(new MessageSendRequest
-        {
-            StreamId = Identifier.String(Fixture.StreamId.GetWithProtocol(protocol)),
-            TopicId = Identifier.Numeric(1),
-            Partitioning = Partitioning.None(),
-            Messages = [new Message(Guid.NewGuid(), "Test message"u8.ToArray())]
-        });
+        await Fixture.Clients[protocol].SendMessagesAsync(Identifier.String(Fixture.StreamId.GetWithProtocol(protocol)),
+            Identifier.Numeric(1), Partitioning.None(), [new Message(Guid.NewGuid(), "Test message"u8.ToArray())]);
 
         await Fixture.Clients[protocol].PollMessagesAsync(new MessageFetchRequest
         {

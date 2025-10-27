@@ -26,7 +26,7 @@ use crate::slab::traits_ext::EntityMarker;
 use crate::state::command::EntryCommand;
 use crate::streaming::session::Session;
 use anyhow::Result;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::IggyError;
 use iggy_common::delete_consumer_group::DeleteConsumerGroup;
 use std::rc::Rc;
@@ -98,7 +98,7 @@ impl ServerCommandHandler for DeleteConsumerGroup {
                 &EntryCommand::DeleteConsumerGroup(self),
             )
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - failed to apply delete consumer group for stream_id: {}, topic_id: {}, group_id: {cg_id}, session: {session}",
                     stream_id, topic_id

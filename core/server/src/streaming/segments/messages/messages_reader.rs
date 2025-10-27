@@ -66,7 +66,7 @@ impl MessagesReader {
                 0, // 0 means the entire file
                 nix::fcntl::PosixFadviseAdvice::POSIX_FADV_SEQUENTIAL,
             )
-            .with_info_context(|error| {
+            .with_info(|error| {
                 format!(
                     "Failed to set sequential access pattern on messages file: {file_path}. {error}"
                 )

@@ -23,7 +23,7 @@ use crate::shard::IggyShard;
 use crate::state::command::EntryCommand;
 use crate::streaming::session::Session;
 use anyhow::Result;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::IggyError;
 use iggy_common::delete_personal_access_token::DeletePersonalAccessToken;
 use std::rc::Rc;
@@ -67,7 +67,7 @@ impl ServerCommandHandler for DeletePersonalAccessToken {
                 }),
             )
             .await
-            .with_error_context(|error| {format!(
+            .with_error(|error| {format!(
                 "{COMPONENT} (error: {error}) - failed to apply delete personal access token with name: {token_name}, session: {session}"
             )})?;
         sender.send_empty_ok_response().await?;

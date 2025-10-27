@@ -98,7 +98,7 @@ impl Partition {
             }
 
             let segment = segment.unwrap();
-            segment.delete().await.with_error_context(|error| {
+            segment.delete().await.with_error(|error| {
                 format!("{COMPONENT} (error: {error}) - failed to delete segment: {segment}",)
             })?;
 

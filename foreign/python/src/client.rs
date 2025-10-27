@@ -137,20 +137,21 @@ impl IggyClient {
     /// Creates a new stream with the provided ID and name.
     ///
     /// Returns Ok(()) on successful stream creation or a PyRuntimeError on failure.
-    #[pyo3(signature = (name))]
-    #[gen_stub(override_return_type(type_repr="collections.abc.Awaitable[StreamDetails]", imports=("collections.abc")))]
+    #[pyo3(signature = (name, stream_id = None))]
+    #[gen_stub(override_return_type(type_repr="collections.abc.Awaitable[None]", imports=("collections.abc")))]
     fn create_stream<'a>(
         &self,
         py: Python<'a>,
         name: String,
+        stream_id: Option<u32>,
     ) -> PyResult<Bound<'a, PyAny>> {
         let inner = self.inner.clone();
         future_into_py(py, async move {
-            let stream = inner
-                .create_stream(&name)
+            inner
+                .create_stream(&name, stream_id)
                 .await
                 .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{e:?}")))?;
-            Ok(StreamDetails::from(stream))
+            Ok(())
         })
     }
 
@@ -177,12 +178,12 @@ impl IggyClient {
 
     /// Creates a new topic with the given parameters.
     ///
-    /// Returns TopicDetails on successful topic creation or a PyRuntimeError on failure.
+    /// Returns Ok(()) on successful topic creation or a PyRuntimeError on failure.
     #[pyo3(
-        signature = (stream, name, partitions_count, compression_algorithm = None, replication_factor = None)
+        signature = (stream, name, partitions_count, compression_algorithm = None, topic_id = None, replication_factor = None)
     )]
     #[allow(clippy::too_many_arguments)]
-    #[gen_stub(override_return_type(type_repr="collections.abc.Awaitable[TopicDetails]", imports=("collections.abc")))]
+    #[gen_stub(override_return_type(type_repr="collections.abc.Awaitable[None]", imports=("collections.abc")))]
     fn create_topic<'a>(
         &self,
         py: Python<'a>,
@@ -190,6 +191,7 @@ impl IggyClient {
         name: String,
         partitions_count: u32,
         compression_algorithm: Option<String>,
+        topic_id: Option<u32>,
         replication_factor: Option<u8>,
     ) -> PyResult<Bound<'a, PyAny>> {
         let compression_algorithm = match compression_algorithm {
@@ -202,19 +204,20 @@ impl IggyClient {
         let inner = self.inner.clone();
 
         future_into_py(py, async move {
-            let topic = inner
+            inner
                 .create_topic(
                     &stream,
                     &name,
                     partitions_count,
                     compression_algorithm,
                     replication_factor,
+                    topic_id,
                     IggyExpiry::NeverExpire,
                     MaxTopicSize::ServerDefault,
                 )
                 .await
                 .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{e:?}")))?;
-            Ok(TopicDetails::from(topic))
+            Ok(())
         })
     }
 

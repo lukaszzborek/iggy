@@ -26,7 +26,7 @@ use crate::state::command::EntryCommand;
 use crate::streaming::session::Session;
 use crate::streaming::utils::crypto;
 use anyhow::Result;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::IggyError;
 use iggy_common::change_password::ChangePassword;
 use std::rc::Rc;
@@ -84,7 +84,7 @@ impl ServerCommandHandler for ChangePassword {
                 }),
             )
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - failed to apply change password for user_id: {}, session: {session}",
                     self.user_id

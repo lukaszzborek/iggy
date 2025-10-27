@@ -53,18 +53,18 @@ impl IndexWriter {
             .write(true)
             .open(file_path)
             .await
-            .with_error_context(|error| format!("Failed to open index file: {file_path}. {error}"))
+            .with_error(|error| format!("Failed to open index file: {file_path}. {error}"))
             .map_err(|_| IggyError::CannotReadFile)?;
 
         if file_exists {
-            let _ = file.sync_all().await.with_error_context(|error| {
+            let _ = file.sync_all().await.with_error(|error| {
                 format!("Failed to fsync index file after creation: {file_path}. {error}",)
             });
 
             let actual_index_size = file
                 .metadata()
                 .await
-                .with_error_context(|error| {
+                .with_error(|error| {
                     format!("Failed to get metadata of index file: {file_path}. {error}")
                 })
                 .map_err(|_| IggyError::CannotReadFileMetadata)?
@@ -126,9 +126,7 @@ impl IndexWriter {
         self.file
             .sync_all()
             .await
-            .with_error_context(|error| {
-                format!("Failed to fsync index file: {}. {error}", self.file_path)
-            })
+            .with_error(|error| format!("Failed to fsync index file: {}. {error}", self.file_path))
             .map_err(|_| IggyError::CannotWriteToFile)?;
         Ok(())
     }

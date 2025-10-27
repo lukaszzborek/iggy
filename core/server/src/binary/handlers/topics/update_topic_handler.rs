@@ -90,7 +90,7 @@ impl ServerCommandHandler for UpdateTopic {
             .state
             .apply(session.get_user_id(), &EntryCommand::UpdateTopic(self))
             .await
-            .with_error_context(|error| format!(
+            .with_error(|error| format!(
                 "{COMPONENT} (error: {error}) - failed to apply update topic with id: {topic_id}, stream_id: {stream_id}, session: {session}"
             ))?;
         sender.send_empty_ok_response().await?;

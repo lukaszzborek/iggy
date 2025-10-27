@@ -25,7 +25,7 @@ use crate::shard::transmission::event::ShardEvent;
 use crate::state::command::EntryCommand;
 use crate::streaming::session::Session;
 use anyhow::Result;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::IggyError;
 use iggy_common::update_stream::UpdateStream;
 use std::rc::Rc;
@@ -61,7 +61,7 @@ impl ServerCommandHandler for UpdateStream {
             .state
             .apply(session.get_user_id(), &EntryCommand::UpdateStream(self))
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!("{COMPONENT} (error: {error}) - failed to apply update stream with id: {stream_id}, session: {session}")
             })?;
         sender.send_empty_ok_response().await?;

@@ -27,7 +27,7 @@ use crate::state::command::EntryCommand;
 use crate::state::models::CreatePersonalAccessTokenWithHash;
 use crate::streaming::session::Session;
 use anyhow::Result;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::IggyError;
 use iggy_common::create_personal_access_token::CreatePersonalAccessToken;
 use std::rc::Rc;
@@ -76,7 +76,7 @@ impl ServerCommandHandler for CreatePersonalAccessToken {
                 }),
             )
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - failed to create personal access token with name: {}, session: {session}",
                     self.name

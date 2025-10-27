@@ -30,7 +30,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::get;
 use axum::{Extension, Json, Router};
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::Identifier;
 use iggy_common::Validatable;
 use iggy_common::create_consumer_group::CreateConsumerGroup;

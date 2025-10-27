@@ -25,7 +25,7 @@ use crate::shard::IggyShard;
 use crate::slab::traits_ext::{EntityComponentSystem, IntoComponents};
 use crate::streaming::session::Session;
 use anyhow::Result;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::IggyError;
 use iggy_common::get_streams::GetStreams;
 use std::rc::Rc;

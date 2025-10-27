@@ -31,7 +31,7 @@ use axum::routing::{get, post};
 use axum::{Extension, Json, Router, debug_handler};
 use bytes::Bytes;
 use chrono::Local;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::Stats;
 use iggy_common::Validatable;
 use iggy_common::get_snapshot::GetSnapshot;

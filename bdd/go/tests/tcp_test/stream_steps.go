@@ -110,7 +110,7 @@ func itShouldSuccessfullyDeleteStream(id uint32, client iggycli.Client) {
 	streamIdentifier, _ := iggcon.NewIdentifier(id)
 	stream, err := client.GetStream(streamIdentifier)
 
-	itShouldReturnSpecificIggyError(err, ierror.StreamIdNotFound)
+	itShouldReturnSpecificError(err, ierror.ErrStreamIdNotFound)
 	ginkgo.It("should not return stream", func() {
 		gomega.Expect(stream).To(gomega.BeNil())
 	})

@@ -24,7 +24,7 @@ use crate::binary::sender::SenderKind;
 use crate::shard::IggyShard;
 use crate::streaming::session::Session;
 use anyhow::Result;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::IggyError;
 use iggy_common::leave_consumer_group::LeaveConsumerGroup;
 use std::rc::Rc;

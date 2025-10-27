@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -17,34 +17,65 @@
  * under the License.
  */
 
+plugins {
+    id("java")
+    id("application")
+}
 
-<<<<<<<< HEAD:foreign/java/examples/build.gradle.kts
 group = "org.apache.iggy"
 version = "0.5.0-SNAPSHOT"
-========
-import { Client } from '../index.js';
-import { getIggyAddress } from '../tcp.sm.utils.js';
->>>>>>>> master:foreign/node/src/examples/utils.ts
 
+repositories {
+    mavenCentral()
+}
 
-<<<<<<<< HEAD:foreign/java/examples/build.gradle.kts
+application {
+    mainClass.set("org.apache.iggy.consumer.SimpleConsumer")
+}
+
 dependencies {
     implementation(project(":iggy"))
     implementation("org.slf4j:slf4j-api:2.0.9")
     runtimeOnly("ch.qos.logback:logback-classic:1.4.12")
     runtimeOnly("io.netty:netty-resolver-dns-native-macos:4.2.1.Final:osx-aarch_64")
 }
-========
-export const getClient = () => {
-  const [host, port] = getIggyAddress();
-  const credentials = { username: 'iggy', password: 'iggy' };
 
-  const opt = {
-    transport: 'TCP' as const,
-    options: { host, port },
-    credentials
-  };
+// Task for running async consumer example
+tasks.register<JavaExec>("runAsyncConsumer") {
+    group = "application"
+    description = "Run the Async Consumer example with Netty"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("org.apache.iggy.async.AsyncConsumerExample")
+}
 
-  return new Client(opt);
-};
->>>>>>>> master:foreign/node/src/examples/utils.ts
+// Task for running simple consumer
+tasks.register<JavaExec>("runSimpleConsumer") {
+    group = "application"
+    description = "Run the Simple Consumer example"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("org.apache.iggy.consumer.SimpleConsumer")
+}
+
+// Task for running simple producer
+tasks.register<JavaExec>("runSimpleProducer") {
+    group = "application"
+    description = "Run the Simple Producer example"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("org.apache.iggy.producer.SimpleProducer")
+}
+
+// Task for running simple async test
+tasks.register<JavaExec>("runSimpleAsyncTest") {
+    group = "application"
+    description = "Run the Simple Async Test for debugging"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("org.apache.iggy.async.SimpleAsyncTest")
+}
+
+// Task for running async producer
+tasks.register<JavaExec>("runAsyncProducer") {
+    group = "application"
+    description = "Run the Async Producer example"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("org.apache.iggy.async.AsyncProducer")
+}

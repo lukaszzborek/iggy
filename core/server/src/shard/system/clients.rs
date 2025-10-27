@@ -76,7 +76,7 @@ impl IggyShard {
         self.permissioner
         .borrow()
             .get_client(session.get_user_id())
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - permission denied to get client with ID: {client_id} by user ID: {}",
                     session.get_user_id()
@@ -91,7 +91,7 @@ impl IggyShard {
         self.permissioner
             .borrow()
             .get_clients(session.get_user_id())
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - failed to get clients by user ID {}",
                     session.get_user_id()

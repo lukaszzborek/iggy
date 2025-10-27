@@ -22,7 +22,7 @@ use crate::binary::{handlers::messages::COMPONENT, sender::SenderKind};
 use crate::shard::IggyShard;
 use crate::streaming::session::Session;
 use anyhow::Result;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::{FlushUnsavedBuffer, IggyError};
 use std::rc::Rc;
 use tracing::{debug, instrument};
@@ -57,7 +57,7 @@ impl ServerCommandHandler for FlushUnsavedBuffer {
                 fsync,
             )
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - failed to flush unsaved buffer for stream_id: {}, topic_id: {}, partition_id: {}, session: {}",
                     stream_id, topic_id, partition_id, session

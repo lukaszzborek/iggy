@@ -25,7 +25,7 @@ use crate::slab::traits_ext::EntityMarker;
 use crate::state::command::EntryCommand;
 use crate::streaming::session::Session;
 use anyhow::Result;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::IggyError;
 use iggy_common::delete_stream::DeleteStream;
 use std::rc::Rc;
@@ -73,7 +73,7 @@ impl ServerCommandHandler for DeleteStream {
             .state
             .apply(session.get_user_id(), &EntryCommand::DeleteStream(self))
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!("{COMPONENT} (error: {error}) - failed to apply delete stream with ID: {stream_id}, session: {session}")
             })?;
         sender.send_empty_ok_response().await?;

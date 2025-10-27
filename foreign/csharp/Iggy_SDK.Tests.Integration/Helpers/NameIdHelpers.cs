@@ -15,22 +15,10 @@
 // // specific language governing permissions and limitations
 // // under the License.
 
-using Apache.Iggy.Contracts;
-using Apache.Iggy.IggyClient;
-using Apache.Iggy.Messages;
 using Apache.Iggy.Enums;
 
-namespace Apache.Iggy.Tests.BDD.Context;
+namespace Apache.Iggy.Tests.Integrations.Helpers;
 
-public class TestContext
-{
-    public IIggyClient IggyClient { get; set; } = null!;
-    public string TcpUrl { get; set; } = string.Empty;
-    public StreamResponse? CreatedStream { get; set; }
-    public TopicResponse? CreatedTopic { get; set; }
-    public List<MessageResponse> PolledMessages { get; set; } = new();
-    public Message? LastSendMessage { get; set; }
-}
 public static class ProtocolHelpers
 {
     public static string GetWithProtocol(this string name, Protocol protocol)

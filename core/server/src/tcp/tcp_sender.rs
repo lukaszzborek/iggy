@@ -52,7 +52,7 @@ impl Sender for TcpSender {
         self.stream
             .shutdown()
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!("{COMPONENT} (error: {error}) - failed to shutdown TCP stream")
             })
             .map_err(ServerError::IoError)

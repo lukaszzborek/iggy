@@ -22,7 +22,7 @@ use crate::state::models::CreateUserWithId;
 use crate::state::{COMPONENT, EntryCommand, StateEntry};
 use crate::streaming::personal_access_tokens::personal_access_token::PersonalAccessToken;
 use ahash::AHashMap;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::CompressionAlgorithm;
 use iggy_common::IggyError;
 use iggy_common::IggyExpiry;
@@ -156,7 +156,7 @@ impl SystemState {
         let mut users = AHashMap::new();
         for entry in entries {
             debug!("Processing state entry: {entry}",);
-            match entry.command().with_error_context(|error| {
+            match entry.command().with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - failed to retrieve state entry command: {entry}"
                 )
@@ -423,7 +423,7 @@ impl SystemState {
                     let token_hash = command.hash;
                     let user_id = find_user_id(
                         &users,
-                        &entry.user_id.try_into().with_error_context(|error| {
+                        &entry.user_id.try_into().with_error(|error| {
                             format!(
                                 "{COMPONENT} (error: {error}) - failed to find user, user ID: {}",
                                 entry.user_id
@@ -456,7 +456,7 @@ impl SystemState {
                 EntryCommand::DeletePersonalAccessToken(command) => {
                     let user_id = find_user_id(
                         &users,
-                        &entry.user_id.try_into().with_error_context(|error| {
+                        &entry.user_id.try_into().with_error(|error| {
                             format!(
                                 "{COMPONENT} (error: {error}) - failed to find user, user ID: {}",
                                 entry.user_id

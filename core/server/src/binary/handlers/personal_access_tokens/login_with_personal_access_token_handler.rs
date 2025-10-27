@@ -24,7 +24,7 @@ use crate::binary::mapper;
 use crate::binary::{handlers::personal_access_tokens::COMPONENT, sender::SenderKind};
 use crate::streaming::session::Session;
 use anyhow::Result;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::IggyError;
 use iggy_common::login_with_personal_access_token::LoginWithPersonalAccessToken;
 use tracing::{debug, instrument};
