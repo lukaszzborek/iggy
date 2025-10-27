@@ -18,8 +18,8 @@ use crate::{
         partitions::{
             consumer_offset::ConsumerOffset,
             journal::Journal,
-            partition2::{self, PartitionRef, PartitionRefMut},
-            storage2,
+            partition::{self, PartitionRef, PartitionRefMut},
+            storage,
         },
         segments::{IggyIndexesMut, IggyMessagesBatchMut, IggyMessagesBatchSet, storage::Storage},
     },
@@ -38,7 +38,7 @@ pub fn get_partition_ids() -> impl FnOnce(&Partitions) -> Vec<usize> {
 
 pub fn delete_partitions(
     partitions_count: u32,
-) -> impl FnOnce(&mut Partitions) -> Vec<partition2::Partition> {
+) -> impl FnOnce(&mut Partitions) -> Vec<partition::Partition> {
     move |partitions| {
         let current_count = partitions.len() as u32;
         let partitions_to_delete = partitions_count.min(current_count);
@@ -55,7 +55,7 @@ pub fn delete_partitions(
 }
 
 pub fn insert_partition(
-    partition: partition2::Partition,
+    partition: partition::Partition,
 ) -> impl FnOnce(&mut Partitions) -> partitions::ContainerId {
     move |partitions| partitions.insert(partition)
 }
@@ -173,7 +173,7 @@ pub fn persist_consumer_offset_to_disk(
             .get(&id)
             .expect("persist_consumer_offset_to_disk: offset not found");
         let offset = item.offset.load(Ordering::Relaxed);
-        storage2::persist_offset(&item.path, offset).await
+        storage::persist_offset(&item.path, offset).await
     }
 }
 
@@ -186,7 +186,7 @@ pub fn delete_consumer_offset_from_disk(
             .get(&id)
             .expect("delete_consumer_offset_from_disk: offset not found");
         let path = &item.path;
-        storage2::delete_persisted_offset(path).await
+        storage::delete_persisted_offset(path).await
     }
 }
 
@@ -232,7 +232,7 @@ pub fn persist_consumer_group_member_offset_to_disk(
             .get(&id)
             .expect("persist_consumer_group_member_offset_to_disk: offset not found");
         let offset = item.offset.load(Ordering::Relaxed);
-        storage2::persist_offset(&item.path, offset).await
+        storage::persist_offset(&item.path, offset).await
     }
 }
 
@@ -245,7 +245,7 @@ pub fn delete_consumer_group_member_offset_from_disk(
             .get(&id)
             .expect("delete_consumer_group_member_offset_from_disk: offset not found");
         let path = &item.path;
-        storage2::delete_persisted_offset(path).await
+        storage::delete_persisted_offset(path).await
     }
 }
 
@@ -271,12 +271,18 @@ pub fn get_segment_range_by_offset(
     offset: u64,
 ) -> impl FnOnce(ComponentsById<PartitionRef>) -> std::ops::Range<usize> {
     move |(.., log)| {
-        let start = log
-            .segments()
+        let segments = log.segments();
+
+        if segments.is_empty() {
+            return 0..0;
+        }
+
+        let start = segments
             .iter()
             .rposition(|segment| segment.start_offset <= offset)
-            .expect("get_segment_range_by_offset: start segment not found");
-        let end = log.segments().len();
+            .unwrap_or(0);
+
+        let end = segments.len();
         start..end
     }
 }
@@ -285,15 +291,20 @@ pub fn get_segment_range_by_timestamp(
     timestamp: u64,
 ) -> impl FnOnce(ComponentsById<PartitionRef>) -> Result<std::ops::Range<usize>, IggyError> {
     move |(.., log)| -> Result<std::ops::Range<usize>, IggyError> {
-        let start = log
-            .segments()
+        let segments = log.segments();
+
+        if segments.is_empty() {
+            return Ok(0..0);
+        }
+
+        let start = segments
             .iter()
             .enumerate()
             .filter(|(_, segment)| segment.end_timestamp >= timestamp)
             .map(|(index, _)| index)
             .next()
             .ok_or(IggyError::TimestampOutOfRange(timestamp))?;
-        let end = log.segments().len();
+        let end = segments.len();
         Ok(start..end)
     }
 }
