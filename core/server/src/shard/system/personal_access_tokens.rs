@@ -114,7 +114,7 @@ impl IggyShard {
                 .insert(token_hash, personal_access_token);
             info!("Created personal access token: {name} for user with ID: {user_id}.");
             Ok(())
-        }).with_error_context(|error| {
+        }).with_error(|error| {
             format!("{COMPONENT} create PAT (error: {error}) - failed to access user with id: {user_id}")
         })??;
         Ok(())
@@ -154,7 +154,7 @@ impl IggyShard {
             info!("Deleting personal access token: {name} for user with ID: {user_id}...");
             user.personal_access_tokens.remove(&token);
             Ok(())
-        }).with_error_context(|error| {
+        }).with_error(|error| {
             format!(
                 "{COMPONENT} delete PAT (error: {error}) - failed to access user with id: {user_id}"
             )

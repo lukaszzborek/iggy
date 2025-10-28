@@ -24,7 +24,7 @@ use crate::streaming::utils::file;
 use anyhow::Context;
 use compio::buf::IoBuf;
 use compio::io::AsyncReadAtExt;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::IggyError;
 use std::sync::Arc;
 use tracing::info;
@@ -68,7 +68,7 @@ impl FileSystemInfoStorage {
             .await
             .into();
         result
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "{COMPONENT} Failed to read system info from file at path: {} (error: {error})",
                     self.path

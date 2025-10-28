@@ -28,7 +28,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing::get;
 use axum::{Extension, Json, Router, debug_handler};
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::Identifier;
 use iggy_common::Validatable;
 use iggy_common::{Consumer, PollMessages, SendMessages};
@@ -76,7 +76,7 @@ async fn poll_messages(
     ));
 
     let (metadata, messages)  = poll_future.await
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - failed to poll messages, stream ID: {}, topic ID: {}, partition ID: {:?}",
                 stream_id, topic_id, query.0.partition_id
@@ -113,7 +113,7 @@ async fn send_messages(
     ));
 
     append_future.await
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - failed to append messages, stream ID: {stream_id}, topic ID: {topic_id}"
             )

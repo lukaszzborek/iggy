@@ -26,7 +26,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{delete, get};
 use axum::{Extension, Json, Router, debug_handler};
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::Identifier;
 use iggy_common::Validatable;
 use iggy_common::create_stream::CreateStream;
@@ -103,7 +103,7 @@ async fn create_stream(
             .shard
             .create_stream(&session, command.name.clone())
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - failed to create stream with name: {}",
                     command.name
@@ -136,7 +136,7 @@ async fn create_stream(
             .shard
             .apply_state(identity.user_id, &entry_command)
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - failed to apply create stream for id: {:?}",
                     created_stream_id
@@ -178,7 +178,7 @@ async fn update_stream(
         state
             .shard
             .update_stream(&session, &command.stream_id, command.name.clone())
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - failed to update stream, stream ID: {stream_id}"
                 )
@@ -203,7 +203,7 @@ async fn update_stream(
 
         // Apply state change using wrapper method
         let entry_command = EntryCommand::UpdateStream(command);
-        state.shard.apply_state(identity.user_id, &entry_command).await.with_error_context(|error| {
+        state.shard.apply_state(identity.user_id, &entry_command).await.with_error(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - failed to apply update stream, stream ID: {stream_id}"
             )
@@ -236,7 +236,7 @@ async fn delete_stream(
             );
             future.await
         }
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!("{COMPONENT} (error: {error}) - failed to delete stream with ID: {stream_id}",)
         })?;
 
@@ -264,7 +264,7 @@ async fn delete_stream(
             stream_id: identifier_stream_id,
         });
         state.shard.apply_state(identity.user_id, &entry_command).await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - failed to apply delete stream with ID: {stream_id}",
                 )
@@ -292,7 +292,7 @@ async fn purge_stream(
             .shard
             .purge_stream(&session, &identifier_stream_id)
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - failed to purge stream, stream ID: {stream_id}"
                 )
@@ -319,7 +319,7 @@ async fn purge_stream(
             stream_id: identifier_stream_id,
         });
         state.shard.apply_state(identity.user_id, &entry_command).await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - failed to apply purge stream, stream ID: {stream_id}"
                 )

@@ -50,7 +50,7 @@ impl ServerCommandHandler for CreatePersonalAccessToken {
 
         let (personal_access_token, token) = shard
                 .create_personal_access_token(session, &self.name, self.expiry)
-                .with_error_context(|error| {
+                .with_error(|error| {
                     format!(
                         "{COMPONENT} (error: {error}) - failed to create personal access token with name: {}, session: {session}",
                         self.name

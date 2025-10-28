@@ -33,7 +33,7 @@ use crate::state::models::CreateTopicWithId;
 use crate::streaming::session::Session;
 use crate::streaming::streams;
 use anyhow::Result;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::create_topic::CreateTopic;
 use iggy_common::{Identifier, IggyError};
 use std::rc::Rc;
@@ -141,7 +141,7 @@ impl ServerCommandHandler for CreateTopic {
                             command: self
                         }))
                         .await
-                        .with_error_context(|error| {
+                        .with_error(|error| {
                             format!(
                                 "{COMPONENT} (error: {error}) - failed to apply create topic for stream_id: {stream_id_num}, topic_id: {topic_id:?}"
                             )
@@ -176,7 +176,7 @@ impl ServerCommandHandler for CreateTopic {
                             command: self
                         }))
                         .await
-                        .with_error_context(|error| {
+                        .with_error(|error| {
                             format!(
                                 "{COMPONENT} (error: {error}) - failed to apply create topic for stream_id: {stream_id}, topic_id: {topic_id:?}"
                             )

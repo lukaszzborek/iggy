@@ -26,7 +26,7 @@ use crate::state::command::EntryCommand;
 use crate::streaming::session::Session;
 use crate::streaming::topics;
 use anyhow::Result;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::update_topic::UpdateTopic;
 use iggy_common::{Identifier, IggyError};
 use std::rc::Rc;

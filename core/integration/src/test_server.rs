@@ -338,11 +338,13 @@ impl TestServer {
 
     fn wait_until_server_has_bound(&mut self) {
         let config_path = format!("{}/runtime/current_config.toml", self.local_data_path);
+        let file_config_provider = FileConfigProvider::new(config_path.clone());
+
         let max_attempts = (MAX_PORT_WAIT_DURATION_S * 1000) / SLEEP_INTERVAL_MS;
         self.server_addrs.clear();
 
         let config = block_on(async {
-            let mut loaded_config: Option<ServerConfig> = None;
+            let mut loaded_config = None;
 
             for _ in 0..max_attempts {
                 if !Path::new(&config_path).exists() {
@@ -354,10 +356,7 @@ impl TestServer {
                     sleep(Duration::from_millis(SLEEP_INTERVAL_MS));
                     continue;
                 }
-                match ServerConfig::file_config_provider(config_path.clone())
-                    .load_config()
-                    .await
-                {
+                match file_config_provider.load_config().await {
                     Ok(config) => {
                         // Verify config contains fresh addresses, not stale defaults
                         // Default ports: TCP=8090, HTTP=3000, QUIC=8080, WebSocket=8092

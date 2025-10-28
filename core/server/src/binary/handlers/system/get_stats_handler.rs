@@ -27,7 +27,7 @@ use crate::shard::transmission::message::{
     ShardMessage, ShardRequest, ShardRequestPayload, ShardSendRequestResult,
 };
 use crate::streaming::session::Session;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::get_stats::GetStats;
 use iggy_common::{Identifier, IggyError};
 use std::rc::Rc;
@@ -60,7 +60,7 @@ impl ServerCommandHandler for GetStats {
         let message = ShardMessage::Request(request);
         match shard.send_request_to_shard_or_recoil(None, message).await? {
             ShardSendRequestResult::Recoil(_) => {
-                let stats = shard.get_stats().await.with_error_context(|error| {
+                let stats = shard.get_stats().await.with_error(|error| {
                     format!(
                         "{COMPONENT} (error: {error}) - failed to get stats, session: {session}"
                     )

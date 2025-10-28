@@ -48,7 +48,7 @@ impl ServerCommandHandler for UpdateStream {
         let stream_id = self.stream_id.clone();
         shard
         .update_stream(session, &self.stream_id, self.name.clone())
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!("{COMPONENT} (error: {error}) - failed to update stream with id: {stream_id}, session: {session}")
         })?;
 

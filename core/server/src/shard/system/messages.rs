@@ -28,7 +28,7 @@ use crate::streaming::segments::{IggyIndexesMut, IggyMessagesBatchMut, IggyMessa
 use crate::streaming::traits::MainOps;
 use crate::streaming::utils::PooledBuffer;
 use crate::streaming::{partitions, streams, topics};
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::{
     BytesSerializable, Consumer, EncryptorKind, IGGY_MESSAGE_HEADER_SIZE, Identifier, IggyError,
     Partitioning, PartitioningKind, PollingKind, PollingStrategy,
@@ -63,7 +63,7 @@ impl IggyShard {
                 numeric_stream_id,
                 numeric_topic_id,
             )
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!("{COMPONENT} (error: {error}) - permission denied to append messages for user {} on stream ID: {}, topic ID: {}", user_id, numeric_stream_id as u32, numeric_topic_id as u32)
             })?;
 
@@ -166,7 +166,7 @@ impl IggyShard {
         self.permissioner
             .borrow()
             .poll_messages(user_id, numeric_stream_id, numeric_topic_id)
-            .with_error_context(|error| format!(
+            .with_error(|error| format!(
                 "{COMPONENT} (error: {error}) - permission denied to poll messages for user {} on stream ID: {}, topic ID: {}",
                 user_id,
                 stream_id,
@@ -287,7 +287,7 @@ impl IggyShard {
         self.permissioner
             .borrow()
             .append_messages(user_id, numeric_stream_id, numeric_topic_id)
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!("{COMPONENT} (error: {error}) - permission denied to flush unsaved buffer for user {} on stream ID: {}, topic ID: {}", user_id, numeric_stream_id as u32, numeric_topic_id as u32)
             })?;
 

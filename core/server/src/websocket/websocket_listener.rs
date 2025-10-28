@@ -26,7 +26,7 @@ use crate::websocket::websocket_sender::WebSocketSender;
 use compio::net::TcpListener;
 use compio_net::TcpOpts;
 use compio_ws::accept_async_with_config;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use futures::FutureExt;
 use iggy_common::IggyError;
 use iggy_common::TransportProtocol;
@@ -49,7 +49,7 @@ pub async fn start(
     let mut addr: SocketAddr = config
         .address
         .parse()
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!(
                 "WebSocket (error: {error}) - failed to parse address: {}",
                 config.address
@@ -72,7 +72,7 @@ pub async fn start(
 
     let listener = create_listener(addr)
         .await
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!("WebSocket (error: {error}) - failed to bind to address: {addr}")
         })
         .map_err(|_| IggyError::CannotBindToSocket(addr.to_string()))?;

@@ -22,7 +22,7 @@ use crate::{
     shard::IggyShard,
     streaming::{partitions, polling_consumer::PollingConsumer, session::Session, streams, topics},
 };
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::{Consumer, ConsumerOffsetInfo, Identifier, IggyError};
 
 impl IggyShard {
@@ -48,7 +48,7 @@ impl IggyShard {
                 session.get_user_id(),
                 stream_id,
                 topic_id
-            ).with_error_context(|error| {
+            ).with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - permission denied to store consumer offset for user with ID: {}, consumer: {consumer} in topic with ID: {topic_id} and stream with ID: {stream_id}",
                     session.get_user_id(),
@@ -99,7 +99,7 @@ impl IggyShard {
                 session.get_user_id(),
                 stream_id,
                 topic_id
-            ).with_error_context(|error| {
+            ).with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - permission denied to get consumer offset for user with ID: {}, consumer: {consumer} in topic with ID: {topic_id} and stream with ID: {stream_id}",
                     session.get_user_id()
@@ -155,7 +155,7 @@ impl IggyShard {
                 session.get_user_id(),
                 stream_id,
                 topic_id
-            ).with_error_context(|error| {
+            ).with_error(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - permission denied to delete consumer offset for user with ID: {}, consumer: {consumer} in topic with ID: {topic_id} and stream with ID: {stream_id}",
                 session.get_user_id(),
@@ -238,7 +238,7 @@ impl IggyShard {
         match polling_consumer {
             PollingConsumer::Consumer(id, _) => {
                 self.streams
-                    .with_partition_by_id(stream_id, topic_id, partition_id, partitions::helpers::delete_consumer_offset(*id)).with_error_context(|error| {
+                    .with_partition_by_id(stream_id, topic_id, partition_id, partitions::helpers::delete_consumer_offset(*id)).with_error(|error| {
                         format!(
                             "{COMPONENT} (error: {error}) - failed to delete consumer offset for consumer with ID: {id} in topic with ID: {topic_id} and stream with ID: {stream_id}",
                         )
@@ -246,7 +246,7 @@ impl IggyShard {
             }
             PollingConsumer::ConsumerGroup(_, id) => {
                 self.streams
-                    .with_partition_by_id(stream_id, topic_id, partition_id, partitions::helpers::delete_consumer_group_member_offset(*id)).with_error_context(|error| {
+                    .with_partition_by_id(stream_id, topic_id, partition_id, partitions::helpers::delete_consumer_group_member_offset(*id)).with_error(|error| {
                         format!(
                             "{COMPONENT} (error: {error}) - failed to delete consumer group member offset for member with ID: {id} in topic with ID: {topic_id} and stream with ID: {stream_id}",
                         )

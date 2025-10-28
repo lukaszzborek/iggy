@@ -22,7 +22,7 @@ use crate::slab::traits_ext::{DeleteCell, EntityMarker, InsertCell};
 use crate::streaming::session::Session;
 use crate::streaming::streams::storage::{create_stream_file_hierarchy, delete_stream_from_disk};
 use crate::streaming::streams::{self, stream};
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::{Identifier, IggyError};
 
 impl IggyShard {
@@ -72,7 +72,7 @@ impl IggyShard {
         self.permissioner
             .borrow()
             .update_stream(session.get_user_id(), id)
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - failed to update stream, user ID: {}, stream ID: {}",
                     session.get_user_id(),
@@ -137,7 +137,7 @@ impl IggyShard {
         self.permissioner
             .borrow()
             .delete_stream(session.get_user_id(), stream_id)
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - permission denied to delete stream for user {}, stream ID: {}",
                     session.get_user_id(),
@@ -186,7 +186,7 @@ impl IggyShard {
             self.permissioner
                 .borrow()
                 .purge_stream(session.get_user_id(), stream_id)
-                .with_error_context(|error| {
+                .with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - permission denied to purge stream for user {}, stream ID: {}",
                     session.get_user_id(),

@@ -25,7 +25,7 @@ use crate::slab::traits_ext::EntityComponentSystem;
 use crate::streaming::session::Session;
 use crate::streaming::streams;
 use anyhow::Result;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::IggyError;
 use iggy_common::get_stream::GetStream;
 use std::rc::Rc;
@@ -53,7 +53,7 @@ impl ServerCommandHandler for GetStream {
             .permissioner
             .borrow()
             .get_stream(session.get_user_id(), stream_id)
-            .with_error_context(|e| {
+            .with_error(|e| {
                 format!(
                     "permission denied to get stream with ID: {} for user with ID: {}, error: {e}",
                     self.stream_id,

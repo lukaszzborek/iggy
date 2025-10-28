@@ -23,7 +23,7 @@ use crate::binary::mapper;
 use crate::binary::sender::SenderKind;
 use crate::shard::IggyShard;
 use crate::streaming::session::Session;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::IggyError;
 use iggy_common::get_clients::GetClients;
 use std::rc::Rc;
@@ -43,7 +43,7 @@ impl ServerCommandHandler for GetClients {
     ) -> Result<(), IggyError> {
         debug!("session: {session}, command: {self}");
 
-        let clients = shard.get_clients(session).with_error_context(|error| {
+        let clients = shard.get_clients(session).with_error(|error| {
             format!("{COMPONENT} (error: {error}) - failed to get clients, session: {session}")
         })?;
         let clients = mapper::map_clients(clients).await;

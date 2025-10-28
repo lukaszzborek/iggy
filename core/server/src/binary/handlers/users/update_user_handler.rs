@@ -55,7 +55,7 @@ impl ServerCommandHandler for UpdateUser {
                     self.username.clone(),
                     self.status,
                 )
-                .with_error_context(|error| {
+                .with_error(|error| {
                     format!(
                         "{COMPONENT} (error: {error}) - failed to update user with user_id: {}, session: {session}",
                         self.user_id

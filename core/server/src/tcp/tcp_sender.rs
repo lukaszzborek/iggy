@@ -23,7 +23,7 @@ use crate::{server_error::ServerError, tcp::sender};
 use compio::buf::IoBufMut;
 use compio::io::AsyncWrite;
 use compio::net::TcpStream;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::IggyError;
 
 #[derive(Debug)]

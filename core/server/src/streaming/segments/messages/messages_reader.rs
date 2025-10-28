@@ -22,7 +22,7 @@ use bytes::BytesMut;
 use compio::buf::{IntoInner, IoBuf};
 use compio::fs::{File, OpenOptions};
 use compio::io::AsyncReadAtExt;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::IggyError;
 use std::rc::Rc;
 use std::{
@@ -52,9 +52,7 @@ impl MessagesReader {
             .read(true)
             .open(file_path)
             .await
-            .with_error_context(|error| {
-                format!("Failed to open messages file: {file_path}. {error}")
-            })
+            .with_error(|error| format!("Failed to open messages file: {file_path}. {error}"))
             .map_err(|_| IggyError::CannotReadFile)?;
 
         // posix_fadvise() doesn't exist on MacOS

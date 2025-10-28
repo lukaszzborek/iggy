@@ -34,7 +34,7 @@ error_set!(
 
         #[display("Read error")]
         ReadToEndError(ReadError)
-    };
+    }
 
     ConfigError := {
         #[display("Invalid configuration provider: {}", provider_type)]

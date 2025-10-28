@@ -23,7 +23,7 @@ use crate::streaming::utils::file;
 use crate::versioning::SemanticVersion;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use compio::io::AsyncReadExt;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::BytesSerializable;
 use iggy_common::EncryptorKind;
 use iggy_common::IggyByteSize;
@@ -217,7 +217,7 @@ impl FileState {
             let (result, context) = cursor.read_exact(context).await.into();
 
             result
-                .with_error_context(|error| format!("{FILE_STATE_PARSE_ERROR} code. {error}"))
+                .with_error(|error| format!("{FILE_STATE_PARSE_ERROR} code. {error}"))
                 .map_err(|_| IggyError::CannotReadFile)?;
             let context = context.freeze();
             total_size += context_length as u64;
@@ -238,7 +238,7 @@ impl FileState {
             command.put_bytes(0, command_length);
             let (result, command) = cursor.read_exact(command).await.into();
             result
-                .with_error_context(|error| format!("{FILE_STATE_PARSE_ERROR} command. {error}"))
+                .with_error(|error| format!("{FILE_STATE_PARSE_ERROR} command. {error}"))
                 .map_err(|_| IggyError::CannotReadFile)?;
             total_size += command_length as u64;
             let command_payload;

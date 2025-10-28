@@ -18,7 +18,7 @@
 
 use crate::streaming::segments::{IggyMessagesBatchSet, messages::write_batch};
 use compio::fs::{File, OpenOptions};
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::{IggyByteSize, IggyError};
 use std::{
     rc::Rc,
@@ -55,9 +55,7 @@ impl MessagesWriter {
             .write(true)
             .open(file_path)
             .await
-            .with_error_context(|err| {
-                format!("Failed to open messages file: {file_path}, error: {err}")
-            })
+            .with_error(|err| format!("Failed to open messages file: {file_path}, error: {err}"))
             .map_err(|_| IggyError::CannotReadFile)?;
 
         if file_exists {
@@ -107,7 +105,7 @@ impl MessagesWriter {
         let file = &self.file;
         write_batch(file, position, batch_set)
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "Failed to write batch to messages file: {}. {error}",
                     self.file_path
@@ -136,7 +134,7 @@ impl MessagesWriter {
         self.file
             .sync_all()
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!("Failed to fsync messages file: {}. {error}", self.file_path)
             })
             .map_err(|_| IggyError::CannotWriteToFile)?;

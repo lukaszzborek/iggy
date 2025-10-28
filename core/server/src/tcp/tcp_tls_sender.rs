@@ -24,7 +24,7 @@ use compio::buf::IoBufMut;
 use compio::io::AsyncWrite;
 use compio::net::TcpStream;
 use compio_tls::TlsStream;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::IggyError;
 
 #[derive(Debug)]
@@ -42,9 +42,7 @@ impl Sender for TcpTlsSender {
         self.stream
             .flush()
             .await
-            .with_error_context(|e| {
-                format!("failed to flush TCP stream after sending response: {e}")
-            })
+            .with_error(|e| format!("failed to flush TCP stream after sending response: {e}"))
             .map_err(|_| IggyError::TcpError)
     }
 
@@ -53,9 +51,7 @@ impl Sender for TcpTlsSender {
         self.stream
             .flush()
             .await
-            .with_error_context(|e| {
-                format!("failed to flush TCP stream after sending response: {e}")
-            })
+            .with_error(|e| format!("failed to flush TCP stream after sending response: {e}"))
             .map_err(|_| IggyError::TcpError)
     }
 
@@ -64,9 +60,7 @@ impl Sender for TcpTlsSender {
         self.stream
             .flush()
             .await
-            .with_error_context(|e| {
-                format!("failed to flush TCP stream after sending response: {e}")
-            })
+            .with_error(|e| format!("failed to flush TCP stream after sending response: {e}"))
             .map_err(|_| IggyError::TcpError)
     }
 
@@ -89,9 +83,7 @@ impl Sender for TcpTlsSender {
         self.stream
             .flush()
             .await
-            .with_error_context(|e| {
-                format!("failed to flush TCP stream after sending response: {e}")
-            })
+            .with_error(|e| format!("failed to flush TCP stream after sending response: {e}"))
             .map_err(|_| IggyError::TcpError)
     }
 }

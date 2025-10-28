@@ -54,7 +54,7 @@ impl ServerCommandHandler for DeleteStream {
         let stream = shard
             .delete_stream(session, &self.stream_id)
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!("{COMPONENT} (error: {error}) - failed to delete stream with ID: {stream_id}, session: {session}")
             })?;
         info!(

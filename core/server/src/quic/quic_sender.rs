@@ -23,7 +23,7 @@ use compio::BufResult;
 use compio::buf::IoBufMut;
 use compio::io::AsyncReadExt;
 use compio_quic::{RecvStream, SendStream};
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::IggyError;
 use tracing::{debug, error};
 

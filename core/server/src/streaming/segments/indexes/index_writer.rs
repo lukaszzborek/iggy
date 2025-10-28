@@ -19,7 +19,7 @@
 use compio::fs::File;
 use compio::fs::OpenOptions;
 use compio::io::AsyncWriteAtExt;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::INDEX_SIZE;
 use iggy_common::IggyError;
 use std::rc::Rc;
@@ -99,7 +99,7 @@ impl IndexWriter {
             .write_all_at(indexes, position)
             .await
             .0
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "Failed to write {} indexes to file: {}. {error}",
                     count, self.file_path

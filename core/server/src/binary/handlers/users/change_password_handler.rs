@@ -56,7 +56,7 @@ impl ServerCommandHandler for ChangePassword {
                     &self.current_password,
                     &self.new_password,
                 )
-                .with_error_context(|error| {
+                .with_error(|error| {
                     format!(
                         "{COMPONENT} (error: {error}) - failed to change password for user_id: {}, session: {session}",
                         self.user_id

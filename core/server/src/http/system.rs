@@ -67,9 +67,9 @@ async fn get_metrics(State(state): State<Arc<AppState>>) -> Result<String, Custo
 #[debug_handler]
 async fn get_stats(State(state): State<Arc<AppState>>) -> Result<Json<Stats>, CustomError> {
     let stats_future = SendWrapper::new(state.shard.shard().get_stats());
-    let stats = stats_future.await.with_error_context(|error| {
-        format!("{COMPONENT} (error: {error}) - failed to get stats")
-    })?;
+    let stats = stats_future
+        .await
+        .with_error(|error| format!("{COMPONENT} (error: {error}) - failed to get stats"))?;
     Ok(Json(stats))
 }
 
@@ -79,14 +79,12 @@ async fn get_cluster_metadata(
 ) -> Result<Json<ClusterMetadata>, CustomError> {
     let shard = state.shard.shard();
     let session = Session::stateless(identity.user_id, identity.ip_address);
-    let cluster_metadata = shard
-        .get_cluster_metadata(&session)
-        .with_error_context(|error| {
-            format!(
-                "{COMPONENT} (error: {error}) - failed to get cluster metadata, user ID: {}",
-                identity.user_id
-            )
-        })?;
+    let cluster_metadata = shard.get_cluster_metadata(&session).with_error(|error| {
+        format!(
+            "{COMPONENT} (error: {error}) - failed to get cluster metadata, user ID: {}",
+            identity.user_id
+        )
+    })?;
     Ok(Json(cluster_metadata))
 }
 
@@ -102,7 +100,7 @@ async fn get_client(
             &Session::stateless(identity.user_id, identity.ip_address),
             client_id,
         )
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - failed to get client, user ID: {}",
                 identity.user_id
@@ -128,7 +126,7 @@ async fn get_clients(
         .shard
         .shard()
         .get_clients(&Session::stateless(identity.user_id, identity.ip_address))
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - failed to get clients, user ID: {}",
                 identity.user_id
@@ -153,9 +151,9 @@ async fn get_snapshot(
         &command.snapshot_types,
     ));
 
-    let snapshot = snapshot_future.await.with_error_context(|error| {
-        format!("{COMPONENT} (error: {error}) - failed to get snapshot")
-    })?;
+    let snapshot = snapshot_future
+        .await
+        .with_error(|error| format!("{COMPONENT} (error: {error}) - failed to get snapshot"))?;
 
     let zip_data = Bytes::from(snapshot.0);
     let filename = format!("iggy_snapshot_{}.zip", Local::now().format("%Y%m%d_%H%M%S"));

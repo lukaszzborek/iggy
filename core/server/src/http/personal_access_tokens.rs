@@ -30,7 +30,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{delete, get, post};
 use axum::{Extension, Json, Router, debug_handler};
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::IdentityInfo;
 use iggy_common::Validatable;
 use iggy_common::create_personal_access_token::CreatePersonalAccessToken;
@@ -67,7 +67,7 @@ async fn get_personal_access_tokens(
         .shard
         .shard()
         .get_personal_access_tokens(&Session::stateless(identity.user_id, identity.ip_address))
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - failed to get personal access tokens, user ID: {}",
                 identity.user_id
@@ -91,7 +91,7 @@ async fn create_personal_access_token(
                 &command.name,
                 command.expiry,
             )
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - failed to create personal access token, user ID: {}",
                     identity.user_id
@@ -107,7 +107,7 @@ async fn create_personal_access_token(
         SendWrapper::new(state.shard.shard().state.apply(identity.user_id, &command));
 
     state_future.await
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - failed to apply create personal access token with hash, user ID: {}",
                 identity.user_id
@@ -128,7 +128,7 @@ async fn delete_personal_access_token(
             &Session::stateless(identity.user_id, identity.ip_address),
             &name,
         )
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - failed to delete personal access token, user ID: {}",
                 identity.user_id
@@ -140,7 +140,7 @@ async fn delete_personal_access_token(
         SendWrapper::new(state.shard.shard().state.apply(identity.user_id, &command));
 
     state_future.await
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - failed to apply delete personal access token, user ID: {}",
                 identity.user_id
@@ -159,7 +159,7 @@ async fn login_with_personal_access_token(
         .shard
         .shard()
         .login_with_personal_access_token(&command.token, None)
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!("{COMPONENT} (error: {error}) - failed to login with personal access token")
         })?;
     let tokens = state.jwt_manager.generate(user.id)?;

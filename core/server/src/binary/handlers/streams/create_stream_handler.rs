@@ -32,7 +32,7 @@ use crate::state::command::EntryCommand;
 use crate::state::models::CreateStreamWithId;
 use crate::streaming::session::Session;
 use anyhow::Result;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::create_stream::CreateStream;
 use iggy_common::{Identifier, IggyError};
 use std::rc::Rc;
@@ -94,7 +94,7 @@ impl ServerCommandHandler for CreateStream {
                             command: self
                         }))
                         .await
-                        .with_error_context(|error| {
+                        .with_error(|error| {
                             format!(
                                 "{COMPONENT} (error: {error}) - failed to apply create stream for id: {created_stream_id}, session: {session}"
                             )
@@ -119,7 +119,7 @@ impl ServerCommandHandler for CreateStream {
                             command: self
                         }))
                         .await
-                        .with_error_context(|error| {
+                        .with_error(|error| {
                             format!(
                                 "{COMPONENT} (error: {error}) - failed to apply create stream for id: {created_stream_id}, session: {session}"
                             )

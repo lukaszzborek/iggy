@@ -37,7 +37,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{delete, get, post, put};
 use axum::{Extension, Json, Router, debug_handler};
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::Identifier;
 use iggy_common::IdentityInfo;
 use iggy_common::Validatable;
@@ -94,7 +94,7 @@ async fn get_users(
         let future = SendWrapper::new(state.shard.shard().get_users(&session));
         future.await
     }
-    .with_error_context(|error| {
+    .with_error(|error| {
         format!(
             "{COMPONENT} (error: {error}) - failed to get users, user ID: {}",
             identity.user_id
@@ -127,7 +127,7 @@ async fn create_user(
             command.status,
             command.permissions.clone(),
         )
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - failed to create user, username: {}",
                 command.username
@@ -175,7 +175,7 @@ async fn create_user(
                 .state
                 .apply(identity.user_id, &entry_command),
         );
-        future.await.with_error_context(|error| {
+        future.await.with_error(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - failed to apply create user, username: {}",
                 username
@@ -208,7 +208,7 @@ async fn update_user(
             command.username.clone(),
             command.status,
         )
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!("{COMPONENT} (error: {error}) - failed to update user, user ID: {user_id}")
         })?;
 
@@ -240,7 +240,7 @@ async fn update_user(
                 .state
                 .apply(identity.user_id, &entry_command),
         );
-        future.await.with_error_context(|error| {
+        future.await.with_error(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - failed to apply update user, username: {}",
                 username.unwrap()
@@ -267,7 +267,7 @@ async fn update_permissions(
         .shard
         .shard()
         .update_permissions(&session, &command.user_id, command.permissions.clone())
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - failed to update permissions, user ID: {user_id}"
             )
@@ -299,7 +299,7 @@ async fn update_permissions(
                 .state
                 .apply(identity.user_id, &entry_command),
         );
-        future.await.with_error_context(|error| {
+        future.await.with_error(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - failed to apply update permissions, user ID: {user_id}"
             )
@@ -330,7 +330,7 @@ async fn change_password(
             &command.current_password,
             &command.new_password,
         )
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!("{COMPONENT} (error: {error}) - failed to change password, user ID: {user_id}")
         })?;
 
@@ -361,7 +361,7 @@ async fn change_password(
                 .state
                 .apply(identity.user_id, &entry_command),
         );
-        future.await.with_error_context(|error| {
+        future.await.with_error(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - failed to apply change password, user ID: {user_id}"
             )
@@ -385,7 +385,7 @@ async fn delete_user(
         .shard
         .shard()
         .delete_user(&session, &identifier_user_id)
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!("{COMPONENT} (error: {error}) - failed to delete user with ID: {user_id}")
         })?;
 
@@ -416,7 +416,7 @@ async fn delete_user(
                 .state
                 .apply(identity.user_id, &entry_command),
         );
-        future.await.with_error_context(|error| {
+        future.await.with_error(|error| {
             format!("{COMPONENT} (error: {error}) - failed to apply delete user with ID: {user_id}")
         })?;
     }
@@ -435,7 +435,7 @@ async fn login_user(
         .shard
         .shard()
         .login_user(&command.username, &command.password, None)
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - failed to login, username: {}",
                 command.username
@@ -456,7 +456,7 @@ async fn logout_user(
         .shard
         .shard()
         .logout_user(&session)
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - failed to logout, user ID: {}",
                 identity.user_id
@@ -470,7 +470,7 @@ async fn logout_user(
                 .revoke_token(&identity.token_id, identity.token_expiry),
         );
 
-        revoke_token_future.await.with_error_context(|error| {
+        revoke_token_future.await.with_error(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - failed to revoke token, user ID: {}",
                 identity.user_id
@@ -490,9 +490,9 @@ async fn refresh_token(
         let refresh_token_future =
             SendWrapper::new(state.jwt_manager.refresh_token(&command.token));
 
-        refresh_token_future.await.with_error_context(|error| {
-            format!("{COMPONENT} (error: {error}) - failed to refresh token")
-        })?
+        refresh_token_future
+            .await
+            .with_error(|error| format!("{COMPONENT} (error: {error}) - failed to refresh token"))?
     };
 
     Ok(Json(map_generated_access_token_to_identity_info(token)))

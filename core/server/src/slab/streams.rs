@@ -38,7 +38,7 @@ use crate::{
     },
 };
 use ahash::AHashMap;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::{Identifier, IggyError, IggyTimestamp, PollingKind};
 use slab::Slab;
 use std::{
@@ -757,7 +757,7 @@ impl Streams {
                     segment_start_offset,
                 )
                 .await
-                .with_error_context(|error| {
+                .with_error(|error| {
                     format!("Failed to load messages from disk, start offset: {offset}, count: {disk_count}, error: {error}")
                 })?;
 
@@ -852,11 +852,11 @@ impl Streams {
             .as_ref()
             .load_messages_from_disk(indexes_to_read)
             .await
-            .with_error_context(|error| format!("Failed to load messages from disk: {error}"))?;
+            .with_error(|error| format!("Failed to load messages from disk: {error}"))?;
 
         batch
             .validate_checksums_and_offsets(start_offset)
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!("Failed to validate messages read from disk! error: {error}")
             })?;
 
@@ -1081,7 +1081,7 @@ impl Streams {
             .as_ref()
             .load_messages_from_disk(indexes_to_read)
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!("Failed to load messages from disk by timestamp: {error}")
             })?;
 
@@ -1276,7 +1276,7 @@ impl Streams {
             .as_ref()
             .save_batch_set(batches)
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "Failed to save batch of {batch_count} messages \
                     ({batch_size} bytes) to stream ID: {stream_id}, topic ID: {topic_id}, partition ID: {partition_id}. {error}",
@@ -1294,7 +1294,7 @@ impl Streams {
             .as_ref()
             .save_indexes(unsaved_indexes_slice)
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!("Failed to save index of {indexes_len} indexes to stream ID: {stream_id}, topic ID: {topic_id} {partition_id}. {error}",)
             })?;
 

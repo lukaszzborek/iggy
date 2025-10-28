@@ -20,7 +20,7 @@ use super::COMPONENT;
 use crate::shard::IggyShard;
 use crate::streaming::clients::client_manager::Client;
 use crate::streaming::session::Session;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::IggyError;
 use iggy_common::{Identifier, TransportProtocol};
 use std::net::SocketAddr;

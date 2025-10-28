@@ -94,7 +94,7 @@ impl ServerCommandHandler for DeleteSegments {
                     shard
                         .delete_segments_base(&stream_id, &topic_id, partition_id, segments_count)
                         .await
-                        .with_error_context(|error| {
+                        .with_error(|error| {
                             format!(
                                 "{COMPONENT} (error: {error}) - failed to delete segments for topic with ID: {topic_id} in stream with ID: {stream_id}, session: {session}",
                             )

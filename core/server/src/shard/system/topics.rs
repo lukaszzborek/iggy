@@ -23,7 +23,7 @@ use crate::streaming::session::Session;
 use crate::streaming::topics::storage::{create_topic_file_hierarchy, delete_topic_from_disk};
 use crate::streaming::topics::topic::{self};
 use crate::streaming::{partitions, streams, topics};
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::{CompressionAlgorithm, Identifier, IggyError, IggyExpiry, MaxTopicSize};
 use std::str::FromStr;
 use tracing::info;
@@ -47,7 +47,7 @@ impl IggyShard {
             self.permissioner
             .borrow()
                 .create_topic(session.get_user_id(), numeric_stream_id)
-                .with_error_context(|error| {
+                .with_error(|error| {
                     format!(
                         "{COMPONENT} (error: {error}) - permission denied to create topic with name: {name} in stream with ID: {stream_id} for user with ID: {}",
                         session.get_user_id(),
@@ -116,7 +116,7 @@ impl IggyShard {
                 session.get_user_id(),
                 stream_id_val,
                 topic_id_val
-            ).with_error_context(|error| {
+            ).with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - permission denied to update topic for user with id: {}, stream ID: {}, topic ID: {}",
                     session.get_user_id(),
@@ -205,7 +205,7 @@ impl IggyShard {
         self.permissioner
             .borrow()
                 .delete_topic(session.get_user_id(), numeric_stream_id, numeric_topic_id)
-                .with_error_context(|error| {
+                .with_error(|error| {
                     format!(
                         "{COMPONENT} (error: {error}) - permission denied to delete topic with ID: {topic_id} in stream with ID: {stream_id} for user with ID: {}",
                         session.get_user_id(),
@@ -279,7 +279,7 @@ impl IggyShard {
                 session.get_user_id(),
                 stream_id,
                 topic_id
-            ).with_error_context(|error| {
+            ).with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - permission denied to purge topic with ID: {topic_id} in stream with ID: {stream_id} for user with ID: {}",
                     session.get_user_id(),

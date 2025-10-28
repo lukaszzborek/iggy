@@ -21,7 +21,7 @@ use crate::streaming::utils::file;
 use compio::buf::IoBuf;
 use compio::fs::remove_file;
 use compio::io::AsyncWriteAtExt;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::IggyError;
 use std::fmt::Debug;
 
@@ -68,7 +68,7 @@ impl FilePersister {
         file.write_all_at(bytes, position)
             .await
             .0
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!("{COMPONENT} (error: {error}) - failed to write data to file: {path}")
             })
             .map_err(|_| IggyError::CannotWriteToFile)?;
@@ -86,7 +86,7 @@ impl FilePersister {
         file.write_all_at(bytes, position)
             .await
             .0
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!("{COMPONENT} (error: {error}) - failed to write data to file: {path}")
             })
             .map_err(|_| IggyError::CannotWriteToFile)?;
@@ -118,7 +118,7 @@ impl FileWithSyncPersister {
         file.write_all_at(bytes, position)
             .await
             .0
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!("{COMPONENT} (error: {error}) - failed to write data to file: {path}")
             })
             .map_err(|_| IggyError::CannotWriteToFile)?;
@@ -144,7 +144,7 @@ impl FileWithSyncPersister {
         file.write_all_at(bytes, position)
             .await
             .0
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!("{COMPONENT} (error: {error}) - failed to write data to file: {path}")
             })
             .map_err(|_| IggyError::CannotWriteToFile)?;

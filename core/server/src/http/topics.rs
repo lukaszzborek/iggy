@@ -29,7 +29,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{delete, get};
 use axum::{Extension, Json, Router, debug_handler};
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::Identifier;
 use iggy_common::Validatable;
 use iggy_common::create_topic::CreateTopic;
@@ -95,7 +95,7 @@ async fn get_topic(
         .permissioner
         .borrow()
         .get_topic(session.get_user_id(), numeric_stream_id, numeric_topic_id)
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - permission denied to get topic with ID: {topic_id} in stream with ID: {stream_id} for user with ID: {}",
                 session.get_user_id(),
@@ -135,7 +135,7 @@ async fn get_topics(
         .permissioner
         .borrow()
         .get_topics(session.get_user_id(), numeric_stream_id)
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - permission denied to get topics in stream with ID: {stream_id} for user with ID: {}",
                 session.get_user_id(),
@@ -182,7 +182,7 @@ async fn create_topic(
         ));
         future.await
     }
-    .with_error_context(|error| {
+    .with_error(|error| {
         format!("{COMPONENT} (error: {error}) - failed to create topic, stream ID: {stream_id}")
     })?;
 
@@ -225,7 +225,7 @@ async fn create_topic(
     });
 
     broadcast_future.await
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - failed to broadcast topic events, stream ID: {stream_id}"
             )
@@ -259,7 +259,7 @@ async fn create_topic(
         );
         future.await
     }
-    .with_error_context(|error| {
+    .with_error(|error| {
         format!(
             "{COMPONENT} (error: {error}) - failed to apply create topic, stream ID: {stream_id}",
         )
@@ -292,7 +292,7 @@ async fn update_topic(
         command.compression_algorithm,
         command.max_topic_size,
         command.replication_factor,
-    ).with_error_context(|error| {
+    ).with_error(|error| {
         format!(
             "{COMPONENT} (error: {error}) - failed to update topic, stream ID: {stream_id}, topic ID: {topic_id}"
         )
@@ -342,7 +342,7 @@ async fn update_topic(
         let future = SendWrapper::new(state.shard.shard().state
             .apply(identity.user_id, &entry_command));
         future.await
-    }.with_error_context(|error| {
+    }.with_error(|error| {
         format!(
             "{COMPONENT} (error: {error}) - failed to apply update topic, stream ID: {stream_id}, topic ID: {topic_id}"
         )
@@ -370,7 +370,7 @@ async fn delete_topic(
             &identifier_topic_id,
         ));
         future.await
-    }.with_error_context(|error| {
+    }.with_error(|error| {
         format!(
             "{COMPONENT} (error: {error}) - failed to delete topic with ID: {topic_id} in stream with ID: {stream_id}",
         )
@@ -407,7 +407,7 @@ async fn delete_topic(
                 &entry_command,
             ));
         future.await
-    }.with_error_context(|error| {
+    }.with_error(|error| {
         format!(
             "{COMPONENT} (error: {error}) - failed to apply delete topic, stream ID: {stream_id}, topic ID: {topic_id}"
         )
@@ -435,7 +435,7 @@ async fn purge_topic(
             &identifier_topic_id,
         ));
         future.await
-    }.with_error_context(|error| {
+    }.with_error(|error| {
         format!(
             "{COMPONENT} (error: {error}) - failed to purge topic, stream ID: {stream_id}, topic ID: {topic_id}"
         )
@@ -469,7 +469,7 @@ async fn purge_topic(
                 &entry_command,
             ));
         future.await
-    }.with_error_context(|error| {
+    }.with_error(|error| {
         format!(
             "{COMPONENT} (error: {error}) - failed to apply purge topic, stream ID: {stream_id}, topic ID: {topic_id}"
         )

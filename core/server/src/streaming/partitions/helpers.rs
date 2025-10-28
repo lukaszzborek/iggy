@@ -1,4 +1,4 @@
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::{ConsumerOffsetInfo, Identifier, IggyByteSize, IggyError};
 use std::{
     ops::AsyncFnOnce,
@@ -347,9 +347,7 @@ pub async fn load_messages_from_disk_by_timestamp(
         .expect("Messages reader not initialized")
         .load_messages_from_disk(indexes_to_read)
         .await
-        .with_error_context(|error| {
-            format!("Failed to load messages from disk by timestamp: {error}")
-        })?;
+        .with_error(|error| format!("Failed to load messages from disk by timestamp: {error}"))?;
 
     Ok(IggyMessagesBatchSet::from(batch))
 }
@@ -478,7 +476,7 @@ pub fn persist_batch(
             .expect("Messages writer not initialized")
             .save_batch_set(batches)
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 let segment = log.active_segment();
                 format!(
                     "Failed to save batch of {batch_count} messages \
@@ -494,7 +492,7 @@ pub fn persist_batch(
             .expect("Index writer not initialized")
             .save_indexes(unsaved_indexes_slice)
             .await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 let segment = log.active_segment();
                 format!("Failed to save index of {len} indexes to {segment}. {error}",)
             })?;

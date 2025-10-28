@@ -31,7 +31,7 @@ use crate::state::models::CreateUserWithId;
 use crate::streaming::session::Session;
 use crate::streaming::utils::crypto;
 use anyhow::Result;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::create_user::CreateUser;
 use iggy_common::{Identifier, IggyError};
 use std::rc::Rc;
@@ -80,7 +80,7 @@ impl ServerCommandHandler for CreateUser {
                 {
                     let user = shard
                         .create_user(session, &username, &password, status, permissions.clone())
-                        .with_error_context(|error| {
+                        .with_error(|error| {
                             format!(
                                 "{COMPONENT} (error: {error}) - failed to create user with name: {}, session: {}",
                                 username, session
@@ -115,7 +115,7 @@ impl ServerCommandHandler for CreateUser {
                             }),
                         )
                         .await
-                        .with_error_context(|error| {
+                        .with_error(|error| {
                             format!(
                                 "{COMPONENT} (error: {error}) - failed to apply create user with name: {}, session: {session}",
                                 self.username
@@ -150,7 +150,7 @@ impl ServerCommandHandler for CreateUser {
                             }),
                         )
                         .await
-                        .with_error_context(|error| {
+                        .with_error(|error| {
                             format!(
                                 "{COMPONENT} (error: {error}) - failed to apply create user for user_id: {user_id}, session: {session}"
                             )

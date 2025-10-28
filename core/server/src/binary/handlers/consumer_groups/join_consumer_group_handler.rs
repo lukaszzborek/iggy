@@ -50,7 +50,7 @@ impl ServerCommandHandler for JoinConsumerGroup {
                 &self.topic_id,
                 &self.group_id,
             )
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - failed to join consumer group for stream_id: {}, topic_id: {}, group_id: {}, session: {}",
                     self.stream_id, self.topic_id, self.group_id, session

@@ -24,7 +24,7 @@ use crate::shard::transmission::event::ShardEvent;
 use crate::tcp::connection_handler::{handle_connection, handle_error};
 use compio::net::{TcpListener, TcpOpts};
 use compio_tls::TlsAcceptor;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use futures::FutureExt;
 use iggy_common::{IggyError, TransportProtocol};
 use rustls::ServerConfig;
@@ -59,7 +59,7 @@ pub(crate) async fn start(
     let listener = create_listener(addr, config)
         .await
         .map_err(|_| IggyError::CannotBindToSocket(addr.to_string()))
-        .with_error_context(|err| {
+        .with_error(|err| {
             format!("Failed to bind {server_name} server to address: {addr}, {err}")
         })?;
 

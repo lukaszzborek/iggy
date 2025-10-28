@@ -59,12 +59,9 @@ impl Validatable<ConfigError> for ServerConfig {
         self.telemetry.validate().with_error(|error| {
             format!("{COMPONENT} (error: {error}) - failed to validate telemetry config")
         })?;
-        self.system
-            .sharding
-            .validate()
-            .with_error_context(|error| {
-                format!("{COMPONENT} (error: {error}) - failed to validate sharding config")
-            })?;
+        self.system.sharding.validate().with_error(|error| {
+            format!("{COMPONENT} (error: {error}) - failed to validate sharding config")
+        })?;
 
         let topic_size = match self.system.topic.max_size {
             MaxTopicSize::Custom(size) => Ok(size.as_bytes_u64()),
@@ -203,7 +200,7 @@ impl Validatable<ConfigError> for MessageSaverConfig {
 
 impl Validatable<ConfigError> for DataMaintenanceConfig {
     fn validate(&self) -> Result<(), ConfigError> {
-        self.messages.validate().with_error_context(|error| {
+        self.messages.validate().with_error(|error| {
             format!("{COMPONENT} (error: {error}) - failed to validate messages maintenance config")
         })?;
         self.state.validate().with_error(|error| {

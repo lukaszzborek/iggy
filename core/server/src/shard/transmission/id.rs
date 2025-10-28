@@ -1,9 +1,5 @@
-<<<<<<<< HEAD:core/server/src/shard/transmission/id.rs
 /* Licensed to the Apache Software Foundation (ASF) under one
-========
-/**
  * Licensed to the Apache Software Foundation (ASF) under one
->>>>>>>> master:foreign/node/src/examples/utils.ts
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
  * regarding copyright ownership.  The ASF licenses this file
@@ -21,7 +17,6 @@
  * under the License.
  */
 
-<<<<<<<< HEAD:core/server/src/shard/transmission/id.rs
 use std::ops::Deref;
 
 // TODO: Maybe pad to cache line size?
@@ -47,22 +42,3 @@ impl Deref for ShardId {
         &self.id
     }
 }
-========
-
-import { Client } from '../index.js';
-import { getIggyAddress } from '../tcp.sm.utils.js';
-
-
-export const getClient = () => {
-  const [host, port] = getIggyAddress();
-  const credentials = { username: 'iggy', password: 'iggy' };
-
-  const opt = {
-    transport: 'TCP' as const,
-    options: { host, port },
-    credentials
-  };
-
-  return new Client(opt);
-};
->>>>>>>> master:foreign/node/src/examples/utils.ts

@@ -1,6 +1,6 @@
 use crate::shard::IggyShard;
 use compio::io::AsyncWriteAtExt;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::IggyError;
 use std::rc::Rc;
 use tracing::info;
@@ -30,7 +30,7 @@ async fn write_config(shard: Rc<IggyShard>) -> Result<(), IggyError> {
             .recv()
             .await
             .map_err(|_| IggyError::CannotWriteToFile)
-            .with_error_context(
+            .with_error(
                 |_| "config_writer: notification channel closed before all servers bound",
             )?;
 
@@ -77,7 +77,7 @@ async fn write_config(shard: Rc<IggyShard>) -> Result<(), IggyError> {
     let config_path = format!("{runtime_path}/current_config.toml");
     let content = toml::to_string(&current_config)
         .map_err(|_| IggyError::CannotWriteToFile)
-        .with_error_context(|_| "config_writer: cannot serialize current_config")?;
+        .with_error(|_| "config_writer: cannot serialize current_config")?;
 
     let mut file = compio::fs::OpenOptions::new()
         .write(true)
@@ -86,22 +86,20 @@ async fn write_config(shard: Rc<IggyShard>) -> Result<(), IggyError> {
         .open(&config_path)
         .await
         .map_err(|_| IggyError::CannotWriteToFile)
-        .with_error_context(|_| {
-            format!("config_writer: failed to open current config at {config_path}")
-        })?;
+        .with_error(|_| format!("config_writer: failed to open current config at {config_path}"))?;
 
     file.write_all_at(content.into_bytes(), 0)
         .await
         .0
         .map_err(|_| IggyError::CannotWriteToFile)
-        .with_error_context(|_| {
+        .with_error(|_| {
             format!("config_writer: failed to write current config to {config_path}")
         })?;
 
     file.sync_all()
         .await
         .map_err(|_| IggyError::CannotWriteToFile)
-        .with_error_context(|_| {
+        .with_error(|_| {
             format!("config_writer: failed to fsync current config to {config_path}")
         })?;
 

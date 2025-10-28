@@ -79,7 +79,7 @@ impl Partition {
             self.messages_count.clone(),
             true,
         );
-        new_segment.open().await.with_error_context(|error| {
+        new_segment.open().await.with_error(|error| {
             format!("{COMPONENT} (error: {error}) - failed to persist new segment: {new_segment}",)
         })?;
         self.segments.push(new_segment);

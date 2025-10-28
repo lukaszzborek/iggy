@@ -28,6 +28,8 @@ pub mod tcp_client;
 pub mod websocket_client;
 
 #[allow(deprecated)]
+pub mod test_connectors_runtime;
+#[allow(deprecated)]
 pub mod test_mcp_server;
 #[allow(deprecated)]
 pub mod test_server;

@@ -49,7 +49,7 @@ impl ServerCommandHandler for GetStreams {
             .permissioner
             .borrow()
             .get_streams(session.get_user_id())
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - permission denied to get streams for user {}",
                     session.get_user_id()

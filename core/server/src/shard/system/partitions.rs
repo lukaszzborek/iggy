@@ -32,7 +32,7 @@ use crate::streaming::segments::storage::create_segment_storage;
 use crate::streaming::session::Session;
 use crate::streaming::streams;
 use crate::streaming::topics;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::Identifier;
 use iggy_common::IggyError;
 use tracing::info;
@@ -52,7 +52,7 @@ impl IggyShard {
             _ => return Err(IggyError::InvalidCommand),
         };
 
-        result.with_error_context(|error| {
+        result.with_error(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - permission denied to {operation} partitions for user {} on stream ID: {}, topic ID: {}",
                 session.get_user_id(),

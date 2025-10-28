@@ -28,7 +28,7 @@ use crate::state::command::EntryCommand;
 use crate::state::models::CreateConsumerGroupWithId;
 use crate::streaming::session::Session;
 use anyhow::Result;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::create_consumer_group::CreateConsumerGroup;
 use iggy_common::{Identifier, IggyError};
 use std::rc::Rc;

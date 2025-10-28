@@ -47,7 +47,7 @@ impl ServerCommandHandler for DeletePersonalAccessToken {
 
         shard
                 .delete_personal_access_token(session, &self.name)
-                .with_error_context(|error| {format!(
+                .with_error(|error| {format!(
                     "{COMPONENT} (error: {error}) - failed to delete personal access token with name: {token_name}, session: {session}"
                 )})?;
 

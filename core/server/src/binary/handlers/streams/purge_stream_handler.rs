@@ -49,7 +49,7 @@ impl ServerCommandHandler for PurgeStream {
 
         shard
             .purge_stream(session, &self.stream_id).await
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!("{COMPONENT} (error: {error}) - failed to purge stream with id: {stream_id}, session: {session}")
             })?;
         let event = ShardEvent::PurgedStream {

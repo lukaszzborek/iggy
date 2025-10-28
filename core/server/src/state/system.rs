@@ -100,7 +100,7 @@ pub struct ConsumerGroupState {
 
 impl SystemState {
     pub async fn load(state: FileState) -> Result<Self, IggyError> {
-        let mut state_entries = state.init().await.with_error_context(|error| {
+        let mut state_entries = state.init().await.with_error(|error| {
             format!("{COMPONENT} (error: {error}) - failed to initialize state entries")
         })?;
 
@@ -132,22 +132,20 @@ impl SystemState {
                     command
                 }))
                 .await
-                .with_error_context(|error| {
+                .with_error(|error| {
                     format!(
                         "{COMPONENT} (error: {error}) - failed to apply create user command, username: {}",
                         root.username
                     )
                 })?;
-            state_entries = state.init().await.with_error_context(|error| {
+            state_entries = state.init().await.with_error(|error| {
                 format!("{COMPONENT} (error: {error}) - failed to initialize state entries")
             })?;
         }
 
-        let system_state = Self::init(state_entries)
-            .await
-            .with_error_context(|error| {
-                format!("{COMPONENT} (error: {error}) - failed to initialize system state")
-            })?;
+        let system_state = Self::init(state_entries).await.with_error(|error| {
+            format!("{COMPONENT} (error: {error}) - failed to initialize system state")
+        })?;
         Ok(system_state)
     }
 

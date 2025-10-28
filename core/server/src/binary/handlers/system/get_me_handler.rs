@@ -23,7 +23,7 @@ use crate::binary::mapper;
 use crate::binary::sender::SenderKind;
 use crate::shard::IggyShard;
 use crate::streaming::session::Session;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::IggyError;
 use iggy_common::get_me::GetMe;
 use std::rc::Rc;
@@ -42,7 +42,7 @@ impl ServerCommandHandler for GetMe {
     ) -> Result<(), IggyError> {
         let Some(client) = shard
             .get_client(session, session.client_id)
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!("{COMPONENT} (error: {error}) - failed to get current client for session: {session}")
             })?
         else {

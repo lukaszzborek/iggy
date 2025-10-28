@@ -168,7 +168,7 @@ async fn create_consumer_group(
         &command.topic_id,
         command.name.clone(),
     )
-    .with_error_context(|error| format!("{COMPONENT} (error: {error}) - failed to create consumer group, stream ID: {}, topic ID: {}, name: {}", stream_id, topic_id, command.name))?;
+    .with_error(|error| format!("{COMPONENT} (error: {error}) - failed to create consumer group, stream ID: {}, topic ID: {}, name: {}", stream_id, topic_id, command.name))?;
 
     let group_id = consumer_group.id();
 
@@ -238,7 +238,7 @@ async fn delete_consumer_group(
             &identifier_topic_id,
             &identifier_group_id
         )
-        .with_error_context(|error| format!("{COMPONENT} (error: {error}) - failed to delete consumer group with ID: {group_id} for topic with ID: {topic_id} in stream with ID: {stream_id}"))?;
+        .with_error(|error| format!("{COMPONENT} (error: {error}) - failed to delete consumer group with ID: {group_id} for topic with ID: {topic_id} in stream with ID: {stream_id}"))?;
 
         let cg_id = consumer_group.id();
 

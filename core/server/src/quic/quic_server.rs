@@ -26,7 +26,7 @@ use anyhow::Result;
 use compio_quic::{
     Endpoint, EndpointConfig, IdleTimeout, ServerBuilder, ServerConfig, TransportConfig, VarInt,
 };
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use rustls::crypto::ring::default_provider;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use std::fs::File;
@@ -145,7 +145,7 @@ fn configure_quic(config: &QuicConfig) -> Result<ServerConfig, QuicError> {
     };
 
     let builder = ServerBuilder::new_with_single_cert(certificates, private_key)
-        .with_error_context(|error| {
+        .with_error(|error| {
             format!("{COMPONENT} (error: {error}) - failed to create QUIC server builder")
         })
         .map_err(|_| QuicError::ConfigCreationError)?;

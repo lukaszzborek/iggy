@@ -28,7 +28,7 @@ use anyhow::Result;
 use clap::Parser;
 use dashmap::DashMap;
 use dotenvy::dotenv;
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use figlet_rs::FIGfont;
 use iggy_common::{Aes256GcmEncryptor, EncryptorKind, IggyError};
 use server::args::Args;
@@ -94,11 +94,9 @@ async fn main() -> Result<(), ServerError> {
     // Load config and create directories.
     // Remove `local_data` directory if run with `--fresh` flag.
     let config_provider = config_provider::resolve(&args.config_provider)?;
-    let config = load_config(&config_provider)
-        .await
-        .with_error_context(|error| {
-            format!("{COMPONENT} (error: {error}) - failed to load config during bootstrap")
-        })?;
+    let config = load_config(&config_provider).await.with_error(|error| {
+        format!("{COMPONENT} (error: {error}) - failed to load config during bootstrap")
+    })?;
     if args.fresh {
         let system_path = config.system.get_system_path();
         if compio::fs::metadata(&system_path).await.is_ok() {

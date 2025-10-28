@@ -45,7 +45,7 @@ impl ServerCommandHandler for LoginWithPersonalAccessToken {
         debug!("session: {session}, command: {self}");
         let user = shard
             .login_with_personal_access_token(&self.token, Some(session))
-            .with_error_context(|error| {
+            .with_error(|error| {
                 let redacted_token = if self.token.len() > 4 {
                     format!("{}****", &self.token[..4])
                 } else {

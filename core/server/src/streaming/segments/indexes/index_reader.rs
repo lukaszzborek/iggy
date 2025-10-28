@@ -24,7 +24,7 @@ use compio::{
     fs::{File, OpenOptions},
     io::AsyncReadAtExt,
 };
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::{INDEX_SIZE, IggyError, IggyIndex, IggyIndexView};
 use std::{
     io::ErrorKind,

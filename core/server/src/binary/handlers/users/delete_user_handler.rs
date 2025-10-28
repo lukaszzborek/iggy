@@ -51,7 +51,7 @@ impl ServerCommandHandler for DeleteUser {
         info!("Deleting user with ID: {}...", self.user_id);
         let user = shard
                 .delete_user(session, &self.user_id)
-                .with_error_context(|error| {
+                .with_error(|error| {
                     format!(
                         "{COMPONENT} (error: {error}) - failed to delete user with ID: {}, session: {session}",
                         self.user_id

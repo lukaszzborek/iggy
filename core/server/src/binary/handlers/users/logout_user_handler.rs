@@ -46,7 +46,7 @@ impl ServerCommandHandler for LogoutUser {
     ) -> Result<(), IggyError> {
         debug!("session: {session}, command: {self}");
         info!("Logging out user with ID: {}...", session.get_user_id());
-        shard.logout_user(session).with_error_context(|error| {
+        shard.logout_user(session).with_error(|error| {
             format!("{COMPONENT} (error: {error}) - failed to logout user, session: {session}")
         })?;
         info!("Logged out user with ID: {}.", session.get_user_id());

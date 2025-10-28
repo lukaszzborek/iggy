@@ -54,7 +54,7 @@ impl ServerCommandHandler for LoginUser {
         info!("Logging in user: {} ...", &username);
         let user = shard
             .login_user(&username, &password, Some(session))
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - failed to login user with name: {}, session: {session}",
                     username

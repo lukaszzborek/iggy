@@ -7,7 +7,7 @@ use compio::{
     fs::{self, OpenOptions, create_dir_all},
     io::AsyncWriteAtExt,
 };
-use error_set::ErrContext;
+use err_trail::ErrContext;
 use iggy_common::{ConsumerKind, IggyError};
 use std::{io::Read, path::Path, sync::atomic::AtomicU64};
 use tracing::{error, trace};
@@ -182,7 +182,7 @@ pub fn load_consumer_offsets(
         let path = path.unwrap().to_string();
         let consumer_id = consumer_id.unwrap();
         let file = std::fs::File::open(&path)
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!("{COMPONENT} (error: {error}) - failed to open offset file, path: {path}")
             })
             .map_err(|_| IggyError::CannotReadFile)?;
@@ -190,7 +190,7 @@ pub fn load_consumer_offsets(
         let mut offset = [0; 8];
         cursor
             .get_mut().read_exact(&mut offset)
-            .with_error_context(|error| {
+            .with_error(|error| {
                 format!("{COMPONENT} (error: {error}) - failed to read consumer offset from file, path: {path}")
             })
             .map_err(|_| IggyError::CannotReadFile)?;
