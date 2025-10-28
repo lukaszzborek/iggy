@@ -19,13 +19,17 @@
 use crate::binary::command::{BinaryServerCommand, ServerCommand, ServerCommandHandler};
 use crate::binary::handlers::utils::receive_and_validate;
 use crate::binary::{handlers::streams::COMPONENT, sender::SenderKind};
+use crate::shard::IggyShard;
+use crate::shard::transmission::event::ShardEvent;
+use crate::slab::traits_ext::EntityMarker;
 use crate::state::command::EntryCommand;
 use crate::streaming::session::Session;
-use crate::streaming::systems::system::SharedSystem;
 use anyhow::Result;
 use err_trail::ErrContext;
 use iggy_common::IggyError;
 use iggy_common::delete_stream::DeleteStream;
+use std::rc::Rc;
+use tracing::info;
 use tracing::{debug, instrument};
 
 impl ServerCommandHandler for DeleteStream {
@@ -39,21 +43,33 @@ impl ServerCommandHandler for DeleteStream {
         sender: &mut SenderKind,
         _length: u32,
         session: &Session,
-        system: &SharedSystem,
+        shard: &Rc<IggyShard>,
     ) -> Result<(), IggyError> {
         debug!("session: {session}, command: {self}");
         let stream_id = self.stream_id.clone();
 
-        let mut system = system.write().await;
-        system
-                .delete_stream(session, &self.stream_id)
-                .await
-                .with_error(|error| {
-                    format!("{COMPONENT} (error: {error}) - failed to delete stream with ID: {stream_id}, session: {session}")
-                })?;
+        // Acquire stream lock to serialize filesystem operations
+        let _stream_guard = shard.fs_locks.stream_lock.lock().await;
 
-        let system = system.downgrade();
-        system
+        let stream = shard
+            .delete_stream(session, &self.stream_id)
+            .await
+            .with_error(|error| {
+                format!("{COMPONENT} (error: {error}) - failed to delete stream with ID: {stream_id}, session: {session}")
+            })?;
+        info!(
+            "Deleted stream with name: {}, ID: {}",
+            stream.root().name(),
+            stream.id()
+        );
+
+        let event = ShardEvent::DeletedStream {
+            id: stream.id(),
+            stream_id: self.stream_id.clone(),
+        };
+        shard.broadcast_event_to_all_shards(event).await?;
+
+        shard
             .state
             .apply(session.get_user_id(), &EntryCommand::DeleteStream(self))
             .await

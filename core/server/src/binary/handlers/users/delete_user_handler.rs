@@ -16,16 +16,21 @@
  * under the License.
  */
 
+use std::rc::Rc;
+
 use crate::binary::command::{BinaryServerCommand, ServerCommand, ServerCommandHandler};
 use crate::binary::handlers::utils::receive_and_validate;
 use crate::binary::{handlers::users::COMPONENT, sender::SenderKind};
+
+use crate::shard::IggyShard;
+use crate::shard::transmission::event::ShardEvent;
 use crate::state::command::EntryCommand;
 use crate::streaming::session::Session;
-use crate::streaming::systems::system::SharedSystem;
 use anyhow::Result;
 use err_trail::ErrContext;
 use iggy_common::IggyError;
 use iggy_common::delete_user::DeleteUser;
+use tracing::info;
 use tracing::{debug, instrument};
 
 impl ServerCommandHandler for DeleteUser {
@@ -39,14 +44,13 @@ impl ServerCommandHandler for DeleteUser {
         sender: &mut SenderKind,
         _length: u32,
         session: &Session,
-        system: &SharedSystem,
+        shard: &Rc<IggyShard>,
     ) -> Result<(), IggyError> {
         debug!("session: {session}, command: {self}");
 
-        let mut system = system.write().await;
-        system
+        info!("Deleting user with ID: {}...", self.user_id);
+        let user = shard
                 .delete_user(session, &self.user_id)
-                .await
                 .with_error(|error| {
                     format!(
                         "{COMPONENT} (error: {error}) - failed to delete user with ID: {}, session: {session}",
@@ -54,9 +58,14 @@ impl ServerCommandHandler for DeleteUser {
                     )
                 })?;
 
-        let system = system.downgrade();
+        info!("Deleted user: {} with ID: {}.", user.username, user.id);
+        let event = ShardEvent::DeletedUser {
+            user_id: self.user_id.clone(),
+        };
+        shard.broadcast_event_to_all_shards(event).await?;
+
         let user_id = self.user_id.clone();
-        system
+        shard
             .state
             .apply(session.get_user_id(), &EntryCommand::DeleteUser(self))
             .await

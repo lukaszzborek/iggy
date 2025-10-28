@@ -122,9 +122,7 @@ impl TestTopicUpdateCmd {
 #[async_trait]
 impl IggyCmdTestCase for TestTopicUpdateCmd {
     async fn prepare_server_state(&mut self, client: &dyn Client) {
-        let stream = client
-            .create_stream(&self.stream_name, Some(self.stream_id))
-            .await;
+        let stream = client.create_stream(&self.stream_name).await;
         assert!(stream.is_ok());
 
         let message_expiry = match &self.message_expiry {
@@ -139,12 +137,11 @@ impl IggyCmdTestCase for TestTopicUpdateCmd {
 
         let topic = client
             .create_topic(
-                &self.stream_id.try_into().unwrap(),
+                &self.stream_name.clone().try_into().unwrap(),
                 &self.topic_name,
                 1,
                 self.compression_algorithm,
                 Some(self.replication_factor),
-                Some(self.topic_id),
                 message_expiry,
                 self.max_topic_size,
             )
@@ -198,14 +195,13 @@ impl IggyCmdTestCase for TestTopicUpdateCmd {
     async fn verify_server_state(&self, client: &dyn Client) {
         let topic = client
             .get_topic(
-                &self.stream_id.try_into().unwrap(),
-                &self.topic_id.try_into().unwrap(),
+                &self.stream_name.clone().try_into().unwrap(),
+                &self.topic_new_name.clone().try_into().unwrap(),
             )
             .await;
         assert!(topic.is_ok());
         let topic_details = topic.unwrap().expect("Failed to get topic");
         assert_eq!(topic_details.name, self.topic_new_name);
-        assert_eq!(topic_details.id, self.topic_id);
         assert_eq!(topic_details.messages_count, 0);
 
         if self.topic_new_message_expiry.is_some() {
@@ -224,14 +220,14 @@ impl IggyCmdTestCase for TestTopicUpdateCmd {
 
         let topic = client
             .delete_topic(
-                &self.stream_id.try_into().unwrap(),
-                &self.topic_id.try_into().unwrap(),
+                &self.stream_name.clone().try_into().unwrap(),
+                &self.topic_new_name.clone().try_into().unwrap(),
             )
             .await;
         assert!(topic.is_ok());
 
         let stream = client
-            .delete_stream(&self.stream_id.try_into().unwrap())
+            .delete_stream(&self.stream_name.clone().try_into().unwrap())
             .await;
         assert!(stream.is_ok());
     }
@@ -244,9 +240,9 @@ pub async fn should_be_successful() {
     iggy_cmd_test.setup().await;
     iggy_cmd_test
         .execute_test(TestTopicUpdateCmd::new(
-            1,
+            0,
             String::from("main"),
-            1,
+            0,
             String::from("sync"),
             Default::default(),
             None,
@@ -257,15 +253,15 @@ pub async fn should_be_successful() {
             None,
             MaxTopicSize::Custom(IggyByteSize::from_str("2GiB").unwrap()),
             1,
-            TestStreamId::Numeric,
-            TestTopicId::Numeric,
+            TestStreamId::Named,
+            TestTopicId::Named,
         ))
         .await;
     iggy_cmd_test
         .execute_test(TestTopicUpdateCmd::new(
-            2,
+            1,
             String::from("production"),
-            3,
+            0,
             String::from("topic"),
             Default::default(),
             None,
@@ -277,14 +273,14 @@ pub async fn should_be_successful() {
             MaxTopicSize::Unlimited,
             1,
             TestStreamId::Named,
-            TestTopicId::Numeric,
+            TestTopicId::Named,
         ))
         .await;
     iggy_cmd_test
         .execute_test(TestTopicUpdateCmd::new(
-            3,
+            2,
             String::from("testing"),
-            5,
+            0,
             String::from("development"),
             Default::default(),
             None,
@@ -295,15 +291,15 @@ pub async fn should_be_successful() {
             None,
             MaxTopicSize::Unlimited,
             1,
-            TestStreamId::Numeric,
+            TestStreamId::Named,
             TestTopicId::Named,
         ))
         .await;
     iggy_cmd_test
         .execute_test(TestTopicUpdateCmd::new(
-            2,
+            3,
             String::from("other"),
-            2,
+            0,
             String::from("probe"),
             Default::default(),
             None,
@@ -319,15 +315,15 @@ pub async fn should_be_successful() {
             ]),
             MaxTopicSize::Unlimited,
             1,
-            TestStreamId::Numeric,
-            TestTopicId::Numeric,
+            TestStreamId::Named,
+            TestTopicId::Named,
         ))
         .await;
     iggy_cmd_test
         .execute_test(TestTopicUpdateCmd::new(
-            3,
+            4,
             String::from("stream"),
-            1,
+            0,
             String::from("testing"),
             Default::default(),
             Some(vec![String::from("1s")]),
@@ -338,15 +334,15 @@ pub async fn should_be_successful() {
             Some(vec![String::from("1m 6s")]),
             MaxTopicSize::ServerDefault,
             1,
-            TestStreamId::Numeric,
-            TestTopicId::Numeric,
+            TestStreamId::Named,
+            TestTopicId::Named,
         ))
         .await;
     iggy_cmd_test
         .execute_test(TestTopicUpdateCmd::new(
-            4,
+            5,
             String::from("testing"),
-            2,
+            0,
             String::from("testing"),
             Default::default(),
             Some(vec![
@@ -361,7 +357,7 @@ pub async fn should_be_successful() {
             None,
             MaxTopicSize::Unlimited,
             1,
-            TestStreamId::Numeric,
+            TestStreamId::Named,
             TestTopicId::Named,
         ))
         .await;

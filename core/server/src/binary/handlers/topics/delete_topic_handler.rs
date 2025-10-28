@@ -19,13 +19,18 @@
 use crate::binary::command::{BinaryServerCommand, ServerCommand, ServerCommandHandler};
 use crate::binary::handlers::utils::receive_and_validate;
 use crate::binary::{handlers::topics::COMPONENT, sender::SenderKind};
+
+use crate::shard::IggyShard;
+use crate::shard::transmission::event::ShardEvent;
 use crate::state::command::EntryCommand;
 use crate::streaming::session::Session;
-use crate::streaming::systems::system::SharedSystem;
+use crate::streaming::streams;
 use anyhow::Result;
 use err_trail::ErrContext;
 use iggy_common::IggyError;
 use iggy_common::delete_topic::DeleteTopic;
+use std::rc::Rc;
+use tracing::info;
 use tracing::{debug, instrument};
 
 impl ServerCommandHandler for DeleteTopic {
@@ -39,22 +44,40 @@ impl ServerCommandHandler for DeleteTopic {
         sender: &mut SenderKind,
         _length: u32,
         session: &Session,
-        system: &SharedSystem,
+        shard: &Rc<IggyShard>,
     ) -> Result<(), IggyError> {
+        // TODO: There is a correctness bug,
+        // We have to first apply the state, then proceed with deleting the topic from the disk.
+        // Otherwise if we delete the topic from disk first and the server crashes
+        // we end up in a state where the topic is deleted from the disk, but during state recreation it would be recreated,
+        // without it's segments.
         debug!("session: {session}, command: {self}");
-        let stream_id = self.stream_id.clone();
-        let topic_id = self.topic_id.clone();
 
-        let mut system = system.write().await;
-        system
-                .delete_topic(session, &self.stream_id, &self.topic_id)
-                .await
-                .with_error(|error| format!(
-                    "{COMPONENT} (error: {error}) - failed to delete topic with ID: {topic_id} in stream with ID: {stream_id}, session: {session}",
-                ))?;
+        // Acquire topic lock to serialize filesystem operations
+        let _topic_guard = shard.fs_locks.topic_lock.lock().await;
 
-        let system = system.downgrade();
-        system
+        let topic = shard
+            .delete_topic(session, &self.stream_id, &self.topic_id)
+            .await?;
+        let stream_id = shard
+            .streams
+            .with_stream_by_id(&self.stream_id, streams::helpers::get_stream_id());
+        let topic_id = topic.root().id();
+        info!(
+            "Deleted topic with name: {}, ID: {} in stream with ID: {}",
+            topic.root().name(),
+            topic_id,
+            stream_id
+        );
+
+        let event = ShardEvent::DeletedTopic {
+            id: topic_id,
+            stream_id: self.stream_id.clone(),
+            topic_id: self.topic_id.clone(),
+        };
+        shard.broadcast_event_to_all_shards(event).await?;
+
+        shard
             .state
             .apply(session.get_user_id(), &EntryCommand::DeleteTopic(self))
             .await

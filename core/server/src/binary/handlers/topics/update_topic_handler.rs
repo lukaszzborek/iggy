@@ -19,13 +19,17 @@
 use crate::binary::command::{BinaryServerCommand, ServerCommand, ServerCommandHandler};
 use crate::binary::handlers::utils::receive_and_validate;
 use crate::binary::{handlers::topics::COMPONENT, sender::SenderKind};
+
+use crate::shard::IggyShard;
+use crate::shard::transmission::event::ShardEvent;
 use crate::state::command::EntryCommand;
 use crate::streaming::session::Session;
-use crate::streaming::systems::system::SharedSystem;
+use crate::streaming::topics;
 use anyhow::Result;
 use err_trail::ErrContext;
-use iggy_common::IggyError;
 use iggy_common::update_topic::UpdateTopic;
+use iggy_common::{Identifier, IggyError};
+use std::rc::Rc;
 use tracing::{debug, instrument};
 
 impl ServerCommandHandler for UpdateTopic {
@@ -39,36 +43,50 @@ impl ServerCommandHandler for UpdateTopic {
         sender: &mut SenderKind,
         _length: u32,
         session: &Session,
-        system: &SharedSystem,
+        shard: &Rc<IggyShard>,
     ) -> Result<(), IggyError> {
         debug!("session: {session}, command: {self}");
-
-        let mut system = system.write().await;
-
-        let topic = system
-                .update_topic(
-                    session,
-                    &self.stream_id,
-                    &self.topic_id,
-                    &self.name,
-                    self.message_expiry,
-                    self.compression_algorithm,
-                    self.max_topic_size,
-                    self.replication_factor,
-                )
-                .await
-                .with_error(|error| format!(
-                    "{COMPONENT} (error: {error}) - failed to update topic with id: {}, stream_id: {}, session: {session}",
-                    self.topic_id, self.stream_id
-                ))?;
-        self.message_expiry = topic.message_expiry;
-        self.max_topic_size = topic.max_topic_size;
-
+        let name_changed = !self.name.is_empty();
+        shard.update_topic(
+            session,
+            &self.stream_id,
+            &self.topic_id,
+            self.name.clone(),
+            self.message_expiry,
+            self.compression_algorithm,
+            self.max_topic_size,
+            self.replication_factor,
+        )?;
+        // TODO: Tech debt.
+        let topic_id = if name_changed {
+            Identifier::named(&self.name.clone()).unwrap()
+        } else {
+            self.topic_id.clone()
+        };
+        self.message_expiry = shard.streams.with_topic_by_id(
+            &self.stream_id,
+            &topic_id,
+            topics::helpers::get_message_expiry(),
+        );
+        self.max_topic_size = shard.streams.with_topic_by_id(
+            &self.stream_id,
+            &topic_id,
+            topics::helpers::get_max_topic_size(),
+        );
+        let event = ShardEvent::UpdatedTopic {
+            stream_id: self.stream_id.clone(),
+            topic_id: self.topic_id.clone(),
+            name: self.name.clone(),
+            message_expiry: self.message_expiry,
+            compression_algorithm: self.compression_algorithm,
+            max_topic_size: self.max_topic_size,
+            replication_factor: self.replication_factor,
+        };
+        shard.broadcast_event_to_all_shards(event).await?;
         let topic_id = self.topic_id.clone();
         let stream_id = self.stream_id.clone();
-        let system = system.downgrade();
 
-        system
+        shard
             .state
             .apply(session.get_user_id(), &EntryCommand::UpdateTopic(self))
             .await

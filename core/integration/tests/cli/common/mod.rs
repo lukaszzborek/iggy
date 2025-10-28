@@ -128,7 +128,7 @@ impl IggyCmdTest {
             .await
             .unwrap();
 
-        assert_eq!(identity_info.user_id, 1);
+        assert_eq!(identity_info.user_id, 0);
     }
 
     pub(crate) async fn execute_test(&mut self, mut test_case: impl IggyCmdTestCase) {
@@ -145,6 +145,8 @@ impl IggyCmdTest {
         let command_args = test_case.get_command();
         // Set environment variables for the command
         command.envs(command_args.get_env());
+        // Set a fixed terminal width for consistent help output formatting
+        command.env("COLUMNS", "500");
         // Set server address for the command - it's randomized for each test
         command.args(test_case.protocol(&self.server));
         // Set COLUMNS environment variable to 200 to avoid truncation of output
