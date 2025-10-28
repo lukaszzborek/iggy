@@ -19,7 +19,6 @@ package tcp_test
 
 import (
 	"fmt"
-
 	iggcon "github.com/apache/iggy/foreign/go/contracts"
 	ierror "github.com/apache/iggy/foreign/go/errors"
 	"github.com/apache/iggy/foreign/go/iggycli"

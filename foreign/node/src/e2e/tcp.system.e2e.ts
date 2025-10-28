@@ -34,7 +34,7 @@ describe('e2e -> system', async () => {
   it('e2e -> system::login', async () => {
     assert.deepEqual(
       await c.session.login({ username: 'iggy', password: 'iggy' }),
-      { userId: 1 }
+      { userId: 0 }
     )
   });
 

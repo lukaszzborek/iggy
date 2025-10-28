@@ -111,13 +111,13 @@ public class SystemTests
 
         var response = await Fixture.Clients[protocol].GetClientByIdAsync(me!.ClientId);
         response.ShouldNotBeNull();
-        response.UserId.ShouldBe(1u);
+        response.UserId.ShouldBe(0u);
         response.Address.ShouldNotBeNullOrEmpty();
         response.Transport.ShouldBe(Protocol.Tcp);
         response.ConsumerGroupsCount.ShouldBe(1);
         response.ConsumerGroups.ShouldNotBeEmpty();
         response.ConsumerGroups.ShouldContain(x => x.GroupId == consumerGroup!.Id);
-        response.ConsumerGroups.ShouldContain(x => x.TopicId == 1);
+        response.ConsumerGroups.ShouldContain(x => x.TopicId == 0);
         response.ConsumerGroups.ShouldContain(x => x.StreamId == stream!.Id);
     }
 

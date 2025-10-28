@@ -181,7 +181,7 @@ public class UsersTests
         var response = await client.LoginUser(Username.GetWithProtocol(protocol), "user2");
 
         response.ShouldNotBeNull();
-        response.UserId.ShouldBeGreaterThan(1);
+        response.UserId.ShouldBeGreaterThan(0);
         switch (protocol)
         {
             case Protocol.Tcp:

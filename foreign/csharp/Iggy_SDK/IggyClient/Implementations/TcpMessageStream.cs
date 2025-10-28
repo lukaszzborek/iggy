@@ -707,12 +707,17 @@ public sealed class TcpMessageStream : IIggyClient, IDisposable
             await _stream.SendAsync(payload, token);
             await _stream.FlushAsync(token);
 
+            // Read the 8-byte header (4 bytes status + 4 bytes length)
             var buffer = new byte[BufferSizes.EXPECTED_RESPONSE_SIZE];
-            var readBytes = await _stream.ReadAsync(buffer, token);
-
-            if (readBytes == 0)
+            var totalRead = 0;
+            while (totalRead < BufferSizes.EXPECTED_RESPONSE_SIZE)
             {
-                throw new InvalidResponseException("Received empty response from server or connection was closed");
+                var readBytes = await _stream.ReadAsync(buffer.AsMemory(totalRead, BufferSizes.EXPECTED_RESPONSE_SIZE - totalRead), token);
+                if (readBytes == 0)
+                {
+                    throw new InvalidResponseException("Connection closed while reading response header");
+                }
+                totalRead += readBytes;
             }
 
             var response = TcpMessageStreamHelpers.GetResponseLengthAndStatus(buffer);
@@ -725,7 +730,16 @@ public sealed class TcpMessageStream : IIggyClient, IDisposable
                 }
 
                 var errorBuffer = new byte[response.Length];
-                await _stream.ReadAsync(errorBuffer, token);
+                totalRead = 0;
+                while (totalRead < response.Length)
+                {
+                    var readBytes = await _stream.ReadAsync(errorBuffer.AsMemory(totalRead, response.Length - totalRead), token);
+                    if (readBytes == 0)
+                    {
+                        throw new InvalidResponseException($"Connection closed while reading error message. Expected {response.Length} bytes, got {totalRead}");
+                    }
+                    totalRead += readBytes;
+                }
                 throw new InvalidResponseException(Encoding.UTF8.GetString(errorBuffer));
             }
 
@@ -734,8 +748,19 @@ public sealed class TcpMessageStream : IIggyClient, IDisposable
                 return [];
             }
 
+            // Read the full payload
             var responseBuffer = new byte[response.Length];
-            await _stream.ReadAsync(responseBuffer, token);
+            totalRead = 0;
+            while (totalRead < response.Length)
+            {
+                var readBytes = await _stream.ReadAsync(responseBuffer.AsMemory(totalRead, response.Length - totalRead), token);
+                if (readBytes == 0)
+                {
+                    throw new InvalidResponseException($"Connection closed while reading response payload. Expected {response.Length} bytes, got {totalRead}");
+                }
+                totalRead += readBytes;
+            }
+            
             return responseBuffer;
         }
         finally
@@ -751,6 +776,8 @@ public sealed class TcpMessageStream : IIggyClient, IDisposable
 
     private static int CalculateMessageBufferSize(Identifier streamId, Identifier topicId, Consumer consumer)
     {
-        return 14 + 5 + 2 + streamId.Length + 2 + topicId.Length + 2 + consumer.Id.Length;
+        // Original: 14 + 5 + 2 + streamId.Length + 2 + topicId.Length + 2 + consumer.Id.Length
+        // Added 1 byte for partition flag
+        return 15 + 5 + 2 + streamId.Length + 2 + topicId.Length + 2 + consumer.Id.Length;
     }
 }
