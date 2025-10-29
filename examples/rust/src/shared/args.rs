@@ -42,7 +42,7 @@ pub struct Args {
     #[arg(long, default_value = "example-topic")]
     pub topic_id: String,
 
-    #[arg(long, default_value = "1")]
+    #[arg(long, default_value = "0")]
     pub partition_id: u32,
 
     #[arg(long, default_value = "1")]
@@ -54,7 +54,7 @@ pub struct Args {
     #[arg(long, default_value = "1")]
     pub consumer_kind: u8,
 
-    #[arg(long, default_value = "1")]
+    #[arg(long, default_value = "0")]
     pub consumer_id: u32,
 
     #[arg(long, default_value = "false")]
