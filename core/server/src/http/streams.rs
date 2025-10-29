@@ -58,6 +58,10 @@ async fn get_stream(
     Path(stream_id): Path<String>,
 ) -> Result<Json<StreamDetails>, CustomError> {
     let stream_id = Identifier::from_str_value(&stream_id)?;
+    let exists = state.shard.shard().ensure_stream_exists(&stream_id).is_ok();
+    if !exists {
+        return Err(CustomError::ResourceNotFound);
+    }
 
     // Use direct slab access for thread-safe stream retrieval
     let stream_details = SendWrapper::new(|| {

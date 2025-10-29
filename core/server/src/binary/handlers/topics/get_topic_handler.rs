@@ -43,7 +43,9 @@ impl ServerCommandHandler for GetTopic {
     ) -> Result<(), IggyError> {
         debug!("session: {session}, command: {self}");
         shard.ensure_authenticated(session)?;
-        let exists = shard.ensure_topic_exists(&self.stream_id, &self.topic_id).is_ok();
+        let exists = shard
+            .ensure_topic_exists(&self.stream_id, &self.topic_id)
+            .is_ok();
         if !exists {
             sender.send_empty_ok_response().await?;
             return Ok(());

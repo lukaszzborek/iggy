@@ -71,14 +71,21 @@ async fn get_topic(
 
     // Check permissions and stream existence
     state.shard.shard().ensure_authenticated(&session)?;
-    state
+    let stream_exists = state
         .shard
         .shard()
-        .ensure_stream_exists(&identity_stream_id)?;
-    state
+        .ensure_stream_exists(&identity_stream_id).is_ok();
+    if !stream_exists {
+        return Err(CustomError::ResourceNotFound)
+    }
+
+    let topic_exists = state
         .shard
         .shard()
-        .ensure_topic_exists(&identity_stream_id, &identity_topic_id)?;
+        .ensure_topic_exists(&identity_stream_id, &identity_topic_id).is_ok();
+    if !topic_exists {
+        return Err(CustomError::ResourceNotFound)
+    }
 
     let numeric_stream_id = state
         .shard
