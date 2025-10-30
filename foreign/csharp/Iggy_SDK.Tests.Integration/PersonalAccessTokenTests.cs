@@ -24,7 +24,6 @@ using Shouldly;
 
 namespace Apache.Iggy.Tests.Integrations;
 
-[SkipHttp]
 public class PersonalAccessTokenTests
 {
     private const string Name = "test-pat";

@@ -29,7 +29,6 @@ using Partitioning = Apache.Iggy.Kinds.Partitioning;
 
 namespace Apache.Iggy.Tests.Integrations;
 
-[SkipHttp]
 public class TopicsTests
 {
     private static readonly CreateTopicRequest TopicRequest = new("Test Topic", CompressionAlgorithm.Gzip, 1000, 1,

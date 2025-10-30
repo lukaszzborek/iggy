@@ -29,7 +29,6 @@ using Partitioning = Apache.Iggy.Kinds.Partitioning;
 
 namespace Apache.Iggy.Tests.Integrations;
 
-[SkipHttp]
 public class IggyPublisherTests
 {
     [ClassDataSource<IggyServerFixture>(Shared = SharedType.PerAssembly)]

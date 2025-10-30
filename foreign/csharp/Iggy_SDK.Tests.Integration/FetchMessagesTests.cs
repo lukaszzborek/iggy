@@ -27,7 +27,6 @@ using Shouldly;
 
 namespace Apache.Iggy.Tests.Integrations;
 
-[SkipHttp]
 public class FetchMessagesTests
 {
     [ClassDataSource<FetchMessagesFixture>(Shared = SharedType.PerClass)]

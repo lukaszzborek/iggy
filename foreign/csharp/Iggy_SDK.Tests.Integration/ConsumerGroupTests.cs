@@ -26,7 +26,6 @@ using Shouldly;
 
 namespace Apache.Iggy.Tests.Integrations;
 
-[SkipHttp]
 public class ConsumerGroupTests
 {
     private static readonly uint GroupId = 0;

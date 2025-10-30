@@ -28,33 +28,12 @@ using Partitioning = Apache.Iggy.Kinds.Partitioning;
 
 namespace Apache.Iggy.Tests.Integrations;
 
-[SkipHttp]
 public class StreamsTests
 {
     private const string Name = "StreamTests";
 
     [ClassDataSource<StreamsFixture>(Shared = SharedType.PerClass)]
     public required StreamsFixture Fixture { get; init; }
-    //
-    // [Test]
-    // [MethodDataSource<IggyServerFixture>(nameof(IggyServerFixture.ProtocolData))]
-    // public async Task test_iggy(Protocol protocol)
-    // {
-    //     var response = await Fixture.Clients[protocol]
-    //         .CreateStreamAsync("qwer1".GetWithProtocol(protocol));
-    //
-    //     await Fixture.Clients[protocol].DeleteStreamAsync(Identifier.String("qwer1".GetWithProtocol(protocol)));
-    //     
-    //     var t = await Fixture.Clients[protocol]
-    //         .CreateStreamAsync("qwer2".GetWithProtocol(protocol));
-    //
-    //     await Fixture.Clients[protocol].DeleteStreamAsync(Identifier.String("qwer2".GetWithProtocol(protocol)));
-    //     var a = await Fixture.Clients[protocol]
-    //         .CreateStreamAsync("qwer3".GetWithProtocol(protocol));
-    //     await Fixture.Clients[protocol].DeleteStreamAsync(Identifier.String("qwer3".GetWithProtocol(protocol)));
-    //
-    //     Console.WriteLine();
-    // }
     
     
     [Test]
@@ -196,7 +175,6 @@ public class StreamsTests
     [MethodDataSource<IggyServerFixture>(nameof(IggyServerFixture.ProtocolData))]
     public async Task UpdateStream_Should_UpdateStream_Successfully(Protocol protocol)
     {
-        TestContext.Current.GetDefaultLogger().LogInformation("Stream updated successfully ");
         var streamToUpdate = await Fixture.Clients[protocol]
             .CreateStreamAsync("stream-to-update".GetWithProtocol(protocol));
         streamToUpdate.ShouldNotBeNull();
@@ -208,7 +186,6 @@ public class StreamsTests
             .GetStreamByIdAsync(Identifier.Numeric(streamToUpdate.Id));
         result.ShouldNotBeNull();
         result.Name.ShouldBe("updated-test-stream".GetWithProtocol(protocol));
-        
     }
 
     [Test]

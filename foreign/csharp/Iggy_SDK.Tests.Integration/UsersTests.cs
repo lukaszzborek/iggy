@@ -27,7 +27,6 @@ using Shouldly;
 
 namespace Apache.Iggy.Tests.Integrations;
 
-[SkipHttp]
 public class UsersTests
 {
     private const string Username = "fixture_users_user_1";
@@ -35,7 +34,8 @@ public class UsersTests
 
     [ClassDataSource<UsersFixture>(Shared = SharedType.PerClass)]
     public required UsersFixture Fixture { get; init; }
-
+    
+    
     [Test]
     [MethodDataSource<IggyServerFixture>(nameof(IggyServerFixture.ProtocolData))]
     public async Task CreateUser_Should_CreateUser_Successfully(Protocol protocol)
@@ -206,6 +206,7 @@ public class UsersTests
         
         await Should.NotThrowAsync(Fixture.Clients[protocol]
             .DeleteUser(Identifier.String(userToRemove.Username)));
+        
     }
 
     [Test]
