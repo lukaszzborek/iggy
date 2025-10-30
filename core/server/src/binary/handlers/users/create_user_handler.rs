@@ -79,6 +79,7 @@ impl ServerCommandHandler for CreateUser {
                         ..
                     } = payload
                 {
+                    let _user_guard = shard.fs_locks.user_lock.lock().await;
                     let user = shard
                         .create_user(session, &username, &password, status, permissions.clone())
                         .with_error(|error| {

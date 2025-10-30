@@ -187,7 +187,7 @@ async fn handle_request(
                 user_id,
                 std::net::SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
             );
-
+            let _user_guard = shard.fs_locks.user_lock.lock().await;
             let user =
                 shard.create_user(&session, &username, &password, status, permissions.clone())?;
 
@@ -219,8 +219,20 @@ async fn handle_request(
                 session_user_id,
                 std::net::SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
             );
+            let _user_guard = shard.fs_locks.user_lock.lock().await;
             let user = shard.delete_user(&session, &user_id)?;
             Ok(ShardResponse::DeletedUser(user))
+        }
+        ShardRequestPayload::DeleteStream { user_id, stream_id } => {
+            assert_eq!(shard.id, 0, "DeleteStream should only be handled by shard0");
+
+            let session = Session::stateless(
+                user_id,
+                std::net::SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
+            );
+            let _stream_guard = shard.fs_locks.stream_lock.lock().await;
+            let stream = shard.delete_stream(&session, &stream_id).await?;
+            Ok(ShardResponse::DeleteStreamResponse(stream))
         }
     }
 }
