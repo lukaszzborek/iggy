@@ -66,6 +66,7 @@ impl ServerCommandHandler for CreateUser {
             },
         };
 
+        let _guard = shard.fs_locks.user_lock.lock().await;
         let message = ShardMessage::Request(request);
         match shard.send_request_to_shard_or_recoil(None, message).await? {
             ShardSendRequestResult::Recoil(message) => {

@@ -54,6 +54,7 @@ impl ServerCommandHandler for CreateTopic {
     ) -> Result<(), IggyError> {
         debug!("session: {session}, command: {self}");
 
+        let _topic_guard = shard.fs_locks.topic_lock.lock().await;
         let request = ShardRequest {
             stream_id: Identifier::default(),
             topic_id: Identifier::default(),
@@ -85,9 +86,6 @@ impl ServerCommandHandler for CreateTopic {
                         ..
                     } = payload
                 {
-                    // Acquire topic lock to serialize filesystem operations
-                    let _topic_guard = shard.fs_locks.topic_lock.lock().await;
-
                     let topic = shard
                         .create_topic(
                             session,

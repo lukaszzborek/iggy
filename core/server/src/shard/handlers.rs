@@ -109,9 +109,6 @@ async fn handle_request(
                 std::net::SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
             );
 
-            // Acquire stream lock to serialize filesystem operations
-            let _stream_guard = shard.fs_locks.stream_lock.lock().await;
-
             let stream = shard.create_stream(&session, name.clone()).await?;
             let created_stream_id = stream.id();
 
@@ -140,9 +137,6 @@ async fn handle_request(
                 user_id,
                 std::net::SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
             );
-
-            // Acquire topic lock to serialize filesystem operations
-            let _topic_guard = shard.fs_locks.topic_lock.lock().await;
 
             let topic = shard
                 .create_topic(

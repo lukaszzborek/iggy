@@ -22,6 +22,7 @@ use super::{
 };
 use crate::{
     configs::server::ServerConfig,
+    io::fs_locks::FsLocks,
     shard::namespace::IggyNamespace,
     slab::{streams::Streams, users::Users},
     state::file::FileState,
@@ -33,7 +34,11 @@ use crate::{
 };
 use dashmap::DashMap;
 use iggy_common::EncryptorKind;
-use std::{cell::Cell, rc::Rc, sync::atomic::AtomicBool};
+use std::{
+    cell::Cell,
+    rc::Rc,
+    sync::{Arc, atomic::AtomicBool},
+};
 
 #[derive(Default)]
 pub struct IggyShardBuilder {
@@ -48,6 +53,7 @@ pub struct IggyShardBuilder {
     encryptor: Option<EncryptorKind>,
     version: Option<SemanticVersion>,
     metrics: Option<Metrics>,
+    fs_locks: Option<Arc<FsLocks>>,
 }
 
 impl IggyShardBuilder {
@@ -71,6 +77,11 @@ impl IggyShardBuilder {
         shards_table: EternalPtr<DashMap<IggyNamespace, ShardId>>,
     ) -> Self {
         self.shards_table = Some(shards_table);
+        self
+    }
+
+    pub fn locks(mut self, fs_locks: Arc<FsLocks>) -> Self {
+        self.fs_locks = Some(fs_locks);
         self
     }
 
@@ -118,6 +129,7 @@ impl IggyShardBuilder {
         let users = self.users.unwrap();
         let config = self.config.unwrap();
         let connections = self.connections.unwrap();
+        let fs_locks = self.fs_locks.unwrap();
         let encryptor = self.encryptor;
         let client_manager = self.client_manager.unwrap();
         let version = self.version.unwrap();
@@ -153,7 +165,7 @@ impl IggyShardBuilder {
             shards_table,
             streams, // TODO: Fixme
             users,
-            fs_locks: Default::default(),
+            fs_locks,
             encryptor,
             config,
             _version: version,

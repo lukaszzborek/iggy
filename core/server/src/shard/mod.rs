@@ -57,7 +57,10 @@ use std::{
     cell::{Cell, RefCell},
     net::SocketAddr,
     rc::Rc,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 use tracing::{debug, error, info, instrument};
@@ -79,7 +82,7 @@ pub struct IggyShard {
     pub(crate) shards_table: EternalPtr<DashMap<IggyNamespace, ShardId>>,
     pub(crate) state: FileState,
 
-    pub(crate) fs_locks: FsLocks,
+    pub(crate) fs_locks: Arc<FsLocks>,
     pub(crate) encryptor: Option<EncryptorKind>,
     pub(crate) config: ServerConfig,
     pub(crate) client_manager: ClientManager,

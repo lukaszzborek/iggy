@@ -38,6 +38,7 @@ use server::bootstrap::{
 };
 use server::configs::config_provider::{self};
 use server::configs::sharding::CpuAllocation;
+use server::io::fs_locks::FsLocks;
 use server::io::fs_utils;
 use server::log::logger::Logging;
 use server::server_error::ServerError;
@@ -59,6 +60,7 @@ use server::versioning::SemanticVersion;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tracing::{error, info, instrument, warn};
 
@@ -287,6 +289,7 @@ async fn main() -> Result<(), ServerError> {
         }
     });
 
+    let fs_locks = Arc::new(FsLocks::new());
     for (id, cpu_id) in shards_set
         .into_iter()
         .enumerate()
@@ -306,6 +309,7 @@ async fn main() -> Result<(), ServerError> {
             state_persister,
             encryptor.clone(),
         );
+        let fs_locks = fs_locks.clone();
         let client_manager = client_manager.clone();
 
         // TODO: Explore decoupling the `Log` from `Partition` entity.
@@ -345,6 +349,7 @@ async fn main() -> Result<(), ServerError> {
                         .users(users)
                         .shards_table(shards_table)
                         .connections(connections)
+                        .locks(fs_locks)
                         .clients_manager(client_manager)
                         .config(config)
                         .encryptor(encryptor)

@@ -52,6 +52,7 @@ impl ServerCommandHandler for CreateStream {
         shard: &Rc<IggyShard>,
     ) -> Result<(), IggyError> {
         debug!("session: {session}, command: {self}");
+        let _stream_guard = shard.fs_locks.stream_lock.lock().await;
 
         let request = ShardRequest {
             stream_id: Identifier::default(),
@@ -69,9 +70,6 @@ impl ServerCommandHandler for CreateStream {
                 if let ShardMessage::Request(ShardRequest { payload, .. }) = message
                     && let ShardRequestPayload::CreateStream { name, .. } = payload
                 {
-                    // Acquire stream lock to serialize filesystem operations
-                    let _stream_guard = shard.fs_locks.stream_lock.lock().await;
-
                     let stream = shard.create_stream(session, name).await?;
                     let created_stream_id = stream.id();
 

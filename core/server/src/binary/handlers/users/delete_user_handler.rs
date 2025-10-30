@@ -52,6 +52,7 @@ impl ServerCommandHandler for DeleteUser {
     ) -> Result<(), IggyError> {
         debug!("session: {session}, command: {self}");
 
+        let _guard = shard.fs_locks.user_lock.lock().await;
         let request = ShardRequest {
             stream_id: Identifier::default(),
             topic_id: Identifier::default(),
