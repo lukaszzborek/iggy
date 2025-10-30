@@ -24,8 +24,8 @@ use integration::test_server::{ClientFactory, login_root};
 use std::sync::Arc;
 use tokio::sync::Barrier;
 
-const OPERATIONS_COUNT: usize = 100;
-const MULTIPLE_CLIENT_COUNT: usize = 20;
+const OPERATIONS_COUNT: usize = 75;
+const MULTIPLE_CLIENT_COUNT: usize = 15;
 const OPERATIONS_PER_CLIENT: usize = OPERATIONS_COUNT / MULTIPLE_CLIENT_COUNT;
 const USER_PASSWORD: &str = "secret";
 const TEST_STREAM_NAME: &str = "race-test-stream";

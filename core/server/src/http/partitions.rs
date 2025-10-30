@@ -57,6 +57,7 @@ async fn create_partitions(
     command.topic_id = Identifier::from_str_value(&topic_id)?;
     command.validate()?;
 
+    let _parititon_guard = state.shard.shard().fs_locks.partition_lock.lock().await;
     let session = Session::stateless(identity.user_id, identity.ip_address);
     let partitions = SendWrapper::new(state.shard.shard().create_partitions(
         &session,

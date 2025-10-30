@@ -27,7 +27,7 @@ use axum::http::StatusCode;
 use axum::routing::{delete, get};
 use axum::{Extension, Json, Router, debug_handler};
 use err_trail::ErrContext;
-use iggy_common::Identifier;
+use iggy_common::{Identifier};
 use iggy_common::Validatable;
 use iggy_common::create_stream::CreateStream;
 use iggy_common::delete_stream::DeleteStream;
@@ -102,6 +102,7 @@ async fn create_stream(
     let result = SendWrapper::new(async move {
         let session = Session::stateless(identity.user_id, identity.ip_address);
 
+        let _stream_guard = state.shard.shard().fs_locks.stream_lock.lock().await;
         // Create stream using wrapper method
         let stream = state
             .shard

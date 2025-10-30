@@ -179,6 +179,7 @@ async fn create_topic(
 
     let session = SendWrapper::new(Session::stateless(identity.user_id, identity.ip_address));
 
+    let _topic_guard = state.shard.shard().fs_locks.topic_lock.lock().await;
     let topic = {
         let future = SendWrapper::new(state.shard.shard().create_topic(
             &session,

@@ -16,7 +16,7 @@
  * under the License.
  */
 
-use futures::lock::Mutex;
+use tokio::sync::Mutex;
 
 /// Global filesystem locks to serialize concurrent filesystem operations.
 /// These locks prevent race conditions when multiple concurrent tasks try to

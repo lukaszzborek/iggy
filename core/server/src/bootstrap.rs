@@ -364,7 +364,7 @@ pub fn create_shard_executor(_cpu_set: HashSet<usize>) -> Runtime {
     compio::runtime::RuntimeBuilder::new()
         .with_proactor(proactor.to_owned())
         .event_interval(128)
-        //.thread_affinity(cpu_set)
+        .thread_affinity(_cpu_set)
         .build()
         .unwrap()
 }
