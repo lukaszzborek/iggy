@@ -32,7 +32,28 @@ public class StreamsTests
 
     [ClassDataSource<StreamsFixture>(Shared = SharedType.PerClass)]
     public required StreamsFixture Fixture { get; init; }
-
+    //
+    // [Test]
+    // [MethodDataSource<IggyServerFixture>(nameof(IggyServerFixture.ProtocolData))]
+    // public async Task test_iggy(Protocol protocol)
+    // {
+    //     var response = await Fixture.Clients[protocol]
+    //         .CreateStreamAsync("qwer1".GetWithProtocol(protocol));
+    //
+    //     await Fixture.Clients[protocol].DeleteStreamAsync(Identifier.String("qwer1".GetWithProtocol(protocol)));
+    //     
+    //     var t = await Fixture.Clients[protocol]
+    //         .CreateStreamAsync("qwer2".GetWithProtocol(protocol));
+    //
+    //     await Fixture.Clients[protocol].DeleteStreamAsync(Identifier.String("qwer2".GetWithProtocol(protocol)));
+    //     var a = await Fixture.Clients[protocol]
+    //         .CreateStreamAsync("qwer3".GetWithProtocol(protocol));
+    //     await Fixture.Clients[protocol].DeleteStreamAsync(Identifier.String("qwer3".GetWithProtocol(protocol)));
+    //
+    //     Console.WriteLine();
+    // }
+    
+    
     [Test]
     [MethodDataSource<IggyServerFixture>(nameof(IggyServerFixture.ProtocolData))]
     public async Task CreateStream_HappyPath_Should_CreateStream_Successfully(Protocol protocol)
@@ -212,8 +233,12 @@ public class StreamsTests
     [MethodDataSource<IggyServerFixture>(nameof(IggyServerFixture.ProtocolData))]
     public async Task DeleteStream_Should_DeleteStream_Successfully(Protocol protocol)
     {
+        var streamToDelete = await Fixture.Clients[protocol]
+            .CreateStreamAsync("stream-to-delete".GetWithProtocol(protocol));
+        streamToDelete.ShouldNotBeNull();
+
         await Should.NotThrowAsync(() =>
-            Fixture.Clients[protocol].DeleteStreamAsync(Identifier.String(Name.GetWithProtocol(protocol))));
+            Fixture.Clients[protocol].DeleteStreamAsync(Identifier.Numeric(streamToDelete.Id)));
     }
 
     [Test]
@@ -222,7 +247,7 @@ public class StreamsTests
     public async Task DeleteStream_NotExists_Should_Throw_InvalidResponse(Protocol protocol)
     {
         await Should.ThrowAsync<InvalidResponseException>(() =>
-            Fixture.Clients[protocol].DeleteStreamAsync(Identifier.String(Name.GetWithProtocol(protocol))));
+            Fixture.Clients[protocol].DeleteStreamAsync(Identifier.String("stream-to-delete".GetWithProtocol(protocol))));
     }
 
     [Test]
@@ -231,7 +256,7 @@ public class StreamsTests
     public async Task GetStreamById_AfterDelete_Should_Throw_InvalidResponse(Protocol protocol)
     {
         var stream = await Fixture.Clients[protocol]
-            .GetStreamByIdAsync(Identifier.String(Name.GetWithProtocol(protocol)));
+            .GetStreamByIdAsync(Identifier.String("stream-to-delete".GetWithProtocol(protocol)));
 
         stream.ShouldBeNull();
     }

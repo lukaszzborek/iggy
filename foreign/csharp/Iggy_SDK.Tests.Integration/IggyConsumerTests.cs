@@ -677,7 +677,7 @@ public class IggyConsumerTests
 
         await consumer.InitAsync();
 
-        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
 
         try
         {

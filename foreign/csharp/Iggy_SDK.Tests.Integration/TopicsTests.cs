@@ -262,9 +262,13 @@ public class TopicsTests
     [MethodDataSource<IggyServerFixture>(nameof(IggyServerFixture.ProtocolData))]
     public async Task Delete_ExistingTopic_Should_DeleteTopic_Successfully(Protocol protocol)
     {
+        var topicToDelete = await Fixture.Clients[protocol]
+            .CreateTopicAsync(Identifier.String(Fixture.StreamId.GetWithProtocol(protocol)), "topic-to-delete", 1);
+        topicToDelete.ShouldNotBeNull();
+        
         await Should.NotThrowAsync(Fixture.Clients[protocol].DeleteTopicAsync(
             Identifier.String(Fixture.StreamId.GetWithProtocol(protocol)),
-            Identifier.String(TopicRequest.Name)));
+            Identifier.Numeric(topicToDelete.Id)));
     }
 
     [Test]
@@ -274,7 +278,7 @@ public class TopicsTests
     {
         await Should.ThrowAsync<InvalidResponseException>(Fixture.Clients[protocol].DeleteTopicAsync(
             Identifier.String(Fixture.StreamId.GetWithProtocol(protocol)),
-            Identifier.String(TopicRequest.Name)));
+            Identifier.String("topic-to-delete")));
     }
 
     [Test]
@@ -284,7 +288,7 @@ public class TopicsTests
     {
         var topic = await Fixture.Clients[protocol].GetTopicByIdAsync(
             Identifier.String(Fixture.StreamId.GetWithProtocol(protocol)),
-            Identifier.String(TopicRequest.Name));
+            Identifier.String("topic-to-delete"));
 
         topic.ShouldBeNull();
     }

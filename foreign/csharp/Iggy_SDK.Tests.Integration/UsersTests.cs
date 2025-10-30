@@ -198,8 +198,12 @@ public class UsersTests
     [MethodDataSource<IggyServerFixture>(nameof(IggyServerFixture.ProtocolData))]
     public async Task DeleteUser_Should_DeleteUser_Successfully(Protocol protocol)
     {
+        var userToRemove = await Fixture.Clients[protocol]
+            .CreateUser("user-to-remove".GetWithProtocol(protocol), "test123", UserStatus.Active);
+        userToRemove.ShouldNotBeNull();
+        
         await Should.NotThrowAsync(Fixture.Clients[protocol]
-            .DeleteUser(Identifier.String(Username.GetWithProtocol(protocol))));
+            .DeleteUser(Identifier.String(userToRemove.Username)));
     }
 
     [Test]

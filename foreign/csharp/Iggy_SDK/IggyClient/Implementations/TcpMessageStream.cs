@@ -661,41 +661,6 @@ public sealed class TcpMessageStream : IIggyClient, IDisposable
         return new AuthResponse(userId, default);
     }
 
-    // //TODO - look into calling the non generic FetchMessagesAsync method in order
-    // //to make this method re-usable for non generic PollMessages method.
-    // private async Task StartPollingMessagesAsync<TMessage>(MessageFetchRequest request,
-    //     Func<byte[], TMessage> deserializer, TimeSpan interval, ChannelWriter<MessageResponse<TMessage>> writer,
-    //     Func<byte[], byte[]>? decryptor = null,
-    //     CancellationToken token = default)
-    // {
-    //     var timer = new PeriodicTimer(interval);
-    //     while (await timer.WaitForNextTickAsync(token) || token.IsCancellationRequested)
-    //     {
-    //         try
-    //         {
-    //             PolledMessages<TMessage> fetchResponse
-    //                 = await PollMessagesAsync(request, deserializer, decryptor, token);
-    //             if (fetchResponse.Messages.Count == 0)
-    //             {
-    //                 continue;
-    //             }
-    //
-    //             foreach (MessageResponse<TMessage> messageResponse in fetchResponse.Messages)
-    //             {
-    //                 await writer.WriteAsync(messageResponse, token);
-    //             }
-    //         }
-    //         catch (InvalidResponseException e)
-    //         {
-    //             _logger.LogError(
-    //                 "Error encountered while polling messages - Stream ID: {streamId}, Topic ID: {topicId}, Partition ID: {partitionId}, error message {message}",
-    //                 request.StreamId, request.TopicId, request.PartitionId, e.Message);
-    //         }
-    //     }
-    //
-    //     writer.Complete();
-    // }
-
     private async Task<byte[]> SendWithResponseAsync(byte[] payload, CancellationToken token = default)
     {
         try
