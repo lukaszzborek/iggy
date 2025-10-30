@@ -86,6 +86,11 @@ async fn run_scenario(transport: TransportProtocol, scenario: ScenarioFn) {
         "true".to_string(),
     );
     extra_envs.insert("IGGY_TCP_SOCKET_NODELAY".to_string(), "true".to_string());
+    extra_envs.insert("IGGY_QUIC_MAX_IDLE_TIMEOUT".to_string(), "500s".to_string());
+    extra_envs.insert(
+        "IGGY_QUIC_KEEP_ALIVE_INTERVAL".to_string(),
+        "15s".to_string(),
+    );
     let mut test_server = TestServer::new(Some(extra_envs), true, None, IpAddrKind::V4);
     test_server.start();
 
