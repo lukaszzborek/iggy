@@ -53,7 +53,7 @@ impl ServerCommandHandler for GetStream {
         let stream_id = shard
             .streams
             .with_stream_by_id(&self.stream_id, streams::helpers::get_stream_id());
-        shard
+        let has_permission = shard
             .permissioner
             .borrow()
             .get_stream(session.get_user_id(), stream_id)
@@ -63,7 +63,11 @@ impl ServerCommandHandler for GetStream {
                     self.stream_id,
                     session.get_user_id(),
                 )
-            })?;
+            }).is_ok();
+        if !has_permission {
+            sender.send_empty_ok_response().await?;
+            return Ok(());
+        }
         let response = shard
             .streams
             .with_components_by_id(stream_id, |(root, stats)| mapper::map_stream(&root, &stats));

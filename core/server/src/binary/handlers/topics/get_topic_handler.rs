@@ -54,7 +54,7 @@ impl ServerCommandHandler for GetTopic {
         let numeric_stream_id = shard
             .streams
             .with_stream_by_id(&self.stream_id, streams::helpers::get_stream_id());
-        shard.permissioner.borrow().get_topic(
+        let has_permission = shard.permissioner.borrow().get_topic(
             session.get_user_id(),
             numeric_stream_id,
             self.topic_id
@@ -62,7 +62,11 @@ impl ServerCommandHandler for GetTopic {
                 .unwrap_or(0)
                 .try_into()
                 .unwrap(),
-        )?;
+        ).is_ok();
+        if !has_permission {
+            sender.send_empty_ok_response().await?;
+            return Ok(());
+        }
 
         let response =
             shard
