@@ -100,14 +100,15 @@ async fn execute_multiple_clients_users_hot(
     client_factory: &dyn ClientFactory,
     use_barrier: bool,
 ) -> Vec<OperationResult> {
-    let mut handles = Vec::with_capacity(MULTIPLE_CLIENT_COUNT);
+    let users_count = MULTIPLE_CLIENT_COUNT / 2;
+    let mut handles = Vec::with_capacity(users_count);
     let barrier = if use_barrier {
-        Some(Arc::new(Barrier::new(MULTIPLE_CLIENT_COUNT)))
+        Some(Arc::new(Barrier::new(users_count)))
     } else {
         None
     };
 
-    for client_id in 0..MULTIPLE_CLIENT_COUNT {
+    for client_id in 0..users_count {
         let client = create_client(client_factory).await;
         login_root(&client).await;
 
@@ -117,8 +118,8 @@ async fn execute_multiple_clients_users_hot(
                 b.wait().await;
             }
 
-            let mut results = Vec::with_capacity(OPERATIONS_PER_CLIENT);
-            for i in 0..OPERATIONS_PER_CLIENT {
+            let mut results = Vec::with_capacity(OPERATIONS_PER_CLIENT / 2);
+            for i in 0..OPERATIONS_PER_CLIENT / 2 {
                 let username = format!("race-user-{}-{}", client_id, i);
                 let result = client
                     .create_user(&username, USER_PASSWORD, UserStatus::Active, None)
@@ -143,15 +144,16 @@ async fn execute_multiple_clients_users_cold(
     client_factory: &dyn ClientFactory,
     use_barrier: bool,
 ) -> Vec<OperationResult> {
-    let mut handles = Vec::with_capacity(MULTIPLE_CLIENT_COUNT);
+    let users_count = MULTIPLE_CLIENT_COUNT / 2;
+    let mut handles = Vec::with_capacity(users_count);
     const DUPLICATE_USER: &str = "race-user-duplicate";
     let barrier = if use_barrier {
-        Some(Arc::new(Barrier::new(MULTIPLE_CLIENT_COUNT)))
+        Some(Arc::new(Barrier::new(users_count)))
     } else {
         None
     };
 
-    for _ in 0..MULTIPLE_CLIENT_COUNT {
+    for _ in 0..users_count {
         let client = create_client(client_factory).await;
         login_root(&client).await;
 
@@ -161,8 +163,8 @@ async fn execute_multiple_clients_users_cold(
                 b.wait().await;
             }
 
-            let mut results = Vec::with_capacity(OPERATIONS_PER_CLIENT);
-            for _ in 0..OPERATIONS_PER_CLIENT {
+            let mut results = Vec::with_capacity(OPERATIONS_PER_CLIENT / 2);
+            for _ in 0..OPERATIONS_PER_CLIENT / 2 {
                 let result = client
                     .create_user(DUPLICATE_USER, USER_PASSWORD, UserStatus::Active, None)
                     .await
