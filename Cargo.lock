@@ -1641,7 +1641,7 @@ dependencies = [
 [[package]]
 name = "compio-ws"
 version = "0.1.0"
-source = "git+https://github.com/krishvishal/compio-ws#ca9240b6b0eb2206e8ae050580a053c5e9d0e877"
+source = "git+https://github.com/krishvishal/compio-ws?rev=2b42d376308e77ba673c9ef60ee159994f6a243e#2b42d376308e77ba673c9ef60ee159994f6a243e"
 dependencies = [
  "compio",
  "compio-buf",

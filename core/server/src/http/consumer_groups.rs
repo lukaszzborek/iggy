@@ -66,13 +66,17 @@ async fn get_consumer_group(
 
     // Check permissions and existence
     state.shard.shard().ensure_authenticated(&session)?;
-    let exists = state.shard.shard().ensure_consumer_group_exists(
-        &identifier_stream_id,
-        &identifier_topic_id,
-        &identifier_group_id,
-    ).is_ok();
+    let exists = state
+        .shard
+        .shard()
+        .ensure_consumer_group_exists(
+            &identifier_stream_id,
+            &identifier_topic_id,
+            &identifier_group_id,
+        )
+        .is_ok();
     if !exists {
-        return Err(CustomError::ResourceNotFound)
+        return Err(CustomError::ResourceNotFound);
     }
 
     let numeric_topic_id = state.shard.shard().streams.with_topic_by_id(

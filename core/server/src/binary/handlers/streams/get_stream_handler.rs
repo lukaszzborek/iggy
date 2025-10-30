@@ -63,7 +63,8 @@ impl ServerCommandHandler for GetStream {
                     self.stream_id,
                     session.get_user_id(),
                 )
-            }).is_ok();
+            })
+            .is_ok();
         if !has_permission {
             sender.send_empty_ok_response().await?;
             return Ok(());
