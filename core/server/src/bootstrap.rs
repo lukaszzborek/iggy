@@ -344,7 +344,7 @@ pub fn create_root_user() -> User {
     User::root(&username, &password)
 }
 
-pub fn create_shard_executor(cpu_set: HashSet<usize>) -> Runtime {
+pub fn create_shard_executor(_cpu_set: HashSet<usize>) -> Runtime {
     // TODO: The event interval tick, could be configured based on the fact
     // How many clients we expect to have connected.
     // This roughly estimates the number of tasks we will create.
@@ -364,7 +364,7 @@ pub fn create_shard_executor(cpu_set: HashSet<usize>) -> Runtime {
     compio::runtime::RuntimeBuilder::new()
         .with_proactor(proactor.to_owned())
         .event_interval(128)
-        .thread_affinity(cpu_set)
+        //.thread_affinity(cpu_set)
         .build()
         .unwrap()
 }

@@ -49,6 +49,7 @@ pub async fn start(
                 match incoming_conn {
                     Some(incoming_conn) => {
                         let remote_addr = incoming_conn.remote_address();
+                        info!("Received incoming QUIC connection from {}", remote_addr);
 
                         if shard.is_shutting_down() {
                             info!( "Rejecting new QUIC connection from {} during shutdown", remote_addr);

@@ -163,7 +163,9 @@ async fn handle_request(
                 topic: topic.clone(),
             };
             shard.broadcast_event_to_all_shards(event).await?;
+            drop(_topic_guard);
 
+            let _partition_lock = shard.fs_locks.partition_lock.lock().await;
             let partitions = shard
                 .create_partitions(
                     &session,
@@ -178,6 +180,7 @@ async fn handle_request(
                 topic_id: Identifier::numeric(topic_id as u32).unwrap(),
                 partitions,
             };
+            drop(_partition_lock);
             shard.broadcast_event_to_all_shards(event).await?;
 
             Ok(ShardResponse::CreateTopicResponse(topic))

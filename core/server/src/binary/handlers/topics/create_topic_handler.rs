@@ -113,6 +113,8 @@ impl ServerCommandHandler for CreateTopic {
                     };
 
                     shard.broadcast_event_to_all_shards(event).await?;
+                    drop(_topic_guard);
+                    let _partition_guard = shard.fs_locks.partition_lock.lock().await;
                     let partitions = shard
                         .create_partitions(
                             session,
@@ -126,7 +128,7 @@ impl ServerCommandHandler for CreateTopic {
                         topic_id: Identifier::numeric(topic_id as u32).unwrap(),
                         partitions,
                     };
-
+                    drop(_partition_guard);
                     shard.broadcast_event_to_all_shards(event).await?;
 
                     let response = shard.streams.with_topic_by_id(

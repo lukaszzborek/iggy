@@ -62,7 +62,8 @@ impl IggyShard {
             session.client_id,
             partition_id,
             false,
-        )? else {
+        )?
+        else {
             return Err(IggyError::NotResolvedConsumer(consumer.id));
         };
         self.ensure_partition_exists(stream_id, topic_id, partition_id)?;
@@ -114,7 +115,8 @@ impl IggyShard {
             session.client_id,
             partition_id,
             false,
-        )? else {
+        )?
+        else {
             return Err(IggyError::NotResolvedConsumer(consumer.id));
         };
         self.ensure_partition_exists(stream_id, topic_id, partition_id)?;
@@ -171,7 +173,8 @@ impl IggyShard {
             session.client_id,
             partition_id,
             false,
-        )? else {
+        )?
+        else {
             return Err(IggyError::NotResolvedConsumer(consumer.id));
         };
         self.ensure_partition_exists(stream_id, topic_id, partition_id)?;
