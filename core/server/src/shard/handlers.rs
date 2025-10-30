@@ -193,7 +193,7 @@ async fn handle_request(
                 user_id,
                 std::net::SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
             );
-            let _user_guard = shard.fs_locks.user_lock.lock().await;            let _user_guard = shard.fs_locks.user_lock.lock().await;
+            let _user_guard = shard.fs_locks.user_lock.lock().await;            
             let user =
                 shard.create_user(&session, &username, &password, status, permissions.clone())?;
 
