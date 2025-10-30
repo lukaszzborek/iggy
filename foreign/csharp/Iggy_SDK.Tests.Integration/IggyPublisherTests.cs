@@ -121,7 +121,7 @@ public class IggyPublisherTests
 
         var publisher = IggyPublisherBuilder
             .Create(client, Identifier.String(testStream.StreamId), Identifier.String(testStream.TopicId))
-            .WithPartitioning(Partitioning.PartitionId(1))
+            .WithPartitioning(Partitioning.PartitionId(0))
             .Build();
 
         await publisher.InitAsync();
@@ -139,7 +139,7 @@ public class IggyPublisherTests
             Identifier.String(testStream.StreamId),
             Identifier.String(testStream.TopicId),
             null,
-            Consumer.New(1),
+            Consumer.New(0),
             PollingStrategy.Next(),
             10,
             false);
@@ -285,14 +285,14 @@ public class IggyPublisherTests
 
         var publisher = IggyPublisherBuilder
             .Create(client, Identifier.String(testStream.StreamId), Identifier.String(testStream.TopicId))
-            .WithPartitioning(Partitioning.PartitionId(1))
+            .WithPartitioning(Partitioning.PartitionId(0))
             .WithBackgroundSending(true, queueCapacity: 1000, batchSize: 10, flushInterval: TimeSpan.FromMilliseconds(50))
             .Build();
 
         await publisher.InitAsync();
 
         var messages = new List<Message>();
-        for (int i = 0; i < 50; i++)
+        for (var i = 0; i < 50; i++)
         {
             messages.Add(new Message(Guid.NewGuid(), Encoding.UTF8.GetBytes($"Background message {i}")));
         }
@@ -385,7 +385,7 @@ public class IggyPublisherTests
         var testStream = await CreateTestStream(client, protocol, partitionsCount: 5);
 
         // Send messages to different partitions
-        for (uint partitionId = 1; partitionId <= 5; partitionId++)
+        for (uint partitionId = 0; partitionId < 5; partitionId++)
         {
             var publisher = IggyPublisherBuilder
                 .Create(client, Identifier.String(testStream.StreamId), Identifier.String(testStream.TopicId))
@@ -406,7 +406,7 @@ public class IggyPublisherTests
         }
 
         // Verify messages are in different partitions
-        for (uint partitionId = 1; partitionId <= 5; partitionId++)
+        for (uint partitionId = 0; partitionId < 5; partitionId++)
         {
             var polledMessages = await client.PollMessagesAsync(
                 Identifier.String(testStream.StreamId),
@@ -449,7 +449,7 @@ public class IggyPublisherTests
 
         // Verify messages are distributed across partitions
         var totalMessages = 0;
-        for (uint partitionId = 1; partitionId <= 3; partitionId++)
+        for (uint partitionId = 0; partitionId < 3; partitionId++)
         {
             var polledMessages = await client.PollMessagesAsync(
                 Identifier.String(testStream.StreamId),
@@ -575,7 +575,7 @@ public class IggyPublisherTests
 
         var publisher = IggyPublisherBuilder
             .Create(client, Identifier.String(testStream.StreamId), Identifier.String(testStream.TopicId))
-            .WithPartitioning(Partitioning.PartitionId(1))
+            .WithPartitioning(Partitioning.PartitionId(0))
             .WithBackgroundSending(true, queueCapacity: 1000, batchSize: 50)
             .Build();
 

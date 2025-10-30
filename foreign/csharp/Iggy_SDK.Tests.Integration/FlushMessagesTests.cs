@@ -35,7 +35,7 @@ public class FlushMessagesTests
         await Should.NotThrowAsync(() =>
             Fixture.Clients[protocol].FlushUnsavedBufferAsync(
                 Identifier.String(Fixture.StreamId.GetWithProtocol(protocol)),
-                Identifier.String(Fixture.TopicRequest.Name), 1, true));
+                Identifier.String(Fixture.TopicRequest.Name), 0, true));
     }
 
     [Test]
@@ -46,7 +46,7 @@ public class FlushMessagesTests
         await Should.NotThrowAsync(() =>
             Fixture.Clients[protocol].FlushUnsavedBufferAsync(
                 Identifier.String(Fixture.StreamId.GetWithProtocol(protocol)),
-                Identifier.String(Fixture.TopicRequest.Name), 1, false));
+                Identifier.String(Fixture.TopicRequest.Name), 0, false));
     }
 
     [Test]

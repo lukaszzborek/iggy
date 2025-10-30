@@ -41,14 +41,14 @@ public class FetchMessagesTests
             Count = 10,
             AutoCommit = true,
             Consumer = Consumer.New(1),
-            PartitionId = 1,
+            PartitionId = 0,
             PollingStrategy = PollingStrategy.Next(),
             StreamId = Identifier.String(Fixture.StreamId.GetWithProtocol(protocol)),
             TopicId = Identifier.String(Fixture.TopicRequest.Name)
         });
 
         response.Messages.Count.ShouldBe(10);
-        response.PartitionId.ShouldBe(1);
+        response.PartitionId.ShouldBe(0);
         response.CurrentOffset.ShouldBe(19u);
 
         foreach (var responseMessage in response.Messages)
@@ -69,7 +69,7 @@ public class FetchMessagesTests
             Count = 10,
             AutoCommit = true,
             Consumer = Consumer.New(1),
-            PartitionId = 1,
+            PartitionId = 0,
             PollingStrategy = PollingStrategy.Next(),
             StreamId = Identifier.String(Fixture.StreamId.GetWithProtocol(protocol)),
             TopicId = Identifier.Numeric(2137)
@@ -89,7 +89,7 @@ public class FetchMessagesTests
             Count = 10,
             AutoCommit = true,
             Consumer = Consumer.New(1),
-            PartitionId = 1,
+            PartitionId = 0,
             PollingStrategy = PollingStrategy.Next(),
             StreamId = Identifier.String(Fixture.StreamId.GetWithProtocol(protocol)),
             TopicId = Identifier.String(Fixture.TopicHeadersRequest.Name)
@@ -98,7 +98,7 @@ public class FetchMessagesTests
 
         var response = await Fixture.Clients[protocol].PollMessagesAsync(headersMessageFetchRequest);
         response.Messages.Count.ShouldBe(10);
-        response.PartitionId.ShouldBe(1);
+        response.PartitionId.ShouldBe(0);
         response.CurrentOffset.ShouldBe(19u);
         foreach (var responseMessage in response.Messages)
         {

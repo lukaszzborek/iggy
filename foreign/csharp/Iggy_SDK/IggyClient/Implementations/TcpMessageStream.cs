@@ -53,10 +53,9 @@ public sealed class TcpMessageStream : IIggyClient, IDisposable
         _semaphore.Dispose();
     }
 
-    public async Task<StreamResponse?> CreateStreamAsync(string name, uint? streamId = null,
-        CancellationToken token = default)
+    public async Task<StreamResponse?> CreateStreamAsync(string name, CancellationToken token = default)
     {
-        var message = TcpContracts.CreateStream(name, streamId);
+        var message = TcpContracts.CreateStream(name);
         var payload = new byte[4 + BufferSizes.INITIAL_BYTES_LENGTH + message.Length];
         TcpMessageStreamHelpers.CreatePayload(payload, message, CommandCodes.CREATE_STREAM_CODE);
 
@@ -165,11 +164,10 @@ public sealed class TcpMessageStream : IIggyClient, IDisposable
 
 
     public async Task<TopicResponse?> CreateTopicAsync(Identifier streamId, string name, uint partitionsCount,
-        CompressionAlgorithm compressionAlgorithm = CompressionAlgorithm.None,
-        uint? topicId = null, byte? replicationFactor = null, ulong messageExpiry = 0, ulong maxTopicSize = 0,
-        CancellationToken token = default)
+        CompressionAlgorithm compressionAlgorithm = CompressionAlgorithm.None, byte? replicationFactor = null, 
+        ulong messageExpiry = 0, ulong maxTopicSize = 0, CancellationToken token = default)
     {
-        var message = TcpContracts.CreateTopic(streamId, name, partitionsCount, compressionAlgorithm, topicId,
+        var message = TcpContracts.CreateTopic(streamId, name, partitionsCount, compressionAlgorithm, 
             replicationFactor, messageExpiry, maxTopicSize);
         var payload = new byte[4 + BufferSizes.INITIAL_BYTES_LENGTH + message.Length];
         TcpMessageStreamHelpers.CreatePayload(payload, message, CommandCodes.CREATE_TOPIC_CODE);
@@ -347,9 +345,9 @@ public sealed class TcpMessageStream : IIggyClient, IDisposable
     }
 
     public async Task<ConsumerGroupResponse?> CreateConsumerGroupAsync(Identifier streamId, Identifier topicId,
-        string name, uint? groupId, CancellationToken token = default)
+        string name, CancellationToken token = default)
     {
-        var message = TcpContracts.CreateGroup(streamId, topicId, name, groupId);
+        var message = TcpContracts.CreateGroup(streamId, topicId, name);
         var payload = new byte[4 + BufferSizes.INITIAL_BYTES_LENGTH + message.Length];
         TcpMessageStreamHelpers.CreatePayload(payload, message, CommandCodes.CREATE_CONSUMER_GROUP_CODE);
 

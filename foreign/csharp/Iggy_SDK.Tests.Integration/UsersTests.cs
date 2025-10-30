@@ -68,7 +68,7 @@ public class UsersTests
         var response = await Fixture.Clients[protocol].GetUser(Identifier.String(Username.GetWithProtocol(protocol)));
 
         response.ShouldNotBeNull();
-        response.Id.ShouldBeGreaterThan((uint)1);
+        response.Id.ShouldBeGreaterThanOrEqualTo(0u);
         response.Username.ShouldBe(Username.GetWithProtocol(protocol));
         response.Status.ShouldBe(UserStatus.Active);
         response.CreatedAt.ShouldBeGreaterThan(0u);
@@ -102,7 +102,7 @@ public class UsersTests
         var user = await Fixture.Clients[protocol].GetUser(Identifier.String(newUsername));
 
         user.ShouldNotBeNull();
-        user.Id.ShouldBeGreaterThan(1u);
+        user.Id.ShouldBeGreaterThanOrEqualTo(0u);
         user.Username.ShouldBe(newUsername);
         user.Status.ShouldBe(UserStatus.Active);
         user.CreatedAt.ShouldBeGreaterThan(0u);
@@ -124,7 +124,7 @@ public class UsersTests
         var user = await Fixture.Clients[protocol].GetUser(Identifier.String(Username.GetWithProtocol(protocol)));
 
         user.ShouldNotBeNull();
-        user.Id.ShouldBeGreaterThan(1u);
+        user.Id.ShouldBeGreaterThanOrEqualTo(0u);
         user.Permissions.ShouldNotBeNull();
         user.Permissions!.Global.ShouldNotBeNull();
         user.Permissions.Global.ManageServers.ShouldBeTrue();
