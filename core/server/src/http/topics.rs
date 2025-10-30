@@ -247,9 +247,7 @@ async fn create_topic(
         let topic_response = state.shard.shard().streams.with_topic_by_id(
             &command.stream_id,
             &topic_identifier,
-            |(root, _, stats)| {
-                crate::http::mapper::map_topic_details(&root, &stats)
-            },
+            |(root, _, stats)| crate::http::mapper::map_topic_details(&root, &stats),
         );
         Json(topic_response)
     };

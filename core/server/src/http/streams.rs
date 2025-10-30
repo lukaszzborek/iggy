@@ -27,7 +27,7 @@ use axum::http::StatusCode;
 use axum::routing::{delete, get};
 use axum::{Extension, Json, Router, debug_handler};
 use err_trail::ErrContext;
-use iggy_common::{Identifier};
+use iggy_common::Identifier;
 use iggy_common::Validatable;
 use iggy_common::create_stream::CreateStream;
 use iggy_common::delete_stream::DeleteStream;

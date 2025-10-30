@@ -146,7 +146,11 @@ impl IggyShard {
                     &consumer.id,
                     topics::helpers::get_consumer_group_member_id(client_id),
                 ) else {
-                    return Err(IggyError::ConsumerGroupMemberNotFound(client_id, consumer.id.clone(), topic_id.clone()))
+                    return Err(IggyError::ConsumerGroupMemberNotFound(
+                        client_id,
+                        consumer.id.clone(),
+                        topic_id.clone(),
+                    ));
                 };
                 if let Some(partition_id) = partition_id {
                     return Ok(Some((

@@ -132,7 +132,6 @@ impl ServerCommandHandler for CreateUser {
             ShardSendRequestResult::Response(response) => match response {
                 ShardResponse::CreateUserResponse(user) => {
                     let user_id = user.id;
-
                     let response = mapper::map_user(&user);
 
                     shard

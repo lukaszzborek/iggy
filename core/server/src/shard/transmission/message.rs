@@ -98,6 +98,10 @@ pub enum ShardRequestPayload {
         status: UserStatus,
         permissions: Option<Permissions>,
     },
+    DeleteUser {
+        session_user_id: u32,
+        user_id: Identifier,
+    },
     GetStats {
         user_id: u32,
     },

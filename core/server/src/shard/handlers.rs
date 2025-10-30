@@ -215,6 +215,19 @@ async fn handle_request(
             let stats = shard.get_stats().await?;
             Ok(ShardResponse::GetStatsResponse(stats))
         }
+        ShardRequestPayload::DeleteUser {
+            session_user_id,
+            user_id,
+        } => {
+            assert_eq!(shard.id, 0, "CreateUser should only be handled by shard0");
+
+            let session = Session::stateless(
+                session_user_id,
+                std::net::SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
+            );
+            let user = shard.delete_user(&session, &user_id)?;
+            Ok(ShardResponse::DeletedUser(user))
+        }
     }
 }
 

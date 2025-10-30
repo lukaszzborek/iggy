@@ -37,6 +37,7 @@ pub enum ShardResponse {
     CreateStreamResponse(stream::Stream),
     CreateTopicResponse(topic::Topic),
     CreateUserResponse(User),
+    DeletedUser(User),
     GetStatsResponse(Stats),
     ErrorResponse(IggyError),
 }
