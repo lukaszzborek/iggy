@@ -175,10 +175,10 @@ export class IggyConnection extends EventEmitter {
 
     // Keep processing while we have enough data
     let offset = 0;
-    
+
     while (offset < data.length) {
       const remaining = data.length - offset;
-      
+
       // Need at least 8 bytes for the header (4 bytes status + 4 bytes length)
       if (remaining < 8) {
         // Buffer the incomplete header and wait for more data
@@ -203,7 +203,7 @@ export class IggyConnection extends EventEmitter {
       // We have a complete response, extract it and emit
       const response = data.subarray(offset, offset + totalSize);
       this.emit('response', response);
-      
+
       // Move to the next response
       offset += totalSize;
     }

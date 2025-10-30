@@ -73,7 +73,7 @@ export const serializeGetOffset = (
   const consumerIdentifier = serializeIdentifier(consumer.id);
 
   const b1 = uint8ToBuf(consumer.kind);
-  
+
   // Encode partition_id with a flag byte: 1 = Some, 0 = None
   const b2 = Buffer.allocUnsafe(5);
   if (partitionId !== undefined && partitionId !== null) {

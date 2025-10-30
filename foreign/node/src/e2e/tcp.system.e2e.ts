@@ -24,9 +24,9 @@ import { getTestClient } from './test-client.utils.js';
 
 describe('e2e -> system', async () => {
 
-  
+
   const c = getTestClient();
-  
+
   it('e2e -> system::ping', async () => {
     assert.ok(await c.system.ping());
   });

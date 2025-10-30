@@ -24,8 +24,8 @@ import { Consumer,  PollingStrategy, Partitioning } from '../wire/index.js';
 import type { TestWorld } from './world.js';
 
 const generateTestMessages = (count = 1) => {
-  return [...Array(count)].map((_, i) => ({ 
-    id: i + 1, 
+  return [...Array(count)].map((_, i) => ({
+    id: i + 1,
     payload: Buffer.from(`Test message ${i}`)
   }));
 }

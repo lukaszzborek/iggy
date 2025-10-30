@@ -760,7 +760,7 @@ public sealed class TcpMessageStream : IIggyClient, IDisposable
                 }
                 totalRead += readBytes;
             }
-            
+
             return responseBuffer;
         }
         finally

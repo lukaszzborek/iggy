@@ -57,14 +57,14 @@ export const CREATE_TOPIC = {
     // Topic ID is now auto-assigned by the server, not sent in the protocol
     const streamIdentifier = serializeIdentifier(streamId);
     const bName = Buffer.from(name)
-  
+
     if (replicationFactor < 1 || replicationFactor > 255)
       throw new Error('Topic replication factor should be between 1 and 255');
     if (bName.length < 1 || bName.length > 255)
       throw new Error('Topic name should be between 1 and 255 bytes');
     if(!isValidCompressionAlgorithm(compressionAlgorithm))
       throw new Error(`createTopic: invalid compressionAlgorithm (${compressionAlgorithm})`);
-    
+
     const b = Buffer.allocUnsafe(4 + 1 + 8 + 8 + 1 + 1);
     b.writeUInt32LE(partitionCount, 0);
     b.writeUInt8(compressionAlgorithm, 4);
@@ -72,7 +72,7 @@ export const CREATE_TOPIC = {
     b.writeBigUInt64LE(maxTopicSize, 13); // optional, 0 is null
     b.writeUInt8(replicationFactor, 21); // must be > 0
     b.writeUInt8(bName.length, 22);
-  
+
     return Buffer.concat([
       streamIdentifier,
       b,

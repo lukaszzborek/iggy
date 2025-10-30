@@ -372,7 +372,7 @@ internal static class TcpContracts
         var position = 1 + consumer.Id.Length + 2;
         bytes.WriteBytesFromStreamAndTopicIdentifiers(streamId, topicId, position);
         position += 2 + streamId.Length + 2 + topicId.Length;
-        
+
         // Encode partition_id with a flag byte: 1 = Some, 0 = None
         if (partitionId.HasValue)
         {
@@ -384,7 +384,7 @@ internal static class TcpContracts
             bytes[position] = 0; // Flag byte: partition_id is None
             BinaryPrimitives.WriteUInt32LittleEndian(bytes[(position + 1)..(position + 5)], 0); // Padding
         }
-        
+
         bytes[position + 5] = GetPollingStrategyByte(pollingStrategy.Kind);
         BinaryPrimitives.WriteUInt64LittleEndian(bytes[(position + 6)..(position + 14)], pollingStrategy.Value);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes[(position + 14)..(position + 18)], count);
@@ -747,7 +747,7 @@ internal static class TcpContracts
         var position = 1 + consumer.Id.Length + 2;
         bytes.WriteBytesFromStreamAndTopicIdentifiers(streamId, topicId, position);
         position += 2 + streamId.Length + 2 + topicId.Length;
-        
+
         // Encode partition_id with a flag byte: 1 = Some, 0 = None
         if (partitionId.HasValue)
         {
@@ -759,7 +759,7 @@ internal static class TcpContracts
             bytes[position] = 0; // Flag byte: partition_id is None
             BinaryPrimitives.WriteUInt32LittleEndian(bytes[(position + 1)..(position + 5)], 0); // Padding
         }
-        
+
         BinaryPrimitives.WriteUInt64LittleEndian(bytes[(position + 5)..(position + 13)], offset);
         return bytes.ToArray();
     }
@@ -773,7 +773,7 @@ internal static class TcpContracts
         var position = 1 + consumer.Id.Length + 2;
         bytes.WriteBytesFromStreamAndTopicIdentifiers(streamId, topicId, position);
         position += 2 + streamId.Length + 2 + topicId.Length;
-        
+
         // Encode partition_id with a flag byte: 1 = Some, 0 = None
         if (partitionId.HasValue)
         {
@@ -785,7 +785,7 @@ internal static class TcpContracts
             bytes[position] = 0; // Flag byte: partition_id is None
             BinaryPrimitives.WriteUInt32LittleEndian(bytes[(position + 1)..(position + 5)], 0); // Padding
         }
-        
+
         return bytes.ToArray();
     }
 
