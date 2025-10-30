@@ -62,9 +62,10 @@ impl IggyShard {
             session.client_id,
             partition_id,
             false,
-        ) else {
+        )? else {
             return Err(IggyError::NotResolvedConsumer(consumer.id));
         };
+        self.ensure_partition_exists(stream_id, topic_id, partition_id)?;
 
         self.store_consumer_offset_base(
             stream_id,
@@ -113,9 +114,10 @@ impl IggyShard {
             session.client_id,
             partition_id,
             false,
-        ) else {
+        )? else {
             return Err(IggyError::NotResolvedConsumer(consumer.id));
         };
+        self.ensure_partition_exists(stream_id, topic_id, partition_id)?;
 
         let offset = match polling_consumer {
             PollingConsumer::Consumer(id, _) => self.streams.with_partition_by_id(
@@ -169,9 +171,10 @@ impl IggyShard {
             session.client_id,
             partition_id,
             false,
-        ) else {
+        )? else {
             return Err(IggyError::NotResolvedConsumer(consumer.id));
         };
+        self.ensure_partition_exists(stream_id, topic_id, partition_id)?;
 
         let path =
             self.delete_consumer_offset_base(stream_id, topic_id, &polling_consumer, partition_id)?;

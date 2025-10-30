@@ -43,6 +43,19 @@ impl IggyShard {
     ) -> Result<consumer_group::ConsumerGroup, IggyError> {
         self.ensure_authenticated(session)?;
         self.ensure_topic_exists(stream_id, topic_id)?;
+        let exists = self
+            .streams
+            .with_topic_by_id(stream_id, topic_id, |(root, ..)| {
+                root.consumer_groups()
+                    .exists(&name.clone().try_into().unwrap())
+            });
+        if exists {
+            return Err(IggyError::ConsumerGroupNameAlreadyExists(
+                name,
+                topic_id.clone(),
+            ));
+        }
+
         {
             let topic_id =
                 self.streams

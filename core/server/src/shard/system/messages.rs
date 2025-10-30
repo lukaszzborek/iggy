@@ -181,7 +181,7 @@ impl IggyShard {
             client_id,
             maybe_partition_id,
             true,
-        ) else {
+        )? else {
             return Ok((IggyPollMetadata::new(0, 0), IggyMessagesBatchSet::empty()));
         };
 

@@ -123,16 +123,17 @@ impl IggyShard {
         client_id: u32,
         partition_id: Option<u32>,
         calculate_partition_id: bool,
-    ) -> Option<(PollingConsumer, usize)> {
+    ) -> Result<Option<(PollingConsumer, usize)>, IggyError> {
         match consumer.kind {
             ConsumerKind::Consumer => {
                 let partition_id = partition_id.unwrap_or(0);
-                Some((
+                Ok(Some((
                     PollingConsumer::consumer(&consumer.id, partition_id as usize),
                     partition_id as usize,
-                ))
+                )))
             }
             ConsumerKind::ConsumerGroup => {
+                self.ensure_consumer_group_exists(stream_id, topic_id, &consumer.id)?;
                 let cg_id = self.streams.with_consumer_group_by_id(
                     stream_id,
                     topic_id,
@@ -146,10 +147,10 @@ impl IggyShard {
                     topics::helpers::get_consumer_group_member_id(client_id),
                 );
                 if let Some(partition_id) = partition_id {
-                    return Some((
+                    return Ok(Some((
                         PollingConsumer::consumer_group(cg_id, member_id),
                         partition_id as usize,
-                    ));
+                    )));
                 }
 
                 let partition_id = if calculate_partition_id {
@@ -167,12 +168,14 @@ impl IggyShard {
                         topics::helpers::get_current_partition_id_unchecked(member_id),
                     )
                 };
-                let partition_id = partition_id?;
+                let Some(partition_id) = partition_id else {
+                    return Ok(None);
+                };
 
-                Some((
+                Ok(Some((
                     PollingConsumer::consumer_group(cg_id, member_id),
                     partition_id,
-                ))
+                )))
             }
         }
     }
