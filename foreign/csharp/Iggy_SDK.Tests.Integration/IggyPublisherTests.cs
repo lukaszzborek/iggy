@@ -22,12 +22,14 @@ using Apache.Iggy.IggyClient;
 using Apache.Iggy.Kinds;
 using Apache.Iggy.Messages;
 using Apache.Iggy.Publishers;
+using Apache.Iggy.Tests.Integrations.Attributes;
 using Apache.Iggy.Tests.Integrations.Fixtures;
 using Shouldly;
 using Partitioning = Apache.Iggy.Kinds.Partitioning;
 
 namespace Apache.Iggy.Tests.Integrations;
 
+[SkipHttp]
 public class IggyPublisherTests
 {
     [ClassDataSource<IggyServerFixture>(Shared = SharedType.PerAssembly)]

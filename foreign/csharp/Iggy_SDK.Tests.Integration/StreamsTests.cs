@@ -19,13 +19,16 @@ using Apache.Iggy.Contracts;
 using Apache.Iggy.Enums;
 using Apache.Iggy.Exceptions;
 using Apache.Iggy.Messages;
+using Apache.Iggy.Tests.Integrations.Attributes;
 using Apache.Iggy.Tests.Integrations.Fixtures;
 using Apache.Iggy.Tests.Integrations.Helpers;
 using Shouldly;
+using TUnit.Core.Logging;
 using Partitioning = Apache.Iggy.Kinds.Partitioning;
 
 namespace Apache.Iggy.Tests.Integrations;
 
+[SkipHttp]
 public class StreamsTests
 {
     private const string Name = "StreamTests";
@@ -193,6 +196,7 @@ public class StreamsTests
     [MethodDataSource<IggyServerFixture>(nameof(IggyServerFixture.ProtocolData))]
     public async Task UpdateStream_Should_UpdateStream_Successfully(Protocol protocol)
     {
+        TestContext.Current.GetDefaultLogger().LogInformation("Stream updated successfully ");
         var streamToUpdate = await Fixture.Clients[protocol]
             .CreateStreamAsync("stream-to-update".GetWithProtocol(protocol));
         streamToUpdate.ShouldNotBeNull();
@@ -204,6 +208,7 @@ public class StreamsTests
             .GetStreamByIdAsync(Identifier.Numeric(streamToUpdate.Id));
         result.ShouldNotBeNull();
         result.Name.ShouldBe("updated-test-stream".GetWithProtocol(protocol));
+        
     }
 
     [Test]

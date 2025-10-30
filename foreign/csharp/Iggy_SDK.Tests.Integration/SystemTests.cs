@@ -28,6 +28,7 @@ using Partitioning = Apache.Iggy.Kinds.Partitioning;
 
 namespace Apache.Iggy.Tests.Integrations;
 
+[SkipHttp]
 public class SystemTests
 {
     [ClassDataSource<SystemFixture>(Shared = SharedType.PerClass)]

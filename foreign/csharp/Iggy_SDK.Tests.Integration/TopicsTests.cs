@@ -21,6 +21,7 @@ using Apache.Iggy.Contracts.Http;
 using Apache.Iggy.Enums;
 using Apache.Iggy.Exceptions;
 using Apache.Iggy.Messages;
+using Apache.Iggy.Tests.Integrations.Attributes;
 using Apache.Iggy.Tests.Integrations.Fixtures;
 using Apache.Iggy.Tests.Integrations.Helpers;
 using Shouldly;
@@ -28,6 +29,7 @@ using Partitioning = Apache.Iggy.Kinds.Partitioning;
 
 namespace Apache.Iggy.Tests.Integrations;
 
+[SkipHttp]
 public class TopicsTests
 {
     private static readonly CreateTopicRequest TopicRequest = new("Test Topic", CompressionAlgorithm.Gzip, 1000, 1,

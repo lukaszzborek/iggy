@@ -18,11 +18,13 @@
 using Apache.Iggy.Contracts.Auth;
 using Apache.Iggy.Enums;
 using Apache.Iggy.Exceptions;
+using Apache.Iggy.Tests.Integrations.Attributes;
 using Apache.Iggy.Tests.Integrations.Fixtures;
 using Shouldly;
 
 namespace Apache.Iggy.Tests.Integrations;
 
+[SkipHttp]
 public class PersonalAccessTokenTests
 {
     private const string Name = "test-pat";

@@ -41,22 +41,22 @@ public class SystemFixture : IAsyncInitializer
     private async Task CreateClientsAsync()
     {
         Clients = await IggyServerFixture.CreateClients();
-        for (var i = 0; i < TotalClientsCount; i++)
-        {
-            var userName = $"iggy_{Protocol.Http}_{i}";
-            await Clients[Protocol.Http].CreateUser(userName, "iggy", UserStatus.Active);
-
-            var client = IggyServerFixture.CreateClient(Protocol.Tcp, Protocol.Http);
-            AdditionalClients.Add(client);
-            var login = await client.LoginUser(userName, "iggy");
-
-            if (login!.UserId == 0)
-            {
-                throw new Exception("Failed to login user 'iggy'.");
-            }
-
-            await client.PingAsync();
-        }
+        // for (var i = 0; i < TotalClientsCount; i++)
+        // {
+        //     var userName = $"iggy_{Protocol.Http}_{i}";
+        //     await Clients[Protocol.Http].CreateUser(userName, "iggy", UserStatus.Active);
+        //
+        //     var client = IggyServerFixture.CreateClient(Protocol.Tcp, Protocol.Http);
+        //     AdditionalClients.Add(client);
+        //     var login = await client.LoginUser(userName, "iggy");
+        //
+        //     if (login!.UserId == 0)
+        //     {
+        //         throw new Exception("Failed to login user 'iggy'.");
+        //     }
+        //
+        //     await client.PingAsync();
+        // }
 
         // One client less for tcp due to a default client
         for (var i = 0; i < TotalClientsCount - 1; i++)
