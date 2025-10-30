@@ -35,6 +35,7 @@ pub enum ShardResponse {
     DeleteSegments,
     Event,
     CreateStreamResponse(stream::Stream),
+    DeleteStreamResponse(stream::Stream),
     CreateTopicResponse(topic::Topic),
     CreateUserResponse(User),
     DeletedUser(User),

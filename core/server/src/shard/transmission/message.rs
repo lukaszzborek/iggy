@@ -81,6 +81,10 @@ pub enum ShardRequestPayload {
         user_id: u32,
         name: String,
     },
+    DeleteStream {
+        user_id: u32,
+        stream_id: Identifier,
+    },
     CreateTopic {
         user_id: u32,
         stream_id: Identifier,

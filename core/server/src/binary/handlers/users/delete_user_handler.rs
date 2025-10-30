@@ -68,6 +68,7 @@ impl ServerCommandHandler for DeleteUser {
                     && let ShardRequestPayload::DeleteUser { user_id, .. } = payload
                 {
                     info!("Deleting user with ID: {}...", user_id);
+                    let _user_guard = shard.fs_locks.user_lock.lock().await;
                     let user = shard
                         .delete_user(session, &user_id)
                         .with_error(|error| {

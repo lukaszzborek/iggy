@@ -29,6 +29,8 @@ pub struct FsLocks {
     pub topic_lock: Mutex<()>,
     /// Lock for partition filesystem operations (create/delete partition directories)
     pub partition_lock: Mutex<()>,
+    /// Lock for user filesystem operations (create/delete user directories)
+    pub user_lock: Mutex<()>,
 }
 
 impl FsLocks {
@@ -37,6 +39,7 @@ impl FsLocks {
             stream_lock: Mutex::new(()),
             topic_lock: Mutex::new(()),
             partition_lock: Mutex::new(()),
+            user_lock: Mutex::new(()),
         }
     }
 }
