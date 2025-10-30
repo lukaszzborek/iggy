@@ -248,7 +248,7 @@ async fn create_topic(
             &command.stream_id,
             &topic_identifier,
             |(root, _, stats)| {
-                crate::http::mapper::map_topic_details_empty_partitions(&root, &stats)
+                crate::http::mapper::map_topic_details(&root, &stats)
             },
         );
         Json(topic_response)
@@ -372,6 +372,7 @@ async fn delete_topic(
     let identifier_topic_id = Identifier::from_str_value(&topic_id)?;
 
     let session = Session::stateless(identity.user_id, identity.ip_address);
+    let _topic_guard = state.shard.shard().fs_locks.topic_lock.lock().await;
 
     let topic = {
         let future = SendWrapper::new(state.shard.shard().delete_topic(

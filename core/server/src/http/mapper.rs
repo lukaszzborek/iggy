@@ -75,23 +75,6 @@ pub fn map_topic_details(root: &TopicRoot, stats: &TopicStats) -> TopicDetails {
     }
 }
 
-/// Map TopicRoot and TopicStats to TopicDetails with empty partitions for HTTP create responses
-pub fn map_topic_details_empty_partitions(root: &TopicRoot, stats: &TopicStats) -> TopicDetails {
-    TopicDetails {
-        id: root.id() as u32,
-        created_at: root.created_at(),
-        name: root.name().clone(),
-        size: stats.size_bytes_inconsistent().into(),
-        messages_count: stats.messages_count_inconsistent(),
-        partitions_count: root.partitions().len() as u32,
-        partitions: Vec::new(), // Empty partitions for create response, consistent with binary handler
-        message_expiry: root.message_expiry(),
-        compression_algorithm: root.compression_algorithm(),
-        max_topic_size: root.max_topic_size(),
-        replication_factor: root.replication_factor(),
-    }
-}
-
 /// Map TopicRoot and TopicStats to Topic for HTTP responses
 pub fn map_topic(root: &TopicRoot, stats: &TopicStats) -> iggy_common::Topic {
     iggy_common::Topic {

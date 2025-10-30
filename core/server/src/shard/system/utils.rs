@@ -140,12 +140,14 @@ impl IggyShard {
                     &consumer.id,
                     topics::helpers::get_consumer_group_id(),
                 );
-                let member_id = self.streams.with_consumer_group_by_id(
+                let Some(member_id) = self.streams.with_consumer_group_by_id(
                     stream_id,
                     topic_id,
                     &consumer.id,
                     topics::helpers::get_consumer_group_member_id(client_id),
-                );
+                ) else {
+                    return Err(IggyError::ConsumerGroupMemberNotFound(client_id, consumer.id.clone(), topic_id.clone()))
+                };
                 if let Some(partition_id) = partition_id {
                     return Ok(Some((
                         PollingConsumer::consumer_group(cg_id, member_id),

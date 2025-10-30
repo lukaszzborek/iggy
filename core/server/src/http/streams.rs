@@ -231,6 +231,7 @@ async fn delete_stream(
     let result = SendWrapper::new(async move {
         let session = Session::stateless(identity.user_id, identity.ip_address);
 
+        let _stream_guard = state.shard.shard().fs_locks.stream_lock.lock().await;
         // Delete stream and get the stream entity
         let stream = {
             let future = SendWrapper::new(

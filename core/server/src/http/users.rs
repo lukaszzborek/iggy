@@ -381,6 +381,7 @@ async fn delete_user(
     let identifier_user_id = Identifier::from_str_value(&user_id)?;
 
     let session = Session::stateless(identity.user_id, identity.ip_address);
+
     state
         .shard
         .shard()

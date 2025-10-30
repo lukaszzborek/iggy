@@ -187,14 +187,13 @@ pub fn rebalance_consumer_group(
 
 pub fn get_consumer_group_member_id(
     client_id: u32,
-) -> impl FnOnce(ComponentsById<ConsumerGroupRef>) -> usize {
+) -> impl FnOnce(ComponentsById<ConsumerGroupRef>) -> Option<usize> {
     move |(_, members)| {
         members
             .inner()
             .shared_get()
             .iter()
             .find_map(|(_, member)| (member.client_id == client_id).then_some(member.id))
-            .expect("get_member_id: find member in consumer group slab")
     }
 }
 

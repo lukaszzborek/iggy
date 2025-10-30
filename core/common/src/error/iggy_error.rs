@@ -415,9 +415,9 @@ pub enum IggyError {
     #[error("Invalid consumer group name")]
     InvalidConsumerGroupName = 5005,
     #[error(
-        "Consumer group member with ID: {0} for group with ID: {1} for topic with ID: {2} was not found."
+        "Consumer group member with client ID: {0} for group with ID: {1} for topic with ID: {2} was not found."
     )]
-    ConsumerGroupMemberNotFound(usize, Identifier, Identifier) = 5006,
+    ConsumerGroupMemberNotFound(u32, Identifier, Identifier) = 5006,
     #[error(
         "Failed to create consumer group info file for ID: {0} for topic with ID: {1} for stream with ID: {2}."
     )]
