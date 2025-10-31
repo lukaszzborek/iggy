@@ -59,7 +59,7 @@ public class SystemTests
         await client.LoginUser("iggy", "iggy");
         var clientInfo = await client.GetMeAsync();
         clientInfo.ShouldNotBeNull();
-        
+
         clients.Count.ShouldBeGreaterThanOrEqualTo(Fixture.TotalClientsCount);
         var response = await Fixture.Clients[protocol].GetClientByIdAsync(clientInfo.ClientId);
         response.ShouldNotBeNull();
