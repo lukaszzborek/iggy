@@ -77,7 +77,7 @@ public class SystemTests
         var me = await Fixture.Clients[protocol].GetMeAsync();
         me.ShouldNotBeNull();
         me.ClientId.ShouldNotBe(0u);
-        me.UserId.ShouldBe(1u);
+        me.UserId.ShouldBe(0u);
         me.Address.ShouldNotBeNullOrEmpty();
         me.Transport.ShouldBe(Protocol.Tcp);
     }
@@ -104,9 +104,9 @@ public class SystemTests
 
         var consumerGroup
             = await client.CreateConsumerGroupAsync(Identifier.String(Fixture.StreamId.GetWithProtocol(protocol)),
-                Identifier.Numeric(1), "test_consumer_group", 1);
+                Identifier.String("test_topic"), "test_consumer_group");
         await client.JoinConsumerGroupAsync(Identifier.String(Fixture.StreamId.GetWithProtocol(protocol)),
-            Identifier.Numeric(1), Identifier.Numeric(1));
+            Identifier.String("test_topic"), Identifier.String("test_consumer_group"));
         var me = await client.GetMeAsync();
 
         var response = await Fixture.Clients[protocol].GetClientByIdAsync(me!.ClientId);
@@ -128,12 +128,12 @@ public class SystemTests
     public async Task GetStats_Should_ReturnValidResponse(Protocol protocol)
     {
         await Fixture.Clients[protocol].SendMessagesAsync(Identifier.String(Fixture.StreamId.GetWithProtocol(protocol)),
-            Identifier.Numeric(1), Partitioning.None(), [new Message(Guid.NewGuid(), "Test message"u8.ToArray())]);
+            Identifier.Numeric(0), Partitioning.None(), [new Message(Guid.NewGuid(), "Test message"u8.ToArray())]);
 
         await Fixture.Clients[protocol].PollMessagesAsync(new MessageFetchRequest
         {
             StreamId = Identifier.String(Fixture.StreamId.GetWithProtocol(protocol)),
-            TopicId = Identifier.Numeric(1),
+            TopicId = Identifier.Numeric(0),
             AutoCommit = true,
             Consumer = Consumer.New(1),
             Count = 1,
