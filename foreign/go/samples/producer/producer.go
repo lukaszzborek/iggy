@@ -30,11 +30,11 @@ import (
 )
 
 const (
-	StreamId          = uint32(1)
-	TopicId           = uint32(1)
-	MessageBatchCount = 1
-	Partition         = 1
-	Interval          = 1000
+    StreamId          = uint32(0)
+    TopicId           = uint32(0)
+    MessageBatchCount = 1
+    Partition         = 0
+    Interval          = 1000
 )
 
 func main() {

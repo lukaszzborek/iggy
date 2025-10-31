@@ -31,11 +31,11 @@ import (
 
 // config
 const (
-	DefaultStreamId = uint32(1)
-	TopicId         = uint32(1)
-	Partition       = 1
-	Interval        = 1000
-	ConsumerId      = uint32(1)
+    DefaultStreamId = uint32(0)
+    TopicId         = uint32(0)
+    Partition       = 0
+    Interval        = 1000
+    ConsumerId      = uint32(0)
 )
 
 func main() {

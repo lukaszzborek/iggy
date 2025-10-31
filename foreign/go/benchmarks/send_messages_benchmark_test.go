@@ -112,7 +112,7 @@ func ensureInfrastructureIsInitialized(cli iggycli.Client, streamId uint32) erro
 		}
 	}
 
-	topicIdentifier, _ := iggcon.NewIdentifier(uint32(1))
+    topicIdentifier, _ := iggcon.NewIdentifier(uint32(0))
     if _, topicErr := cli.GetTopic(streamIdentifier, topicIdentifier); topicErr != nil {
         _, topicErr = cli.CreateTopic(
 			streamIdentifier,
