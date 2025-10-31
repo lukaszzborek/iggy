@@ -97,8 +97,12 @@ impl DeleteCell for Topics {
 
         // Remove from index
         let key = root.key();
-        indexes.remove(key).unwrap_or_else(|| panic!("topic_delete: key not found with key: {} and id: {}",
-            key, id));
+        indexes.remove(key).unwrap_or_else(|| {
+            panic!(
+                "topic_delete: key not found with key: {} and id: {}",
+                key, id
+            )
+        });
 
         topic::Topic::new_with_components(root, auxilary, stats)
     }
