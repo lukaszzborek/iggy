@@ -55,11 +55,15 @@ public class SystemTests
     {
         IReadOnlyList<ClientResponse> clients = await Fixture.Clients[protocol].GetClientsAsync();
 
+        var client = Fixture.IggyServerFixture.CreateClient(Protocol.Tcp, protocol);
+        await client.LoginUser("iggy", "iggy");
+        var clientInfo = await client.GetMeAsync();
+        clientInfo.ShouldNotBeNull();
+        
         clients.Count.ShouldBeGreaterThanOrEqualTo(Fixture.TotalClientsCount);
-        var id = clients.First(x => x.UserId != null).ClientId;
-        var response = await Fixture.Clients[protocol].GetClientByIdAsync(id);
+        var response = await Fixture.Clients[protocol].GetClientByIdAsync(clientInfo.ClientId);
         response.ShouldNotBeNull();
-        response.ClientId.ShouldBe(id);
+        response.ClientId.ShouldBe(clientInfo.ClientId);
         response.UserId.ShouldNotBeNull();
         response.UserId.Value.ShouldBeGreaterThanOrEqualTo(0u);
         response.Address.ShouldNotBeNullOrEmpty();
