@@ -15,16 +15,22 @@
 // specific language governing permissions and limitations
 // under the License.
 
-using Apache.Iggy.Contracts;
+using Apache.Iggy.Configuration;
+using Apache.Iggy.Enums;
+using Apache.Iggy.Factory;
+using Iggy_SDK.Examples.GettingStarted.Consumer;
+using Microsoft.Extensions.Logging;
 
-namespace Apache.Iggy.IggyClient;
+var loggerFactory = LoggerFactory.Create(b => { b.AddConsole(); });
+var logger = loggerFactory.CreateLogger<Program>();
 
-public interface IIggyStream
+var client = IggyClientFactory.CreateClient(new IggyClientConfigurator()
 {
-    Task<StreamResponse?> CreateStreamAsync(string name, CancellationToken token = default);
-    Task<StreamResponse?> GetStreamByIdAsync(Identifier streamId, CancellationToken token = default);
-    Task UpdateStreamAsync(Identifier streamId, string name, CancellationToken token = default);
-    Task<IReadOnlyList<StreamResponse>> GetStreamsAsync(CancellationToken token = default);
-    Task PurgeStreamAsync(Identifier streamId, CancellationToken token = default);
-    Task DeleteStreamAsync(Identifier streamId, CancellationToken token = default);
-}
+    BaseAddress = Utils.GetTcpServerAddr(args, logger),
+    Protocol = Protocol.Tcp,
+    LoggerFactory = loggerFactory
+});
+
+await client.LoginUser("iggy", "iggy");
+
+await Utils.ConsumeMessages(client, logger);
