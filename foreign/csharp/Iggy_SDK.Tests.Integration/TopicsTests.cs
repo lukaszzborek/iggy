@@ -57,7 +57,7 @@ public class TopicsTests
         response.CreatedAt.UtcDateTime.ShouldBe(DateTimeOffset.UtcNow.UtcDateTime, TimeSpan.FromMinutes(1));
         response.Name.ShouldBe(TopicRequest.Name);
         response.CompressionAlgorithm.ShouldBe(TopicRequest.CompressionAlgorithm);
-        //response.Partitions!.Count().ShouldBe((int)TopicRequest.PartitionsCount); TODO: fix this
+        response.Partitions!.Count().ShouldBe((int)TopicRequest.PartitionsCount);
         response.MessageExpiry.ShouldBe(TopicRequest.MessageExpiry);
         response.Size.ShouldBe(0u);
         response.PartitionsCount.ShouldBe(TopicRequest.PartitionsCount);
