@@ -77,9 +77,7 @@ impl ServerCommandHandler for DeleteTopic {
                     // Acquire topic lock to serialize filesystem operations
                     let _topic_guard = shard.fs_locks.topic_lock.lock().await;
 
-                    let topic = shard
-                        .delete_topic(session, &stream_id, &topic_id)
-                        .await?;
+                    let topic = shard.delete_topic(session, &stream_id, &topic_id).await?;
                     let stream_id_num = shard
                         .streams
                         .with_stream_by_id(&stream_id, streams::helpers::get_stream_id());

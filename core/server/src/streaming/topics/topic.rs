@@ -365,9 +365,7 @@ pub fn create_and_insert_topics_mem(
         max_topic_size,
     );
 
-    let id = streams.with_topics(stream_id, |topics|  {
-         topics.insert(topic.clone())
-    });
+    let id = streams.with_topics(stream_id, |topics| topics.insert(topic.clone()));
     topic.update_id(id);
     topic
 }
