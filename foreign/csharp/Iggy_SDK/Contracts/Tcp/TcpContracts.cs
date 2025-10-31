@@ -606,9 +606,8 @@ internal static class TcpContracts
         return headerBytes.ToArray();
     }
 
-    internal static byte[] CreateStream(string name, uint? streamId)
+    internal static byte[] CreateStream(string name)
     {
-        // Stream ID is now auto-assigned by the server, not sent in the protocol
         Span<byte> bytes = stackalloc byte[name.Length + 1];
         bytes[0] = (byte)name.Length;
         Encoding.UTF8.GetBytes(name, bytes[1..]);
@@ -625,9 +624,8 @@ internal static class TcpContracts
         return bytes.ToArray();
     }
 
-    internal static byte[] CreateGroup(Identifier streamId, Identifier topicId, string name, uint? groupId)
+    internal static byte[] CreateGroup(Identifier streamId, Identifier topicId, string name)
     {
-        // Consumer group ID is now auto-assigned by the server, not sent in the protocol
         Span<byte> bytes = stackalloc byte[2 + streamId.Length + 2 + topicId.Length + 1 + name.Length];
         bytes.WriteBytesFromStreamAndTopicIdentifiers(streamId, topicId);
         var position = 2 + streamId.Length + 2 + topicId.Length;
@@ -698,10 +696,9 @@ internal static class TcpContracts
     }
 
     internal static byte[] CreateTopic(Identifier streamId, string name, uint partitionCount,
-        CompressionAlgorithm compressionAlgorithm, uint? topicId, byte? replicationFactor, ulong messageExpiry,
+        CompressionAlgorithm compressionAlgorithm, byte? replicationFactor, ulong messageExpiry,
         ulong maxTopicSize)
     {
-        // Topic ID is now auto-assigned by the server, not sent in the protocol
         Span<byte> bytes = stackalloc byte[2 + streamId.Length + 23 + name.Length];
         bytes.WriteBytesFromIdentifier(streamId);
         var position = 2 + streamId.Length;
@@ -741,7 +738,7 @@ internal static class TcpContracts
         uint? partitionId)
     {
         Span<byte> bytes =
-            stackalloc byte[2 + streamId.Length + 2 + topicId.Length + 13 + 1 + consumer.Id.Length];
+            stackalloc byte[2 + streamId.Length + 2 + topicId.Length + 13 + 1 + 2 + consumer.Id.Length];
         bytes[0] = GetConsumerTypeByte(consumer.Type);
         bytes.WriteBytesFromIdentifier(consumer.Id, 1);
         var position = 1 + consumer.Id.Length + 2;
