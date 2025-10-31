@@ -24,9 +24,11 @@ import (
 )
 
 const (
-	partitionStrategySize = 5
-	offsetSize            = 12
-	commitFlagSize        = 1
+    partitionPresenceSize = 1
+    partitionFieldSize    = 4
+    partitionStrategySize = partitionPresenceSize + partitionFieldSize + 1
+    offsetSize            = 12
+    commitFlagSize        = 1
 )
 
 type TcpFetchMessagesRequest struct {
@@ -40,9 +42,6 @@ type TcpFetchMessagesRequest struct {
 }
 
 func (request *TcpFetchMessagesRequest) Serialize() []byte {
-	if request.PartitionId == nil {
-		request.PartitionId = new(uint32)
-	}
 	streamTopicIdLength := 2 + request.StreamId.Length + 2 + request.TopicId.Length
 	messageSize := 2 + request.Consumer.Id.Length + streamTopicIdLength + partitionStrategySize + offsetSize + commitFlagSize + 1
 	bytes := make([]byte, messageSize)
@@ -52,11 +51,17 @@ func (request *TcpFetchMessagesRequest) Serialize() []byte {
 
 	position := 3 + request.Consumer.Id.Length
 
-	copy(bytes[position:position+streamTopicIdLength], SerializeIdentifiers(request.StreamId, request.TopicId))
+    copy(bytes[position:position+streamTopicIdLength], SerializeIdentifiers(request.StreamId, request.TopicId))
 
 	position += streamTopicIdLength
-	binary.LittleEndian.PutUint32(bytes[position:position+4], *request.PartitionId)
-	bytes[position+4] = byte(request.Strategy.Kind)
+    if request.PartitionId != nil {
+        bytes[position] = 1
+        binary.LittleEndian.PutUint32(bytes[position+1:position+1+4], *request.PartitionId)
+    } else {
+        bytes[position] = 0
+        binary.LittleEndian.PutUint32(bytes[position+1:position+1+4], 0)
+    }
+    bytes[position+1+4] = byte(request.Strategy.Kind)
 
 	position += partitionStrategySize
 	binary.LittleEndian.PutUint64(bytes[position:position+8], request.Strategy.Value)
