@@ -196,6 +196,7 @@ public class StreamsTests
         // Ensure the stream has messages (created in previous steps) before purging
         var stream = await Fixture.Clients[protocol]
             .GetStreamByIdAsync(Identifier.String(Name.GetWithProtocol(protocol)));
+        
         stream.ShouldNotBeNull();
         stream.MessagesCount.ShouldBe(7u);
         stream.TopicsCount.ShouldBe(2);

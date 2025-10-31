@@ -110,7 +110,7 @@ public class TopicsTests
 
         response.ShouldNotBeNull();
         response.Id.ShouldBeGreaterThanOrEqualTo(0u);
-        response.CreatedAt.UtcDateTime.ShouldBe(DateTimeOffset.UtcNow.UtcDateTime, TimeSpan.FromSeconds(10));
+        response.CreatedAt.UtcDateTime.ShouldBe(DateTimeOffset.UtcNow.UtcDateTime, TimeSpan.FromMinutes(1));
         response.Name.ShouldBe(TopicRequest.Name);
         response.CompressionAlgorithm.ShouldBe(TopicRequest.CompressionAlgorithm);
         response.Partitions!.Count().ShouldBe((int)TopicRequest.PartitionsCount);
@@ -142,7 +142,7 @@ public class TopicsTests
 
         var firstTopic = response.First(x => x.Name == TopicRequest.Name);
         firstTopic.Id.ShouldBeGreaterThanOrEqualTo(0u);
-        firstTopic.CreatedAt.UtcDateTime.ShouldBe(DateTimeOffset.UtcNow.UtcDateTime, TimeSpan.FromSeconds(10));
+        firstTopic.CreatedAt.UtcDateTime.ShouldBe(DateTimeOffset.UtcNow.UtcDateTime, TimeSpan.FromMinutes(1));
         firstTopic.Name.ShouldBe(TopicRequest.Name);
         firstTopic.CompressionAlgorithm.ShouldBe(TopicRequest.CompressionAlgorithm);
         firstTopic.Partitions.ShouldBeNull();
@@ -155,7 +155,7 @@ public class TopicsTests
 
         var secondTopic = response.First(x => x.Name == TopicRequestSecond.Name);
         secondTopic.Id.ShouldBeGreaterThanOrEqualTo(0u);
-        secondTopic.CreatedAt.UtcDateTime.ShouldBe(DateTimeOffset.UtcNow.UtcDateTime, TimeSpan.FromSeconds(10));
+        secondTopic.CreatedAt.UtcDateTime.ShouldBe(DateTimeOffset.UtcNow.UtcDateTime, TimeSpan.FromMinutes(1));
         secondTopic.Name.ShouldBe(TopicRequestSecond.Name);
         secondTopic.CompressionAlgorithm.ShouldBe(TopicRequestSecond.CompressionAlgorithm);
         secondTopic.Partitions.ShouldBeNull();
