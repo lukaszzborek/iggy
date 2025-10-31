@@ -69,14 +69,13 @@ var _ = ginkgo.Describe("CREATE STREAM:", func() {
 		})
 
 		ginkgo.Context("and tries to create stream name that's over 255 characters", func() {
-			client := createAuthorizedConnection()
-			streamId := createRandomUInt32()
-			name := createRandomString(256)
+            client := createAuthorizedConnection()
+            name := createRandomString(256)
 
             _, err := client.CreateStream(name)
 
-			itShouldReturnSpecificError(err, ierror.ErrInvalidStreamName)
-		})
+            itShouldReturnSpecificError(err, ierror.ErrInvalidStreamName)
+        })
 	})
 
 	ginkgo.When("User is not logged in", func() {

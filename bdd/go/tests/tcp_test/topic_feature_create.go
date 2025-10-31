@@ -88,7 +88,7 @@ var _ = ginkgo.Describe("CREATE TOPIC:", func() {
 			client := createAuthorizedConnection()
 			streamId, _ := successfullyCreateStream(prefix, client)
 			defer deleteStreamAfterTests(streamId, client)
-			topicId, _ := successfullyCreateTopic(streamId, client)
+			_, _ = successfullyCreateTopic(streamId, client)
 			streamIdentifier, _ := iggcon.NewIdentifier(streamId)
 			replicationFactor := uint8(1)
 			_, err := client.CreateTopic(

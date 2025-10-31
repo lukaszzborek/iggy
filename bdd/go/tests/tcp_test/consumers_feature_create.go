@@ -91,7 +91,6 @@ var _ = ginkgo.Describe("CREATE CONSUMER GROUP:", func() {
 			streamId, _ := successfullyCreateStream(prefix, client)
 			defer deleteStreamAfterTests(streamId, client)
 			topicId, _ := successfullyCreateTopic(streamId, client)
-			groupId, _ := successfullyCreateConsumer(streamId, topicId, client)
 
 			streamIdentifier, _ := iggcon.NewIdentifier(streamId)
 			topicIdentifier, _ := iggcon.NewIdentifier(topicId)
