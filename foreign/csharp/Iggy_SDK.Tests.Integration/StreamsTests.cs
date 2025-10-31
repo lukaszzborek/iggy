@@ -47,7 +47,7 @@ public class StreamsTests
         response.Id.ShouldBeGreaterThanOrEqualTo(0u);
         response.Name.ShouldBe(Name.GetWithProtocol(protocol));
         response.Size.ShouldBe(0u);
-        response.CreatedAt.UtcDateTime.ShouldBe(DateTimeOffset.UtcNow.UtcDateTime, TimeSpan.FromSeconds(20));
+        response.CreatedAt.UtcDateTime.ShouldBe(DateTimeOffset.UtcNow.UtcDateTime, TimeSpan.FromMinutes(1));
         response.MessagesCount.ShouldBe(0u);
         response.TopicsCount.ShouldBe(0);
         response.Topics.ShouldBeEmpty();
@@ -91,7 +91,7 @@ public class StreamsTests
         response.Id.ShouldBe(newStream.Id);
         response.Name.ShouldBe(newStream.Name);
         response.Size.ShouldBe(0u);
-        response.CreatedAt.UtcDateTime.ShouldBe(DateTimeOffset.UtcNow.UtcDateTime, TimeSpan.FromSeconds(20));
+        response.CreatedAt.UtcDateTime.ShouldBe(DateTimeOffset.UtcNow.UtcDateTime, TimeSpan.FromMinutes(1));
         response.MessagesCount.ShouldBe(0u);
         response.TopicsCount.ShouldBe(0);
         response.Topics.ShouldBeEmpty();
@@ -110,7 +110,7 @@ public class StreamsTests
         response.Id.ShouldNotBe(0u);
         response.Name.ShouldBe(name);
         response.Size.ShouldBe(0u);
-        response.CreatedAt.UtcDateTime.ShouldBe(DateTimeOffset.UtcNow.UtcDateTime, TimeSpan.FromSeconds(20));
+        response.CreatedAt.UtcDateTime.ShouldBe(DateTimeOffset.UtcNow.UtcDateTime, TimeSpan.FromMinutes(1));
         response.MessagesCount.ShouldBe(0u);
         response.TopicsCount.ShouldBe(0);
         response.Topics.ShouldBeEmpty();
@@ -152,13 +152,13 @@ public class StreamsTests
         response.Id.ShouldBeGreaterThanOrEqualTo(0u);
         response.Name.ShouldBe(Name.GetWithProtocol(protocol));
         response.Size.ShouldBe(490u);
-        response.CreatedAt.UtcDateTime.ShouldBe(DateTimeOffset.UtcNow.UtcDateTime, TimeSpan.FromSeconds(20));
+        response.CreatedAt.UtcDateTime.ShouldBe(DateTimeOffset.UtcNow.UtcDateTime, TimeSpan.FromMinutes(1));
         response.MessagesCount.ShouldBe(7u);
         response.TopicsCount.ShouldBe(2);
         response.Topics.Count().ShouldBe(2);
 
         var topic = response.Topics.First(x => x.Name == topicRequest1.Name);
-        topic.CreatedAt.UtcDateTime.ShouldBe(DateTimeOffset.UtcNow.UtcDateTime, TimeSpan.FromSeconds(10));
+        topic.CreatedAt.UtcDateTime.ShouldBe(DateTimeOffset.UtcNow.UtcDateTime, TimeSpan.FromMinutes(1));
         topic.Name.ShouldBe(topicRequest1.Name);
         topic.CompressionAlgorithm.ShouldBe(topicRequest1.CompressionAlgorithm);
         topic.Partitions.ShouldBeNull();

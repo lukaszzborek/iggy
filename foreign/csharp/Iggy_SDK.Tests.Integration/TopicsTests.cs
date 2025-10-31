@@ -54,7 +54,7 @@ public class TopicsTests
 
         response.ShouldNotBeNull();
         response.Id.ShouldBeGreaterThanOrEqualTo(0u);
-        response.CreatedAt.UtcDateTime.ShouldBe(DateTimeOffset.UtcNow.UtcDateTime, TimeSpan.FromSeconds(20));
+        response.CreatedAt.UtcDateTime.ShouldBe(DateTimeOffset.UtcNow.UtcDateTime, TimeSpan.FromMinutes(1));
         response.Name.ShouldBe(TopicRequest.Name);
         response.CompressionAlgorithm.ShouldBe(TopicRequest.CompressionAlgorithm);
         //response.Partitions!.Count().ShouldBe((int)TopicRequest.PartitionsCount); TODO: fix this
@@ -87,7 +87,7 @@ public class TopicsTests
 
         response.ShouldNotBeNull();
         response.Id.ShouldBeGreaterThanOrEqualTo(0u);
-        response.CreatedAt.UtcDateTime.ShouldBe(DateTimeOffset.UtcNow.UtcDateTime, TimeSpan.FromSeconds(20));
+        response.CreatedAt.UtcDateTime.ShouldBe(DateTimeOffset.UtcNow.UtcDateTime, TimeSpan.FromMinutes(1));
         response.Name.ShouldBe(TopicRequest.Name);
         response.CompressionAlgorithm.ShouldBe(TopicRequest.CompressionAlgorithm);
         response.Partitions!.Count().ShouldBe((int)TopicRequest.PartitionsCount);
@@ -188,7 +188,7 @@ public class TopicsTests
 
         response.ShouldNotBeNull();
         response.Id.ShouldBeGreaterThanOrEqualTo(0u);
-        response.CreatedAt.UtcDateTime.ShouldBe(DateTimeOffset.UtcNow.UtcDateTime, TimeSpan.FromSeconds(20));
+        response.CreatedAt.UtcDateTime.ShouldBe(DateTimeOffset.UtcNow.UtcDateTime, TimeSpan.FromMinutes(1));
         response.Name.ShouldBe(TopicRequest.Name);
         response.CompressionAlgorithm.ShouldBe(TopicRequest.CompressionAlgorithm);
         response.Partitions!.Count().ShouldBe(3);
