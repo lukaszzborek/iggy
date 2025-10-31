@@ -95,6 +95,21 @@ pub enum ShardRequestPayload {
         max_topic_size: MaxTopicSize,
         replication_factor: Option<u8>,
     },
+    UpdateTopic {
+        user_id: u32,
+        stream_id: Identifier,
+        topic_id: Identifier,
+        name: String,
+        message_expiry: IggyExpiry,
+        compression_algorithm: CompressionAlgorithm,
+        max_topic_size: MaxTopicSize,
+        replication_factor: Option<u8>,
+    },
+    DeleteTopic {
+        user_id: u32,
+        stream_id: Identifier,
+        topic_id: Identifier,
+    },
     CreateUser {
         user_id: u32,
         username: String,

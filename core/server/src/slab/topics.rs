@@ -99,7 +99,7 @@ impl DeleteCell for Topics {
         let key = root.key();
         indexes
             .remove(key)
-            .expect("topic_delete: key not found in index");
+            .expect(&format!("topic_delete: key not found with key: {} and id: {}", key, id));
 
         topic::Topic::new_with_components(root, auxilary, stats)
     }

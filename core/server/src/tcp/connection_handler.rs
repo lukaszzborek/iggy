@@ -81,14 +81,17 @@ pub(crate) async fn handle_connection(
         debug!("Received a TCP request, length: {length}, code: {code}");
         let command = ServerCommand::from_code_and_reader(code, sender, length - 4).await?;
         debug!("Received a TCP command: {command}, payload size: {length}");
+        let cmd_code = command.code();
         match command.handle(sender, length, session, shard).await {
             Ok(_) => {
                 debug!(
-                    "Command was handled successfully, session: {session}. TCP response was sent."
+                    "Command {cmd_code} was handled successfully, session: {session}. TCP response was sent."
                 );
             }
             Err(error) => {
-                error!("Command was not handled successfully, session: {session}, error: {error}.");
+                error!(
+                    "Command with code {cmd_code} was not handled successfully, session: {session}, error: {error}."
+                );
                 if let IggyError::ClientNotFound(_) = error {
                     sender.send_error_response(error).await?;
                     debug!("TCP error response was sent to: {session}.");

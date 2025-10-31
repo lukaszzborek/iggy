@@ -180,6 +180,72 @@ async fn handle_request(
 
             Ok(ShardResponse::CreateTopicResponse(topic))
         }
+        ShardRequestPayload::UpdateTopic {
+            user_id,
+            stream_id,
+            topic_id,
+            name,
+            message_expiry,
+            compression_algorithm,
+            max_topic_size,
+            replication_factor,
+        } => {
+            assert_eq!(shard.id, 0, "UpdateTopic should only be handled by shard0");
+
+            let session = Session::stateless(
+                user_id,
+                std::net::SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
+            );
+
+            shard.update_topic(
+                &session,
+                &stream_id,
+                &topic_id,
+                name.clone(),
+                message_expiry,
+                compression_algorithm,
+                max_topic_size,
+                replication_factor,
+            )?;
+
+            let event = ShardEvent::UpdatedTopic {
+                stream_id: stream_id.clone(),
+                topic_id: topic_id.clone(),
+                name,
+                message_expiry,
+                compression_algorithm,
+                max_topic_size,
+                replication_factor,
+            };
+            shard.broadcast_event_to_all_shards(event).await?;
+
+            Ok(ShardResponse::UpdateTopicResponse)
+        }
+        ShardRequestPayload::DeleteTopic {
+            user_id,
+            stream_id,
+            topic_id,
+        } => {
+            assert_eq!(shard.id, 0, "DeleteTopic should only be handled by shard0");
+
+            let session = Session::stateless(
+                user_id,
+                std::net::SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
+            );
+
+            let _topic_guard = shard.fs_locks.topic_lock.lock().await;
+            let topic = shard.delete_topic(&session, &stream_id, &topic_id).await?;
+            let topic_id_num = topic.root().id();
+
+            let event = ShardEvent::DeletedTopic {
+                id: topic_id_num,
+                stream_id: stream_id.clone(),
+                topic_id: topic_id.clone(),
+            };
+            shard.broadcast_event_to_all_shards(event).await?;
+
+            Ok(ShardResponse::DeleteTopicResponse(topic))
+        }
         ShardRequestPayload::CreateUser {
             user_id,
             username,

@@ -86,23 +86,6 @@ var _ = ginkgo.Describe("CREATE CONSUMER GROUP:", func() {
 			itShouldReturnSpecificError(err, ierror.ErrConsumerGroupNameAlreadyExists)
 		})
 
-		ginkgo.Context("and tries to create consumer group with duplicate group id", func() {
-			client := createAuthorizedConnection()
-			streamId, _ := successfullyCreateStream(prefix, client)
-			defer deleteStreamAfterTests(streamId, client)
-			topicId, _ := successfullyCreateTopic(streamId, client)
-
-			streamIdentifier, _ := iggcon.NewIdentifier(streamId)
-			topicIdentifier, _ := iggcon.NewIdentifier(topicId)
-			_, err := client.CreateConsumerGroup(
-				streamIdentifier,
-				topicIdentifier,
-				createRandomString(16),
-			)
-
-			itShouldReturnSpecificError(err, ierror.ErrConsumerGroupIdAlreadyExists)
-		})
-
 		ginkgo.Context("and tries to create group with name that's over 255 characters", func() {
 			client := createAuthorizedConnection()
 			streamId, _ := successfullyCreateStream(prefix, client)

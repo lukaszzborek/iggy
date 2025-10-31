@@ -84,24 +84,6 @@ var _ = ginkgo.Describe("CREATE TOPIC:", func() {
 			itShouldReturnSpecificError(err, ierror.ErrTopicNameAlreadyExists)
 		})
 
-		ginkgo.Context("and tries to create topic with duplicate topic id", func() {
-			client := createAuthorizedConnection()
-			streamId, _ := successfullyCreateStream(prefix, client)
-			defer deleteStreamAfterTests(streamId, client)
-			_, _ = successfullyCreateTopic(streamId, client)
-			streamIdentifier, _ := iggcon.NewIdentifier(streamId)
-			replicationFactor := uint8(1)
-			_, err := client.CreateTopic(
-				streamIdentifier,
-				createRandomString(32),
-				2,
-				iggcon.CompressionAlgorithmNone,
-				iggcon.IggyExpiryServerDefault,
-				math.MaxUint64,
-				&replicationFactor)
-			itShouldReturnSpecificError(err, ierror.ErrTopicIdAlreadyExists)
-		})
-
 		ginkgo.Context("and tries to create topic with name that's over 255 characters", func() {
 			client := createAuthorizedConnection()
 			streamId, _ := successfullyCreateStream(prefix, client)

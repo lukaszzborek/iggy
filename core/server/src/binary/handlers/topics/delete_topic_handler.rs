@@ -22,13 +22,18 @@ use crate::binary::{handlers::topics::COMPONENT, sender::SenderKind};
 
 use crate::shard::IggyShard;
 use crate::shard::transmission::event::ShardEvent;
+use crate::shard::transmission::frame::ShardResponse;
+use crate::shard::transmission::message::{
+    ShardMessage, ShardRequest, ShardRequestPayload, ShardSendRequestResult,
+};
+use crate::slab::traits_ext::EntityMarker;
 use crate::state::command::EntryCommand;
 use crate::streaming::session::Session;
 use crate::streaming::streams;
 use anyhow::Result;
 use err_trail::ErrContext;
-use iggy_common::IggyError;
 use iggy_common::delete_topic::DeleteTopic;
+use iggy_common::{Identifier, IggyError};
 use std::rc::Rc;
 use tracing::info;
 use tracing::{debug, instrument};
@@ -46,45 +51,89 @@ impl ServerCommandHandler for DeleteTopic {
         session: &Session,
         shard: &Rc<IggyShard>,
     ) -> Result<(), IggyError> {
-        // TODO: There is a correctness bug,
-        // We have to first apply the state, then proceed with deleting the topic from the disk.
-        // Otherwise if we delete the topic from disk first and the server crashes
-        // we end up in a state where the topic is deleted from the disk, but during state recreation it would be recreated,
-        // without it's segments.
         debug!("session: {session}, command: {self}");
 
-        // Acquire topic lock to serialize filesystem operations
-        let _topic_guard = shard.fs_locks.topic_lock.lock().await;
-
-        let topic = shard
-            .delete_topic(session, &self.stream_id, &self.topic_id)
-            .await?;
-        let stream_id = shard
-            .streams
-            .with_stream_by_id(&self.stream_id, streams::helpers::get_stream_id());
-        let topic_id = topic.root().id();
-        info!(
-            "Deleted topic with name: {}, ID: {} in stream with ID: {}",
-            topic.root().name(),
-            topic_id,
-            stream_id
-        );
-
-        let event = ShardEvent::DeletedTopic {
-            id: topic_id,
-            stream_id: self.stream_id.clone(),
-            topic_id: self.topic_id.clone(),
+        let request = ShardRequest {
+            stream_id: Identifier::default(),
+            topic_id: Identifier::default(),
+            partition_id: 0,
+            payload: ShardRequestPayload::DeleteTopic {
+                user_id: session.get_user_id(),
+                stream_id: self.stream_id.clone(),
+                topic_id: self.topic_id.clone(),
+            },
         };
-        shard.broadcast_event_to_all_shards(event).await?;
 
-        shard
-            .state
-            .apply(session.get_user_id(), &EntryCommand::DeleteTopic(self))
-            .await
-            .with_error(|error| format!(
-                "{COMPONENT} (error: {error}) - failed to apply delete topic with ID: {topic_id} in stream with ID: {stream_id}, session: {session}",
-            ))?;
-        sender.send_empty_ok_response().await?;
+        let message = ShardMessage::Request(request);
+        match shard.send_request_to_shard_or_recoil(None, message).await? {
+            ShardSendRequestResult::Recoil(message) => {
+                if let ShardMessage::Request(ShardRequest { payload, .. }) = message
+                    && let ShardRequestPayload::DeleteTopic {
+                        stream_id,
+                        topic_id,
+                        ..
+                    } = payload
+                {
+                    // Acquire topic lock to serialize filesystem operations
+                    let _topic_guard = shard.fs_locks.topic_lock.lock().await;
+
+                    let topic = shard
+                        .delete_topic(session, &stream_id, &topic_id)
+                        .await?;
+                    let stream_id_num = shard
+                        .streams
+                        .with_stream_by_id(&stream_id, streams::helpers::get_stream_id());
+                    let topic_id_num = topic.root().id();
+                    info!(
+                        "Deleted topic with name: {}, ID: {} in stream with ID: {}",
+                        topic.root().name(),
+                        topic_id_num,
+                        stream_id_num
+                    );
+
+                    let event = ShardEvent::DeletedTopic {
+                        id: topic_id_num,
+                        stream_id: stream_id.clone(),
+                        topic_id: topic_id.clone(),
+                    };
+                    shard.broadcast_event_to_all_shards(event).await?;
+
+                    shard
+                        .state
+                        .apply(session.get_user_id(), &EntryCommand::DeleteTopic(self))
+                        .await
+                        .with_error(|error| format!(
+                            "{COMPONENT} (error: {error}) - failed to apply delete topic with ID: {topic_id_num} in stream with ID: {stream_id_num}, session: {session}",
+                        ))?;
+                    sender.send_empty_ok_response().await?;
+                } else {
+                    unreachable!(
+                        "Expected a DeleteTopic request inside of DeleteTopic handler, impossible state"
+                    );
+                }
+            }
+            ShardSendRequestResult::Response(response) => match response {
+                ShardResponse::DeleteTopicResponse(topic) => {
+                    shard
+                        .state
+                        .apply(session.get_user_id(), &EntryCommand::DeleteTopic(self))
+                        .await
+                        .with_error(|error| format!(
+                            "{COMPONENT} (error: {error}) - failed to apply delete topic with ID: {}, session: {session}",
+                            topic.id()
+                        ))?;
+
+                    sender.send_empty_ok_response().await?;
+                }
+                ShardResponse::ErrorResponse(err) => {
+                    return Err(err);
+                }
+                _ => unreachable!(
+                    "Expected a DeleteTopicResponse inside of DeleteTopic handler, impossible state"
+                ),
+            },
+        }
+
         Ok(())
     }
 }

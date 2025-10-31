@@ -126,6 +126,14 @@ impl IggyShard {
             })?;
         }
 
+        let exists = self.streams.with_topics(
+            stream_id,
+            topics::helpers::exists(&Identifier::from_str(&name).unwrap()),
+        );
+        if exists {
+            return Err(IggyError::TopicNameAlreadyExists(name, stream_id.clone()));
+        }
+
         self.update_topic_base(
             stream_id,
             topic_id,

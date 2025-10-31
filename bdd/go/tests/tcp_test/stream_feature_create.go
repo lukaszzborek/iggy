@@ -26,46 +26,28 @@ var _ = ginkgo.Describe("CREATE STREAM:", func() {
 	ginkgo.When("User is logged in", func() {
 		ginkgo.Context("and tries to create stream with unique name and id", func() {
 			client := createAuthorizedConnection()
-			streamId := createRandomUInt32()
 			name := createRandomString(32)
 
-            _, err := client.CreateStream(name)
-			defer deleteStreamAfterTests(streamId, client)
+            stream, err := client.CreateStream(name)
+			defer deleteStreamAfterTests(stream.Id, client)
 
 			itShouldNotReturnError(err)
-			itShouldSuccessfullyCreateStream(streamId, name, client)
+			itShouldSuccessfullyCreateStream(stream.Id, name, client)
 		})
 
 		ginkgo.Context("and tries to create stream with duplicate stream name", func() {
 			client := createAuthorizedConnection()
-			streamId := createRandomUInt32()
 			name := createRandomString(32)
 
-            _, err := client.CreateStream(name)
-			defer deleteStreamAfterTests(streamId, client)
+            stream, err := client.CreateStream(name)
+			defer deleteStreamAfterTests(stream.Id, client)
 
 			itShouldNotReturnError(err)
-			itShouldSuccessfullyCreateStream(streamId, name, client)
+			itShouldSuccessfullyCreateStream(stream.Id, name, client)
 
             _, err = client.CreateStream(name)
 
 			itShouldReturnSpecificError(err, ierror.ErrStreamNameAlreadyExists)
-		})
-
-		ginkgo.Context("and tries to create stream with duplicate stream id", func() {
-			client := createAuthorizedConnection()
-			streamId := createRandomUInt32()
-			name := createRandomString(32)
-
-            _, err := client.CreateStream(name)
-			defer deleteStreamAfterTests(streamId, client)
-
-			itShouldNotReturnError(err)
-			itShouldSuccessfullyCreateStream(streamId, name, client)
-
-            _, err = client.CreateStream(createRandomString(32))
-
-			itShouldReturnSpecificError(err, ierror.ErrStreamIdAlreadyExists)
 		})
 
 		ginkgo.Context("and tries to create stream name that's over 255 characters", func() {
