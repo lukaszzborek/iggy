@@ -276,91 +276,11 @@ pub async fn should_be_successful() {
             TestTopicId::Named,
         ))
         .await;
-    iggy_cmd_test
-        .execute_test(TestTopicUpdateCmd::new(
-            2,
-            String::from("testing"),
-            0,
-            String::from("development"),
-            Default::default(),
-            None,
-            MaxTopicSize::ServerDefault,
-            1,
-            String::from("development"),
-            CompressionAlgorithm::Gzip,
-            None,
-            MaxTopicSize::Unlimited,
-            1,
-            TestStreamId::Named,
-            TestTopicId::Named,
-        ))
-        .await;
-    iggy_cmd_test
-        .execute_test(TestTopicUpdateCmd::new(
-            3,
-            String::from("other"),
-            0,
-            String::from("probe"),
-            Default::default(),
-            None,
-            MaxTopicSize::ServerDefault,
-            1,
-            String::from("development"),
-            CompressionAlgorithm::Gzip,
-            Some(vec![
-                String::from("1day"),
-                String::from("1h"),
-                String::from("1m"),
-                String::from("1s"),
-            ]),
-            MaxTopicSize::Unlimited,
-            1,
-            TestStreamId::Named,
-            TestTopicId::Named,
-        ))
-        .await;
-    iggy_cmd_test
-        .execute_test(TestTopicUpdateCmd::new(
-            4,
-            String::from("stream"),
-            0,
-            String::from("testing"),
-            Default::default(),
-            Some(vec![String::from("1s")]),
-            MaxTopicSize::ServerDefault,
-            1,
-            String::from("testing"),
-            CompressionAlgorithm::Gzip,
-            Some(vec![String::from("1m 6s")]),
-            MaxTopicSize::ServerDefault,
-            1,
-            TestStreamId::Named,
-            TestTopicId::Named,
-        ))
-        .await;
-    iggy_cmd_test
-        .execute_test(TestTopicUpdateCmd::new(
-            5,
-            String::from("testing"),
-            0,
-            String::from("testing"),
-            Default::default(),
-            Some(vec![
-                String::from("1s"),
-                String::from("1m"),
-                String::from("1h"),
-            ]),
-            MaxTopicSize::ServerDefault,
-            1,
-            String::from("testing"),
-            CompressionAlgorithm::Gzip,
-            None,
-            MaxTopicSize::Unlimited,
-            1,
-            TestStreamId::Named,
-            TestTopicId::Named,
-        ))
-        .await;
+    // There used to be 3 more test cases, but they don't fit anymore the test scenario
+    // Previously we allowed to update topic name to an already existing one, which is now forbidden.
+
+    // Imagine a scenario where user tries to use any of our APIs with the `Identifier::named` variant for topic identifier
+    // How to distinguish between topics with same name.
 }
 
 #[tokio::test]
