@@ -24,59 +24,65 @@ import (
 )
 
 func CreateGroup(request iggcon.CreateConsumerGroupRequest) []byte {
-	if request.ConsumerGroupId == nil {
-		request.ConsumerGroupId = new(uint32)
-	}
-	customIdOffset := 4 + request.StreamId.Length + request.TopicId.Length
-	bytes := make([]byte, 4+request.StreamId.Length+request.TopicId.Length+1+4+len(request.Name))
-	copy(bytes[0:customIdOffset], SerializeIdentifiers(request.StreamId, request.TopicId))
-	binary.LittleEndian.PutUint32(bytes[customIdOffset:customIdOffset+4], *request.ConsumerGroupId)
-	bytes[customIdOffset+4] = byte(len(request.Name))
-	copy(bytes[customIdOffset+5:], request.Name)
-	return bytes
+    offset := request.StreamId.Length + request.TopicId.Length
+    bytes := make([]byte, offset+1+len(request.Name))
+    copy(bytes[0:offset], SerializeIdentifiers(request.StreamId, request.TopicId))
+    bytes[offset] = byte(len(request.Name))
+    copy(bytes[offset+1:], request.Name)
+    return bytes
 }
 
 func UpdateOffset(request iggcon.StoreConsumerOffsetRequest) []byte {
-	if request.PartitionId == nil {
-		request.PartitionId = new(uint32)
-	}
-	bytes := make([]byte, 6+request.StreamId.Length+request.TopicId.Length+request.Consumer.Id.Length+13)
-	bytes[0] = byte(request.Consumer.Kind)
-	position := 7 + request.StreamId.Length + request.TopicId.Length + request.Consumer.Id.Length
-	copy(bytes[1:position], SerializeIdentifiers(request.Consumer.Id, request.StreamId, request.TopicId))
-
-	binary.LittleEndian.PutUint32(bytes[position:position+4], *request.PartitionId)
-	binary.LittleEndian.PutUint64(bytes[position+4:position+12], uint64(request.Offset))
-	return bytes
+    hasPartition := byte(0)
+    var partition uint32 = 0
+    if request.PartitionId != nil {
+        hasPartition = 1
+        partition = *request.PartitionId
+    }
+    // consumer kind (1) + hasPartition (1) + ids + partition(4) + offset(8)
+    bytes := make([]byte, 6+request.StreamId.Length+request.TopicId.Length+request.Consumer.Id.Length+14)
+    bytes[0] = byte(request.Consumer.Kind)
+    position := 7 + request.StreamId.Length + request.TopicId.Length + request.Consumer.Id.Length
+    copy(bytes[1:position], SerializeIdentifiers(request.Consumer.Id, request.StreamId, request.TopicId))
+    bytes[position] = hasPartition
+    binary.LittleEndian.PutUint32(bytes[position+1:position+5], partition)
+    binary.LittleEndian.PutUint64(bytes[position+5:position+13], uint64(request.Offset))
+    return bytes
 }
 
 func GetOffset(request iggcon.GetConsumerOffsetRequest) []byte {
-	if request.PartitionId == nil {
-		request.PartitionId = new(uint32)
-	}
-	bytes := make([]byte, 6+request.StreamId.Length+request.TopicId.Length+request.Consumer.Id.Length+5)
-	bytes[0] = byte(request.Consumer.Kind)
-	position := 7 + request.StreamId.Length + request.TopicId.Length + request.Consumer.Id.Length
-	copy(bytes[1:position], SerializeIdentifiers(request.Consumer.Id, request.StreamId, request.TopicId))
-	binary.LittleEndian.PutUint32(bytes[position:position+4], *request.PartitionId)
-	return bytes
+    hasPartition := byte(0)
+    var partition uint32 = 0
+    if request.PartitionId != nil {
+        hasPartition = 1
+        partition = *request.PartitionId
+    }
+    bytes := make([]byte, 6+request.StreamId.Length+request.TopicId.Length+request.Consumer.Id.Length+6)
+    bytes[0] = byte(request.Consumer.Kind)
+    position := 7 + request.StreamId.Length + request.TopicId.Length + request.Consumer.Id.Length
+    copy(bytes[1:position], SerializeIdentifiers(request.Consumer.Id, request.StreamId, request.TopicId))
+    bytes[position] = hasPartition
+    binary.LittleEndian.PutUint32(bytes[position+1:position+5], partition)
+    return bytes
 }
 
 func DeleteOffset(request iggcon.DeleteConsumerOffsetRequest) []byte {
-	consumerBytes := SerializeConsumer(request.Consumer)
-	streamIdBytes := SerializeIdentifier(request.StreamId)
-	topicIdBytes := SerializeIdentifier(request.TopicId)
-	bytes := make([]byte, 0, 12+len(consumerBytes)+len(streamIdBytes)+len(topicIdBytes))
-	bytes = append(bytes, consumerBytes...)
-	bytes = append(bytes, streamIdBytes...)
-	bytes = append(bytes, topicIdBytes...)
-	if request.PartitionId != nil {
-		bytes = binary.LittleEndian.AppendUint32(bytes, *request.PartitionId)
-	} else {
-		bytes = binary.LittleEndian.AppendUint32(bytes, 0)
-	}
+    consumerBytes := SerializeConsumer(request.Consumer)
+    streamIdBytes := SerializeIdentifier(request.StreamId)
+    topicIdBytes := SerializeIdentifier(request.TopicId)
+    bytes := make([]byte, 0, 13+len(consumerBytes)+len(streamIdBytes)+len(topicIdBytes))
+    bytes = append(bytes, consumerBytes...)
+    bytes = append(bytes, streamIdBytes...)
+    bytes = append(bytes, topicIdBytes...)
+    if request.PartitionId != nil {
+        bytes = append(bytes, 1)
+        bytes = binary.LittleEndian.AppendUint32(bytes, *request.PartitionId)
+    } else {
+        bytes = append(bytes, 0)
+        bytes = binary.LittleEndian.AppendUint32(bytes, 0)
+    }
 
-	return bytes
+    return bytes
 }
 
 func CreatePartitions(request iggcon.CreatePartitionsRequest) []byte {

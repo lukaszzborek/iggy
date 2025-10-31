@@ -32,7 +32,7 @@ func successfullyCreateStream(prefix string, client iggycli.Client) (uint32, str
 	streamId := createRandomUInt32()
 	name := createRandomStringWithPrefix(prefix, 128)
 
-	_, err := client.CreateStream(name, &streamId)
+    _, err := client.CreateStream(name)
 
 	itShouldNotReturnError(err)
 	itShouldSuccessfullyCreateStream(streamId, name, client)

@@ -29,7 +29,7 @@ var _ = ginkgo.Describe("CREATE STREAM:", func() {
 			streamId := createRandomUInt32()
 			name := createRandomString(32)
 
-			_, err := client.CreateStream(name, &streamId)
+            _, err := client.CreateStream(name)
 			defer deleteStreamAfterTests(streamId, client)
 
 			itShouldNotReturnError(err)
@@ -41,14 +41,13 @@ var _ = ginkgo.Describe("CREATE STREAM:", func() {
 			streamId := createRandomUInt32()
 			name := createRandomString(32)
 
-			_, err := client.CreateStream(name, &streamId)
+            _, err := client.CreateStream(name)
 			defer deleteStreamAfterTests(streamId, client)
 
 			itShouldNotReturnError(err)
 			itShouldSuccessfullyCreateStream(streamId, name, client)
 
-			anotherStreamId := createRandomUInt32()
-			_, err = client.CreateStream(name, &anotherStreamId)
+            _, err = client.CreateStream(name)
 
 			itShouldReturnSpecificError(err, ierror.ErrStreamNameAlreadyExists)
 		})
@@ -58,33 +57,31 @@ var _ = ginkgo.Describe("CREATE STREAM:", func() {
 			streamId := createRandomUInt32()
 			name := createRandomString(32)
 
-			_, err := client.CreateStream(name, &streamId)
+            _, err := client.CreateStream(name)
 			defer deleteStreamAfterTests(streamId, client)
 
 			itShouldNotReturnError(err)
 			itShouldSuccessfullyCreateStream(streamId, name, client)
 
-			_, err = client.CreateStream(createRandomString(32), &streamId)
+            _, err = client.CreateStream(createRandomString(32))
 
 			itShouldReturnSpecificError(err, ierror.ErrStreamIdAlreadyExists)
 		})
 
 		ginkgo.Context("and tries to create stream name that's over 255 characters", func() {
-			client := createAuthorizedConnection()
-			streamId := createRandomUInt32()
-			name := createRandomString(256)
+            client := createAuthorizedConnection()
+            name := createRandomString(256)
 
-			_, err := client.CreateStream(name, &streamId)
+            _, err := client.CreateStream(name)
 
-			itShouldReturnSpecificError(err, ierror.ErrInvalidStreamName)
-		})
+            itShouldReturnSpecificError(err, ierror.ErrInvalidStreamName)
+        })
 	})
 
 	ginkgo.When("User is not logged in", func() {
 		ginkgo.Context("and tries to create stream", func() {
-			client := createClient()
-			streamId := createRandomUInt32()
-			_, err := client.CreateStream(createRandomString(32), &streamId)
+            client := createClient()
+            _, err := client.CreateStream(createRandomString(32))
 
 			itShouldReturnUnauthenticatedError(err)
 		})
