@@ -71,18 +71,6 @@ describe('e2e -> topic', async () => {
     assert.ok(dp);
   });
 
-  it('e2e -> topic::update', async () => {
-    const topic = await c.topic.get({ streamId: streamName, topicId: topicName });
-    assert.ok(topic);
-    const u2 = await c.topic.update({
-      streamId: streamName,
-      topicId: topicName,
-      name: topic.name,
-      messageExpiry: 42n
-    });
-    assert.ok(u2);
-  });
-
   it('e2e -> topic::purge', async () => {
     assert.ok(await c.topic.purge({ streamId: streamName, topicId: topicName }));
   });

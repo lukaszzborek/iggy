@@ -832,13 +832,25 @@ internal static class TcpContracts
     internal static byte[] DeleteOffset(Identifier streamId, Identifier topicId, Consumer consumer, uint? partitionId)
     {
         Span<byte> bytes =
-            stackalloc byte[2 + streamId.Length + 2 + topicId.Length + sizeof(int) * 1 + 1 + 2 + consumer.Id.Length];
+            stackalloc byte[2 + streamId.Length + 2 + topicId.Length + 5 + 1 + 2 + consumer.Id.Length];
         bytes[0] = GetConsumerTypeByte(consumer.Type);
         bytes.WriteBytesFromIdentifier(consumer.Id, 1);
         var position = 1 + consumer.Id.Length + 2;
         bytes.WriteBytesFromStreamAndTopicIdentifiers(streamId, topicId, position);
         position += 2 + streamId.Length + 2 + topicId.Length;
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes[position..(position + 4)], partitionId ?? 0);
+
+        // Encode partition_id with a flag byte: 1 = Some, 0 = None
+        if (partitionId.HasValue)
+        {
+            bytes[position] = 1; // Flag byte: partition_id is Some
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes[(position + 1)..(position + 5)], partitionId.Value);
+        }
+        else
+        {
+            bytes[position] = 0; // Flag byte: partition_id is None
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes[(position + 1)..(position + 5)], 0); // Padding
+        }
+
         return bytes.ToArray();
     }
 }
