@@ -26,7 +26,7 @@ import { PollingStrategy, type PollMessagesResponse } from './wire/index.js';
 const streamName = 'debug-snd-stream';
 const topicName = 'debug-snd-topic';
 const groupName = 'debug-snd-group';
-      
+
 const stream = {
   name: streamName
 };

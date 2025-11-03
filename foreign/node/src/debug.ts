@@ -71,12 +71,12 @@ const msg = {
 };
 
 try {
-  
+
   await c.stream.create(stream);
   console.log('server stream CREATED::', { streamName });
   await c.topic.create(topic);
   console.log('server topic CREATED::', { topicName });
-  
+
   // send
   assert.ok(await c.message.send(msg));
   console.log('message SEND::', { msg })
@@ -92,7 +92,7 @@ try {
   };
 
   console.log('poll req', pollReq);
-  
+
   const cs = await groupConsumerStream(opt)(pollReq);
   const dataCb = (d: PollMessagesResponse) => {
     console.log('cli/DATA POLLED:', d);

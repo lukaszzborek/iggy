@@ -37,7 +37,7 @@ export const topicToFile = async (
   const t = await cli.topic.get({ streamId: streamName, topicId: topicName });
   console.log('TOPIC/GET', t);
 
-  // reset consumer offset 
+  // reset consumer offset
   try {
     const offset = await cli.offset.get({
       streamId, topicId, partitionId, consumer: Consumer.Single

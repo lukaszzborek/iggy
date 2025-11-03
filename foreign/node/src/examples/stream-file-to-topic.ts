@@ -39,7 +39,7 @@ export const fileToTopic = async (
   const st = await fd.stat();
   console.log('FILE/STAT', fname, '~', (st.size / (1024 * 1024)).toFixed(2), 'mb', st);
   const dStart = Date.now();
-  
+
   try {
     let idx = 0;
 
@@ -55,7 +55,7 @@ export const fileToTopic = async (
             },
             payload: chunks
           }];
-          
+
           try {
             await cli.message.send({ streamId: streamName, topicId: topicName, messages });
             cb();
@@ -66,7 +66,7 @@ export const fileToTopic = async (
         }
       })
     );
- 
+
     console.log(`Finished ! took ${Date.now() - dStart}ms`,);
   } catch (err) {
     console.error('Pipeline failed !', err);

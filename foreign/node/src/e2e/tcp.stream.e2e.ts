@@ -25,7 +25,7 @@ import { getTestClient } from './test-client.utils.js';
 describe('e2e -> stream', async () => {
 
   const c = getTestClient();
-  
+
   const name = 'e2e-tcp-stream';
   const name2 = `${name}-updated`;
 

@@ -97,7 +97,7 @@ export const singleConsumerStream = (config: ClientConfig) => async (
     count,
     autocommit
   };
-  
+
   const ps = Readable.from(
     genEagerUntilPoll(c, poll, interval, endOnLastOffset),
     { objectMode: true }
@@ -119,7 +119,7 @@ export const groupConsumerStream = (config: ClientConfig) =>
   }: GroupConsumerStreamRequest): Promise<Readable> {
     const s = await getClient(config);
     await s.group.ensureAndJoin(streamId, topicId, groupName);
-    
+
     const poll = {
       streamId,
       topicId,

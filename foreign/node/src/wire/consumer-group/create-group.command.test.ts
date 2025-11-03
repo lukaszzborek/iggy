@@ -31,7 +31,7 @@ describe('CreateGroup', () => {
       topicId: 2,
       name: 'test-group'
     };
-    
+
     it('serialize group id & name into buffer', () => {
       assert.deepEqual(
         CREATE_GROUP.serialize(s1).length,
@@ -40,7 +40,7 @@ describe('CreateGroup', () => {
     });
 
     it('throw on name < 1', () => {
-      const s2 = {...s1, name: ''}; 
+      const s2 = {...s1, name: ''};
       assert.throws(
         () => CREATE_GROUP.serialize(s2)
       );

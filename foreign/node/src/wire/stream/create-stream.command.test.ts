@@ -29,7 +29,7 @@ describe('CreateStream', () => {
     const s1 = {
       name: 'test-stream'
     };
-    
+
     it('serialize 1 name into buffer', () => {
       assert.deepEqual(
         CREATE_STREAM.serialize(s1).length,
@@ -38,7 +38,7 @@ describe('CreateStream', () => {
     });
 
     it('throw on name < 1', () => {
-      const s2 = {...s1, name: ''}; 
+      const s2 = {...s1, name: ''};
       assert.throws(
         () => CREATE_STREAM.serialize(s2)
       );
