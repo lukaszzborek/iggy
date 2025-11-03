@@ -95,9 +95,11 @@ pub async fn run(
         */
     };
 
-    validate_results(&results, scenario_type);
-    validate_server_state(client_factory, resource_type, scenario_type).await;
-    cleanup_resources(&root_client, resource_type).await;
+    if !results.is_empty() {
+        validate_results(&results, scenario_type);
+        validate_server_state(client_factory, resource_type, scenario_type).await;
+        cleanup_resources(&root_client, resource_type).await;
+    }
 }
 
 async fn _execute_multiple_clients_users_hot(
@@ -375,10 +377,6 @@ async fn execute_multiple_clients_topics_cold(
 fn validate_results(results: &[OperationResult], scenario_type: ScenarioType) {
     let success_count = results.iter().filter(|r| r.is_ok()).count();
     let error_count = results.iter().filter(|r| r.is_err()).count();
-
-    if results.is_empty() {
-        return;
-    }
 
     match scenario_type {
         ScenarioType::Hot => {
