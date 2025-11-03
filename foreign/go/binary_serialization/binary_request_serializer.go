@@ -85,11 +85,17 @@ func GetOffset(request iggcon.GetConsumerOffsetRequest) []byte {
 }
 
 func DeleteOffset(request iggcon.DeleteConsumerOffsetRequest) []byte {
+    hasPartition := byte(0)
+    var partition uint32 = 0
+    if request.PartitionId != nil {
+        hasPartition = 1
+        partition = *request.PartitionId
+    }
     consumerBytes := SerializeConsumer(request.Consumer)
     streamIdBytes := SerializeIdentifier(request.StreamId)
     topicIdBytes := SerializeIdentifier(request.TopicId)
-    // consumer + stream_id + topic_id + partition(4) - NO flag byte for delete
-    bytes := make([]byte, len(consumerBytes)+len(streamIdBytes)+len(topicIdBytes)+4)
+    // consumer + stream_id + topic_id + hasPartition(1) + partition(4)
+    bytes := make([]byte, len(consumerBytes)+len(streamIdBytes)+len(topicIdBytes)+5)
     position := 0
     copy(bytes[position:], consumerBytes)
     position += len(consumerBytes)
@@ -97,11 +103,8 @@ func DeleteOffset(request iggcon.DeleteConsumerOffsetRequest) []byte {
     position += len(streamIdBytes)
     copy(bytes[position:], topicIdBytes)
     position += len(topicIdBytes)
-    if request.PartitionId != nil {
-        binary.LittleEndian.PutUint32(bytes[position:], *request.PartitionId)
-    } else {
-        binary.LittleEndian.PutUint32(bytes[position:], 0)
-    }
+    bytes[position] = hasPartition
+    binary.LittleEndian.PutUint32(bytes[position+1:position+5], partition)
     return bytes
 }
 

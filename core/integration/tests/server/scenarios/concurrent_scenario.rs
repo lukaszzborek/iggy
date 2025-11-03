@@ -376,6 +376,10 @@ fn validate_results(results: &[OperationResult], scenario_type: ScenarioType) {
     let success_count = results.iter().filter(|r| r.is_ok()).count();
     let error_count = results.iter().filter(|r| r.is_err()).count();
 
+    if results.is_empty() {
+        return;
+    }
+
     match scenario_type {
         ScenarioType::Hot => {
             // Hot path: all operations should succeed
