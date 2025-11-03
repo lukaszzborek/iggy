@@ -196,7 +196,7 @@ pub fn build_consumer_futures(
             };
             let stream_id = format!("bench-stream-{stream_idx}");
             let consumer_group_id = if cg_count > 0 {
-                Some(CONSUMER_GROUP_BASE_ID + 1 + (consumer_id % cg_count))
+                Some(CONSUMER_GROUP_BASE_ID + (consumer_id % cg_count))
             } else {
                 None
             };
