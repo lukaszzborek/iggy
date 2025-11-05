@@ -40,10 +40,10 @@ const FILE_STATE_PARSE_ERROR: &str = "STATE - failed to parse file state";
 
 #[derive(Debug)]
 pub struct FileState {
-    current_index: AtomicU64,
-    entries_count: AtomicU64,
-    current_leader: AtomicU32,
-    term: AtomicU64,
+    current_index: Arc<AtomicU64>,
+    entries_count: Arc<AtomicU64>,
+    current_leader: Arc<AtomicU32>,
+    term: Arc<AtomicU64>,
     version: u32,
     path: String,
     persister: Arc<PersisterKind>,
@@ -51,17 +51,22 @@ pub struct FileState {
 }
 
 impl FileState {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         path: &str,
         version: &SemanticVersion,
         persister: Arc<PersisterKind>,
         encryptor: Option<EncryptorKind>,
+        current_index: Arc<AtomicU64>,
+        entries_count: Arc<AtomicU64>,
+        current_leader: Arc<AtomicU32>,
+        term: Arc<AtomicU64>,
     ) -> Self {
         Self {
-            current_index: AtomicU64::new(0),
-            entries_count: AtomicU64::new(0),
-            current_leader: AtomicU32::new(0),
-            term: AtomicU64::new(0),
+            current_index,
+            entries_count,
+            current_leader,
+            term,
             path: path.into(),
             persister,
             encryptor,
@@ -146,6 +151,7 @@ impl FileState {
                 .await
                 .with_error(|error| format!("{FILE_STATE_PARSE_ERROR} index. {error}"))
                 .map_err(|_| IggyError::InvalidNumberEncoding)?;
+            tracing::warn!("index: {}", index);
             total_size += 8;
             // Greater than one, because one of the entries after a fresh reboot is the default root user.
             if entries_count > 1 && index != current_index + 1 {
@@ -258,6 +264,7 @@ impl FileState {
             EntryCommand::from_bytes(command.clone()).with_error(|error| {
                 format!("{COMPONENT} (error: {error}) - failed to parse entry command from bytes")
             })?;
+            tracing::warn!("command: {:?}", command);
             let calculated_checksum = StateEntry::calculate_checksum(
                 index, term, leader_id, version, flags, timestamp, user_id, &context, &command,
             );

@@ -24,6 +24,7 @@ use server::streaming::utils::file::overwrite;
 use server::versioning::SemanticVersion;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, AtomicU64};
 use uuid::Uuid;
 
 mod file;
@@ -54,11 +55,19 @@ impl StateSetup {
         let persister = PersisterKind::FileWithSync(FileWithSyncPersister {});
         let encryptor = encryption_key
             .map(|key| EncryptorKind::Aes256Gcm(Aes256GcmEncryptor::new(key).unwrap()));
+        let state_current_index = Arc::new(AtomicU64::new(0));
+        let state_entries_count = Arc::new(AtomicU64::new(0));
+        let state_current_leader = Arc::new(AtomicU32::new(0));
+        let state_term = Arc::new(AtomicU64::new(0));
         let state = FileState::new(
             &messages_file_path,
             &version,
             Arc::new(persister),
             encryptor,
+            state_current_index,
+            state_entries_count,
+            state_current_leader,
+            state_term,
         );
 
         Self {

@@ -17,7 +17,7 @@
  */
 
 use iggy::clients::client::IggyClient;
-use iggy::prelude::{Identifier, IggyByteSize, MessageClient, SystemClient};
+use iggy::prelude::{ConsumerGroupClient, Identifier, IggyByteSize, MessageClient, SystemClient};
 use iggy_common::TransportProtocol;
 use integration::bench_utils::run_bench_and_wait_for_finish;
 use integration::{
@@ -101,6 +101,16 @@ async fn should_fill_data_and_verify_after_restart(cache_setting: &'static str) 
             .unwrap();
     }
 
+    // 4b. Create consumer groups to test persistence
+    let consumer_group_names = ["test-cg-1", "test-cg-2", "test-cg-3"];
+    for (idx, cg_name) in consumer_group_names.iter().enumerate() {
+        let stream_id = Identifier::numeric(idx as u32).unwrap();
+        client
+            .create_consumer_group(&stream_id, &topic_id, cg_name)
+            .await
+            .unwrap();
+    }
+
     // 5. Save stats from the first server
     let stats = client.get_stats().await.unwrap();
     let expected_messages_size_bytes = stats.messages_size_bytes;
@@ -163,6 +173,33 @@ async fn should_fill_data_and_verify_after_restart(cache_setting: &'static str) 
         expected_segments_count, stats_after_restart.segments_count,
         "Segments count should be preserved after restart"
     );
+    assert_eq!(
+        expected_consumer_groups_count, stats_after_restart.consumer_groups_count,
+        "Consumer groups count should be preserved after restart"
+    );
+
+    // 8b. Verify consumer groups exist after restart
+    for (idx, cg_name) in consumer_group_names.iter().enumerate() {
+        let stream_id = Identifier::numeric(idx as u32).unwrap();
+        let consumer_group = client_after_restart
+            .get_consumer_group(
+                &stream_id,
+                &topic_id,
+                &Identifier::from_str(cg_name).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(
+            consumer_group.is_some(),
+            "Consumer group {} should exist after restart",
+            cg_name
+        );
+        assert_eq!(
+            consumer_group.unwrap().name,
+            *cg_name,
+            "Consumer group name should match"
+        );
+    }
 
     // 9. Run send bench again to add more data
     run_bench_and_wait_for_finish(
@@ -247,6 +284,29 @@ async fn should_fill_data_and_verify_after_restart(cache_setting: &'static str) 
         expected_consumer_groups_count, actual_consumer_groups_count,
         "Consumer groups count"
     );
+
+    // 14b. Verify consumer groups still exist after second benchmark run
+    for (idx, cg_name) in consumer_group_names.iter().enumerate() {
+        let stream_id = Identifier::numeric(idx as u32).unwrap();
+        let consumer_group = client
+            .get_consumer_group(
+                &stream_id,
+                &topic_id,
+                &Identifier::from_str(cg_name).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(
+            consumer_group.is_some(),
+            "Consumer group {} should still exist after second benchmark",
+            cg_name
+        );
+        assert_eq!(
+            consumer_group.unwrap().name,
+            *cg_name,
+            "Consumer group name should match"
+        );
+    }
 
     // 15. Run poll bench to check if all data (10MB total) is still there
     run_bench_and_wait_for_finish(

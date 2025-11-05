@@ -59,7 +59,8 @@ use server::versioning::SemanticVersion;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use tracing::{error, info, instrument, warn};
 
 const COMPONENT: &str = "MAIN";
@@ -206,11 +207,19 @@ async fn main() -> Result<(), ServerError> {
 
     // TENTH DISCRETE LOADING STEP.
     let state_persister = resolve_persister(config.system.state.enforce_fsync);
+    let state_current_index = Arc::new(AtomicU64::new(0));
+    let state_entries_count = Arc::new(AtomicU64::new(0));
+    let state_current_leader = Arc::new(AtomicU32::new(0));
+    let state_term = Arc::new(AtomicU64::new(0));
     let state = FileState::new(
         &config.system.get_state_messages_file_path(),
         &current_version,
         state_persister,
         encryptor.clone(),
+        state_current_index.clone(),
+        state_entries_count.clone(),
+        state_current_leader.clone(),
+        state_term.clone(),
     );
     let state = SystemState::load(state).await?;
     let (streams_state, users_state) = state.decompose();
@@ -306,6 +315,10 @@ async fn main() -> Result<(), ServerError> {
             &current_version,
             state_persister,
             encryptor.clone(),
+            state_current_index.clone(),
+            state_entries_count.clone(),
+            state_current_leader.clone(),
+            state_term.clone(),
         );
         let client_manager = client_manager.clone();
 
