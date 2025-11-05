@@ -1643,7 +1643,7 @@ dependencies = [
 [[package]]
 name = "compio-ws"
 version = "0.1.0"
-source = "git+https://github.com/krishvishal/compio-ws?rev=59b1322676689474d9dfbafbd8de6dc96222fb18#59b1322676689474d9dfbafbd8de6dc96222fb18"
+source = "git+https://github.com/krishvishal/compio-ws?rev=86720ac22ecf998438b838d69c64570e54fc5181#86720ac22ecf998438b838d69c64570e54fc5181"
 dependencies = [
  "compio",
  "compio-buf",
@@ -1651,6 +1651,7 @@ dependencies = [
  "compio-net",
  "compio-runtime",
  "compio-tls",
+ "log",
  "rustls",
  "rustls-pemfile",
  "tungstenite",
