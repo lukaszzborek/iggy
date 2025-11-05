@@ -58,7 +58,7 @@ impl IggyShard {
         }
 
         for (stream_id, topic_id, consumer_group_id) in consumer_groups.into_iter() {
-            _ = self.leave_consumer_group_by_client(
+            _ = self.leave_consumer_group_base(
                 &Identifier::numeric(stream_id).unwrap(),
                 &Identifier::numeric(topic_id).unwrap(),
                 &Identifier::numeric(consumer_group_id).unwrap(),

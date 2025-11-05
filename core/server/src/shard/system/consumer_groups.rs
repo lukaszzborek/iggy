@@ -257,43 +257,23 @@ impl IggyShard {
                 topic_id,
             ).with_error(|error| format!("{COMPONENT} (error: {error}) - permission denied to leave consumer group for user {} on stream ID: {}, topic ID: {}", session.get_user_id(), stream_id, topic_id))?;
         }
-        self.streams.with_consumer_group_by_id_mut(
-            stream_id,
-            topic_id,
-            group_id,
-            topics::helpers::leave_consumer_group(session.client_id),
-        );
-
-        // Update ClientManager state
-        let stream_id_value = self
-            .streams
-            .with_stream_by_id(stream_id, streams::helpers::get_stream_id());
-        let topic_id_value =
-            self.streams
-                .with_topic_by_id(stream_id, topic_id, topics::helpers::get_topic_id());
-        let group_id_value = self.streams.with_consumer_group_by_id(
-            stream_id,
-            topic_id,
-            group_id,
-            topics::helpers::get_consumer_group_id(),
-        );
-
-        self.client_manager.leave_consumer_group(
-            session.client_id,
-            stream_id_value,
-            topic_id_value,
-            group_id_value,
-        ).with_error(|error| format!("{COMPONENT} (error: {error}) - failed to make client leave consumer group for client ID: {}", session.client_id))?;
-        Ok(())
+        self.leave_consumer_group_base(stream_id, topic_id, group_id, session.client_id)
     }
 
-    pub fn leave_consumer_group_by_client(
+    pub fn leave_consumer_group_base(
         &self,
         stream_id: &Identifier,
         topic_id: &Identifier,
         group_id: &Identifier,
         client_id: u32,
     ) -> Result<(), IggyError> {
+        self.streams.with_consumer_group_by_id_mut(
+            stream_id,
+            topic_id,
+            group_id,
+            topics::helpers::leave_consumer_group(client_id),
+        );
+
         // Update ClientManager state
         let stream_id_value = self
             .streams
