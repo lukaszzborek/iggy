@@ -67,7 +67,6 @@ impl Default for ServerConfig {
 impl Default for MessagesMaintenanceConfig {
     fn default() -> MessagesMaintenanceConfig {
         MessagesMaintenanceConfig {
-            archiver_enabled: SERVER_CONFIG.data_maintenance.messages.archiver_enabled,
             cleaner_enabled: SERVER_CONFIG.data_maintenance.messages.cleaner_enabled,
             interval: SERVER_CONFIG
                 .data_maintenance

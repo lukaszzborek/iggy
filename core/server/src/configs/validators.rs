@@ -212,7 +212,7 @@ impl Validatable<ConfigError> for DataMaintenanceConfig {
 
 impl Validatable<ConfigError> for MessagesMaintenanceConfig {
     fn validate(&self) -> Result<(), ConfigError> {
-        if self.archiver_enabled && self.interval.is_zero() {
+        if self.cleaner_enabled && self.interval.is_zero() {
             return Err(ConfigError::InvalidConfiguration);
         }
 

@@ -65,6 +65,10 @@ impl IndexReader {
         })
     }
 
+    pub fn path(&self) -> String {
+        self.file_path.clone()
+    }
+
     /// Loads all indexes from the index file into the optimized binary format.
     /// Note that this function does not use the pool, as the messages are not cached.
     /// This is expected - this method is called at startup and we want to preserve

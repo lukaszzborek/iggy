@@ -146,6 +146,10 @@ impl IggyShard {
             periodic::spawn_message_saver(self.clone());
         }
 
+        if self.config.data_maintenance.messages.cleaner_enabled {
+            periodic::spawn_message_cleaner(self.clone());
+        }
+
         if self.config.heartbeat.enabled {
             periodic::spawn_heartbeat_verifier(self.clone());
         }

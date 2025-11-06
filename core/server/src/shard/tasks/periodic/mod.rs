@@ -18,12 +18,14 @@
 
 mod heartbeat_verifier;
 mod jwt_token_cleaner;
+mod message_cleaner;
 mod message_saver;
 mod personal_access_token_cleaner;
 mod sysinfo_printer;
 
 pub use heartbeat_verifier::spawn_heartbeat_verifier;
 pub use jwt_token_cleaner::spawn_jwt_token_cleaner;
+pub use message_cleaner::spawn_message_cleaner;
 pub use message_saver::spawn_message_saver;
 pub use personal_access_token_cleaner::spawn_personal_access_token_cleaner;
 pub use sysinfo_printer::spawn_sysinfo_printer;

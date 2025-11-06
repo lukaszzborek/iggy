@@ -151,7 +151,6 @@ impl FileState {
                 .await
                 .with_error(|error| format!("{FILE_STATE_PARSE_ERROR} index. {error}"))
                 .map_err(|_| IggyError::InvalidNumberEncoding)?;
-            tracing::warn!("index: {}", index);
             total_size += 8;
             // Greater than one, because one of the entries after a fresh reboot is the default root user.
             if entries_count > 1 && index != current_index + 1 {
@@ -264,7 +263,6 @@ impl FileState {
             EntryCommand::from_bytes(command.clone()).with_error(|error| {
                 format!("{COMPONENT} (error: {error}) - failed to parse entry command from bytes")
             })?;
-            tracing::warn!("command: {:?}", command);
             let calculated_checksum = StateEntry::calculate_checksum(
                 index, term, leader_id, version, flags, timestamp, user_id, &context, &command,
             );

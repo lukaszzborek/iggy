@@ -80,6 +80,22 @@ pub fn get_max_topic_size() -> impl FnOnce(ComponentsById<TopicRef>) -> MaxTopic
     |(root, _, _)| root.max_topic_size()
 }
 
+pub fn get_topic_size_info() -> impl FnOnce(ComponentsById<TopicRef>) -> (bool, bool) {
+    |(root, _, stats)| {
+        let max_size = root.max_topic_size();
+        let current_size = stats.size_bytes_inconsistent();
+        let is_unlimited = matches!(max_size, MaxTopicSize::Unlimited);
+        let is_almost_full = if !is_unlimited {
+            let max_bytes = max_size.as_bytes_u64();
+            // Consider "almost full" as 90% capacity
+            current_size >= (max_bytes * 9 / 10)
+        } else {
+            false
+        };
+        (is_unlimited, is_almost_full)
+    }
+}
+
 pub fn calculate_partition_id_by_messages_key_hash(
     upperbound: usize,
     messages_key: &[u8],

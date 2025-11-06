@@ -84,6 +84,10 @@ impl MessagesReader {
         })
     }
 
+    pub fn path(&self) -> String {
+        self.file_path.clone()
+    }
+
     /// Loads and returns all message IDs from the messages file.
     /// Note that this function does not use the pool, as the messages are not cached.
     /// This is expected - this method is called at startup and we want to preserve

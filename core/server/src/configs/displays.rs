@@ -18,9 +18,8 @@
 
 use crate::configs::quic::{QuicCertificateConfig, QuicConfig};
 use crate::configs::server::{
-    DataMaintenanceConfig, DiskArchiverConfig, HeartbeatConfig, MessagesMaintenanceConfig,
-    S3ArchiverConfig, StateMaintenanceConfig, TelemetryConfig, TelemetryLogsConfig,
-    TelemetryTracesConfig,
+    DataMaintenanceConfig, HeartbeatConfig, MessagesMaintenanceConfig, StateMaintenanceConfig,
+    TelemetryConfig, TelemetryLogsConfig, TelemetryTracesConfig,
 };
 use crate::configs::system::MessageDeduplicationConfig;
 use crate::configs::{
@@ -145,31 +144,12 @@ impl Display for DataMaintenanceConfig {
     }
 }
 
-impl Display for DiskArchiverConfig {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{{ path: {} }}", self.path)
-    }
-}
-
-impl Display for S3ArchiverConfig {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{{ key_id: {}, bucket: {}, endpoint: {}. region: {} }}",
-            self.key_id,
-            self.bucket,
-            self.endpoint.as_deref().unwrap_or_default(),
-            self.region.as_deref().unwrap_or_default()
-        )
-    }
-}
-
 impl Display for MessagesMaintenanceConfig {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{{ archiver_enabled: {}, cleaner_enabled: {}, interval: {} }}",
-            self.archiver_enabled, self.cleaner_enabled, self.interval
+            "{{ cleaner_enabled: {}, interval: {} }}",
+            self.cleaner_enabled, self.interval
         )
     }
 }
@@ -178,8 +158,8 @@ impl Display for StateMaintenanceConfig {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{{ archiver_enabled: {}, overwrite: {}, interval: {} }}",
-            self.archiver_enabled, self.overwrite, self.interval
+            "{{ overwrite: {}, interval: {} }}",
+            self.overwrite, self.interval
         )
     }
 }

@@ -60,7 +60,6 @@ pub struct DataMaintenanceConfig {
 #[serde_as]
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct MessagesMaintenanceConfig {
-    pub archiver_enabled: bool,
     pub cleaner_enabled: bool,
     #[serde_as(as = "DisplayFromStr")]
     pub interval: IggyDuration,
@@ -73,21 +72,6 @@ pub struct StateMaintenanceConfig {
     pub overwrite: bool,
     #[serde_as(as = "DisplayFromStr")]
     pub interval: IggyDuration,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct DiskArchiverConfig {
-    pub path: String,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct S3ArchiverConfig {
-    pub key_id: String,
-    pub key_secret: String,
-    pub bucket: String,
-    pub endpoint: Option<String>,
-    pub region: Option<String>,
-    pub tmp_upload_dir: String,
 }
 
 #[serde_as]

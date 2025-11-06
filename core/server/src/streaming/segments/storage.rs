@@ -75,6 +75,12 @@ impl Storage {
         let index_writer = self.index_writer.take();
         (messages_writer, index_writer)
     }
+
+    pub fn segment_and_index_paths(&self) -> (Option<String>, Option<String>) {
+        let index_path = self.index_reader.as_ref().map(|reader| reader.path());
+        let segment_path = self.messages_reader.as_ref().map(|reader| reader.path());
+        (segment_path, index_path)
+    }
 }
 
 /// Creates a new storage for the specified partition with the given start offset
