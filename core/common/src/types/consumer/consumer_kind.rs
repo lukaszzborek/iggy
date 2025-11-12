@@ -38,6 +38,7 @@ pub struct Consumer {
     #[serde(skip)]
     pub kind: ConsumerKind,
     /// The unique identifier of the consumer.
+    #[serde(rename = "consumer_id")]
     #[serde_as(as = "DisplayFromStr")]
     #[serde(default = "default_id")]
     pub id: Identifier,
