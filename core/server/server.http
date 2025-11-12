@@ -344,7 +344,6 @@ Authorization: Bearer {{access_token}}
 Content-Type: application/json
 
 {
-  "consumer_group_id": {{consumer_group_id}},
   "name": "consumer_group_1"
 }
 
