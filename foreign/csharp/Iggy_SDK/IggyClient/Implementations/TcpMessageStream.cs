@@ -19,6 +19,7 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Apache.Iggy.Configuration;
 using Apache.Iggy.ConnectionStream;
@@ -49,6 +50,7 @@ public sealed class TcpMessageStream : IIggyClient
     private ClusterNode? _currentLeaderNode;
     private bool _isConnecting;
     private DateTimeOffset _lastConnectionTime;
+    private X509Certificate2? _localCertificate;
     private ConnectionState _state = ConnectionState.Disconnected;
     private TcpConnectionStream _stream = null!;
 
@@ -911,16 +913,28 @@ public sealed class TcpMessageStream : IIggyClient
         }
     }
 
-    private static TcpConnectionStream CreateSslStreamAndAuthenticate(Socket socket, TlsSettings tlsSettings)
+    private TcpConnectionStream CreateSslStreamAndAuthenticate(Socket socket, TlsSettings tlsSettings)
     {
+        ValidateCertificatePath(tlsSettings.CertificatePath);
+
+        _localCertificate = new X509Certificate2(tlsSettings.CertificatePath);
         var stream = new NetworkStream(socket, true);
-        var sslStream = new SslStream(stream);
-        if (tlsSettings.Authenticate)
-        {
-            sslStream.AuthenticateAsClient(tlsSettings.Hostname);
-        }
+        var sslStream = new SslStream(stream, false,
+            (sender, x509Certificate, chain, errors) =>
+                RemoteCertificateValidationCallback(sender, (X509Certificate2?)x509Certificate, chain, errors));
+
+        sslStream.AuthenticateAsClient(tlsSettings.Hostname);
 
         return new TcpConnectionStream(sslStream);
+    }
+
+    private void ValidateCertificatePath(string tlsCertificatePath)
+    {
+        if (string.IsNullOrEmpty(tlsCertificatePath)
+            || !File.Exists(tlsCertificatePath))
+        {
+            throw new InvalidCertificatePathException(tlsCertificatePath);
+        }
     }
 
     private async Task<byte[]> SendWithResponseAsync(byte[] payload, CancellationToken token = default)
@@ -1094,5 +1108,72 @@ public sealed class TcpMessageStream : IIggyClient
 
         _logger.LogInformation("Connection state changed: {PreviousState} -> {CurrentState}", previousState, newState);
         _connectionEvents.Publish(new ConnectionStateChangedEventArgs(previousState, newState));
+    }
+
+    private bool RemoteCertificateValidationCallback(object sender, X509Certificate2? certificate, X509Chain? chain,
+        SslPolicyErrors sslPolicyErrors)
+    {
+        if (sslPolicyErrors == SslPolicyErrors.None)
+        {
+            return true;
+        }
+
+        if (certificate == null)
+        {
+            _logger.LogWarning("Remote certificate is null");
+            return false;
+        }
+
+        if (_localCertificate == null)
+        {
+            _logger.LogWarning("Local certificate is null");
+            return false;
+        }
+
+
+        if (certificate.Thumbprint == _localCertificate.Thumbprint
+            && certificate.Issuer == _localCertificate.Issuer
+            && certificate.Subject == _localCertificate.Subject)
+        {
+            return true;
+        }
+
+        chain ??= GetChain();
+
+        chain.ChainPolicy.ExtraStore.Add(_localCertificate);
+        if (!chain.Build(certificate))
+        {
+            var hasValidationErrors = false;
+            foreach (var status in chain.ChainStatus)
+            {
+                if (status.Status == X509ChainStatusFlags.NoError)
+                {
+                    continue;
+                }
+
+                _logger.LogWarning("Certificate chain validation error. Status: {StatusFlag}, Message: {StatusMessage}",
+                    status.Status, status.StatusInformation);
+                hasValidationErrors = true;
+            }
+
+            if (hasValidationErrors)
+            {
+                return false;
+            }
+        }
+
+        _logger.LogInformation(
+            "Validation successful. Certificate subject name: {SubjectName}, Issuer name: {IssuerName}",
+            certificate.SubjectName.Name, certificate.IssuerName.Name);
+        return true;
+    }
+
+    private X509Chain GetChain()
+    {
+        var chain = new X509Chain();
+        chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+        chain.ChainPolicy.RevocationFlag = X509RevocationFlag.ExcludeRoot;
+        chain.ChainPolicy.VerificationFlags = X509VerificationFlags.AllowUnknownCertificateAuthority;
+        return chain;
     }
 }

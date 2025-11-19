@@ -39,10 +39,16 @@ var loggerFactory = LoggerFactory.Create(builder =>
 
 for (var i = 0; i < producerCount; i++)
 {
-    var bus = IggyClientFactory.CreateClient(new IggyClientConfigurator()
+    var bus = IggyClientFactory.CreateClient(new IggyClientConfigurator
     {
         BaseAddress = "127.0.0.1:8090",
         Protocol = Protocol.Tcp,
+        TlsSettings = new TlsSettings
+        {
+            Enabled = true,
+            Hostname = "localhost",
+            CertificatePath = @"C:\Users\luki2\RiderProjects\iggy\core\certs\cert.pem"
+        },
         LoggerFactory = loggerFactory,
 #if OS_LINUX
         ReceiveBufferSize = Int32.MaxValue,
@@ -56,6 +62,7 @@ for (var i = 0; i < producerCount; i++)
 #endif
     });
 
+    await bus.ConnectAsync();
     await bus.LoginUser("iggy", "iggy");
     clients[i] = bus;
 }
@@ -67,7 +74,7 @@ try
         await clients[0].CreateStreamAsync($"Test bench stream_{i}");
 
         await clients[0].CreateTopicAsync(Identifier.Numeric(startingStreamId + i),
-            name: $"Test bench topic_{i}",
+            $"Test bench topic_{i}",
             compressionAlgorithm: CompressionAlgorithm.None,
             messageExpiry: 0,
             maxTopicSize: 2_000_000_000,
