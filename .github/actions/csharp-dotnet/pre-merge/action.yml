@@ -1,99 +1,1 @@
-# Licensed to the Apache Software Foundation (ASF) under one
-# or more contributor license agreements.  See the NOTICE file
-# distributed with this work for additional information
-# regarding copyright ownership.  The ASF licenses this file
-# to you under the Apache License, Version 2.0 (the
-# "License"); you may not use this file except in compliance
-# with the License.  You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied.  See the License for the
-# specific language governing permissions and limitations
-# under the License.
-
-
-name: csharp-dotnet-pre-merge
-description: .NET pre-merge testing github iggy actions
-
-inputs:
-  task:
-    description: "Task to run (lint, test, build, e2e)"
-    required: true
-
-runs:
-  using: "composite"
-  steps:
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: "8.0.x"
-
-    - name: Setup Rust with cache
-      if: inputs.task == 'test' || inputs.task == 'e2e'
-      uses: ./.github/actions/utils/setup-rust-with-cache
-      with:
-        cache-targets: false # Only cache registry and git deps, not target dir (sccache handles that)
-
-    - name: Restore dependencies
-      run: |
-        dotnet restore foreign/csharp/Iggy_SDK.sln
-        dotnet restore examples/csharp/Iggy_SDK.Examples.sln
-      shell: bash
-
-    - name: Build
-      run: |
-        dotnet build foreign/csharp/Iggy_SDK.sln --no-restore
-        dotnet build examples/csharp/Iggy_SDK.Examples.sln --no-restore
-      shell: bash
-
-    - name: Lint (Code Analysis)
-      if: inputs.task == 'lint'
-      run: |
-        # Run code analysis
-        dotnet build foreign/csharp/Iggy_SDK.sln --no-restore /p:EnforceCodeStyleInBuild=true /p:TreatWarningsAsErrors=false
-        dotnet build examples/csharp/Iggy_SDK.Examples.sln --no-restore /p:EnforceCodeStyleInBuild=true /p:TreatWarningsAsErrors=false
-
-        dotnet format examples/csharp/Iggy_SDK.Examples.sln --verify-no-changes --verbosity diagnostic
-        dotnet format foreign/csharp/Iggy_SDK.sln --verify-no-changes --verbosity diagnostic
-
-      shell: bash
-
-    - name: Test
-      if: inputs.task == 'test'
-      run: |
-        # Run unit tests
-        dotnet test foreign/csharp/Iggy_SDK_Tests --no-build --verbosity normal
-
-      shell: bash
-
-    - name: Build Iggy server Docker image
-      id: docker_build
-      if: inputs.task == 'e2e'
-      uses: ./.github/actions/utils/docker-build-test-server
-      with:
-        image-tag: "iggy-server:test"
-        libc: "glibc"
-        profile: "debug"
-
-    - name: Run integration tests
-      if: inputs.task == 'e2e'
-      env:
-        IGGY_SERVER_DOCKER_IMAGE: ${{ steps.docker_build.outputs.docker_image }}
-      run: |
-        dotnet test foreign/csharp/Iggy_SDK.Tests.Integration --no-build --verbosity normal
-      shell: bash
-
-    - name: Build Release
-      if: inputs.task == 'build'
-      run: |
-        # Build in Release mode
-        dotnet build foreign/csharp/Iggy_SDK.sln -c Release --no-restore
-
-        # List build output
-        echo "Build output:"
-        find . -name "*.dll" -path "*/bin/Release/*" | head -20 || echo "No DLLs found in Release folders"
-      shell: bash
+# Licensed to the Apache Software Foundation (ASF) under one# or more contributor license agreements.  See the NOTICE file# distributed with this work for additional information# regarding copyright ownership.  The ASF licenses this file# to you under the Apache License, Version 2.0 (the# "License"); you may not use this file except in compliance# with the License.  You may obtain a copy of the License at##   http://www.apache.org/licenses/LICENSE-2.0## Unless required by applicable law or agreed to in writing,# software distributed under the License is distributed on an# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY# KIND, either express or implied.  See the License for the# specific language governing permissions and limitations# under the License.name: csharp-dotnet-pre-mergedescription: .NET pre-merge testing github iggy actionsinputs:  task:    description: "Task to run (lint, test, build, e2e)"    required: trueruns:  using: "composite"  steps:    - name: Setup .NET      uses: actions/setup-dotnet@v4      with:        dotnet-version: "8.0.x"    - name: Setup Rust with cache      if: inputs.task == 'test' || inputs.task == 'e2e'      uses: ./.github/actions/utils/setup-rust-with-cache      with:        cache-targets: false # Only cache registry and git deps, not target dir (sccache handles that)    - name: Restore dependencies      run: |        dotnet restore foreign/csharp/Iggy_SDK.sln        dotnet restore examples/csharp/Iggy_SDK.Examples.sln      shell: bash    - name: Build      run: |        dotnet build foreign/csharp/Iggy_SDK.sln --no-restore        dotnet build examples/csharp/Iggy_SDK.Examples.sln --no-restore      shell: bash    - name: Lint (Code Analysis)      if: inputs.task == 'lint'      run: |        # Run code analysis        dotnet build foreign/csharp/Iggy_SDK.sln --no-restore /p:EnforceCodeStyleInBuild=true /p:TreatWarningsAsErrors=false        dotnet build examples/csharp/Iggy_SDK.Examples.sln --no-restore /p:EnforceCodeStyleInBuild=true /p:TreatWarningsAsErrors=false        dotnet format examples/csharp/Iggy_SDK.Examples.sln --verify-no-changes --verbosity diagnostic        dotnet format foreign/csharp/Iggy_SDK.sln --verify-no-changes --verbosity diagnostic      shell: bash    - name: Test      if: inputs.task == 'test'      run: |        # Run unit tests        dotnet test foreign/csharp/Iggy_SDK_Tests --no-build --verbosity normal      shell: bash    - name: Build Iggy server Docker image      id: docker_build      if: inputs.task == 'e2e'      uses: ./.github/actions/utils/docker-build-test-server      with:        image-tag: "iggy-server:test"        libc: "glibc"        profile: "debug"    - name: Run integration tests      if: inputs.task == 'e2e'      env:        IGGY_SERVER_DOCKER_IMAGE: ${{ steps.docker_build.outputs.docker_image }}      run: |        dotnet test foreign/csharp/Iggy_SDK.Tests.Integration --no-build --verbosity normal      shell: bash    - name: Build Release      if: inputs.task == 'build'      run: |        # Build in Release mode        dotnet build foreign/csharp/Iggy_SDK.sln -c Release --no-restore        # List build output        echo "Build output:"        find . -name "*.dll" -path "*/bin/Release/*" | head -20 || echo "No DLLs found in Release folders"      shell: bash
