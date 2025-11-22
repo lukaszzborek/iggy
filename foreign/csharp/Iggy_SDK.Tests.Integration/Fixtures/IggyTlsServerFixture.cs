@@ -20,13 +20,13 @@ using Apache.Iggy.Tests.Integrations.Helpers;
 namespace Apache.Iggy.Tests.Integrations.Fixtures;
 
 /// <summary>
-/// Iggy server fixture configured with TLS enabled.
-/// Requires certificates to be mounted in the container.
+///     Iggy server fixture configured with TLS enabled.
+///     Requires certificates to be mounted in the container.
 /// </summary>
 public class IggyTlsServerFixture : IggyServerFixture
 {
     /// <summary>
-    /// Environment variables with TLS configuration enabled.
+    ///     Environment variables with TLS configuration enabled.
     /// </summary>
     protected override Dictionary<string, string> EnvironmentVariables => new(base.EnvironmentVariables)
     {
@@ -36,11 +36,11 @@ public class IggyTlsServerFixture : IggyServerFixture
     };
 
     /// <summary>
-    /// Resource mappings for TLS certificates.
+    ///     Resource mappings for TLS certificates.
     /// </summary>
     protected override ResourceMapping[] ResourceMappings =>
     [
-        new ( "Certs",  "/app/certs/")
+        new("Certs", "/app/certs/")
     ];
 
     public override async Task InitializeAsync()

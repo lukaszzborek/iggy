@@ -21,10 +21,8 @@ using Apache.Iggy.Factory;
 using Apache.Iggy.IggyClient;
 using Apache.Iggy.Tests.Integrations.Helpers;
 using DotNet.Testcontainers.Builders;
-using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using TUnit.Core.Interfaces;
-using TUnit.Core.Logging;
 
 namespace Apache.Iggy.Tests.Integrations.Fixtures;
 
@@ -35,14 +33,14 @@ public class IggyServerFixture : IAsyncInitializer, IAsyncDisposable
     protected string? IggyServerHost;
 
     /// <summary>
-    /// Docker image to use. Can be overridden via IGGY_SERVER_DOCKER_IMAGE environment variable
-    /// or by subclasses. Defaults to apache/iggy:edge if not specified.
+    ///     Docker image to use. Can be overridden via IGGY_SERVER_DOCKER_IMAGE environment variable
+    ///     or by subclasses. Defaults to apache/iggy:edge if not specified.
     /// </summary>
     protected string DockerImage =>
         Environment.GetEnvironmentVariable("IGGY_SERVER_DOCKER_IMAGE") ?? "iggy-server:test";
 
     /// <summary>
-    /// Environment variables for the container. Override in subclasses to customize.
+    ///     Environment variables for the container. Override in subclasses to customize.
     /// </summary>
     protected virtual Dictionary<string, string> EnvironmentVariables => new()
     {
@@ -53,7 +51,7 @@ public class IggyServerFixture : IAsyncInitializer, IAsyncDisposable
     };
 
     /// <summary>
-    /// Resource mappings (volumes, etc.) for the container. Override in subclasses to add custom mappings.
+    ///     Resource mappings (volumes, etc.) for the container. Override in subclasses to add custom mappings.
     /// </summary>
     protected virtual ResourceMapping[] ResourceMappings => [];
 
@@ -69,13 +67,11 @@ public class IggyServerFixture : IAsyncInitializer, IAsyncDisposable
             .WithPrivileged(true)
             .WithCleanUp(true);
 
-        // Add environment variables
         foreach (var (key, value) in EnvironmentVariables)
         {
             builder = builder.WithEnvironment(key, value);
         }
 
-        // Add resource mappings
         foreach (var mapping in ResourceMappings)
         {
             builder = builder.WithResourceMapping(mapping.Source, mapping.Destination);
@@ -96,14 +92,7 @@ public class IggyServerFixture : IAsyncInitializer, IAsyncDisposable
 
     public virtual async Task InitializeAsync()
     {
-        var logger = TestContext.Current!.GetDefaultLogger();
-        //IggyServerHost = Environment.GetEnvironmentVariable("IGGY_SERVER_HOST");
-
-        await logger.LogInformationAsync($"Iggy server host: {IggyServerHost}");
-        if (string.IsNullOrEmpty(IggyServerHost))
-        {
-            await IggyContainer!.StartAsync();
-        }
+        await IggyContainer!.StartAsync();
 
         await CreateTcpClient();
         await CreateHttpClient();
