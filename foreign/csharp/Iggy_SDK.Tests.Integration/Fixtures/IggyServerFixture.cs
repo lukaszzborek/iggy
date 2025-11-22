@@ -30,14 +30,12 @@ public class IggyServerFixture : IAsyncInitializer, IAsyncDisposable
 {
     protected IContainer? IggyContainer;
 
-    protected string? IggyServerHost;
-
     /// <summary>
     ///     Docker image to use. Can be overridden via IGGY_SERVER_DOCKER_IMAGE environment variable
     ///     or by subclasses. Defaults to apache/iggy:edge if not specified.
     /// </summary>
-    protected string DockerImage =>
-        Environment.GetEnvironmentVariable("IGGY_SERVER_DOCKER_IMAGE") ?? "iggy-server:test";
+    private string DockerImage =>
+        Environment.GetEnvironmentVariable("IGGY_SERVER_DOCKER_IMAGE") ?? "apache/iggy:edge";
 
     /// <summary>
     ///     Environment variables for the container. Override in subclasses to customize.
@@ -157,20 +155,13 @@ public class IggyServerFixture : IAsyncInitializer, IAsyncDisposable
 
     public virtual string GetIggyAddress(Protocol protocol)
     {
-        if (string.IsNullOrEmpty(IggyServerHost))
-        {
-            var port = protocol == Protocol.Tcp
-                ? IggyContainer!.GetMappedPublicPort(8090)
-                : IggyContainer!.GetMappedPublicPort(3000);
-
-            return protocol == Protocol.Tcp
-                ? $"127.0.0.1:{port}"
-                : $"http://127.0.0.1:{port}";
-        }
+        var port = protocol == Protocol.Tcp
+            ? IggyContainer!.GetMappedPublicPort(8090)
+            : IggyContainer!.GetMappedPublicPort(3000);
 
         return protocol == Protocol.Tcp
-            ? $"{IggyServerHost}:8090"
-            : $"http://{IggyServerHost}:3000";
+            ? $"127.0.0.1:{port}"
+            : $"http://127.0.0.1:{port}";
     }
 
     public static IEnumerable<Func<Protocol>> ProtocolData()
