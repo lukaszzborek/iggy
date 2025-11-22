@@ -1139,7 +1139,9 @@ public sealed class TcpMessageStream : IIggyClient
         }
 
         chain ??= GetChain();
-
+        chain.Reset();
+        chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+        chain.ChainPolicy.CustomTrustStore.Add(_localCertificate);
         chain.ChainPolicy.ExtraStore.Add(_localCertificate);
         if (!chain.Build(certificate))
         {

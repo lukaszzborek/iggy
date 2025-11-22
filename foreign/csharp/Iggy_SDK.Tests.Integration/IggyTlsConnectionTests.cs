@@ -70,4 +70,32 @@ public class IggyTlsConnectionTests
         await client.ConnectAsync();
         await Should.ThrowAsync<IggyZeroBytesException>(client.LoginUser("iggy", "iggy"));
     }
+    
+    [Test]
+    public async Task Connect_WithTls_Pfx_Should_Connect_Successfully()
+    {
+        using var client = IggyClientFactory.CreateClient(new IggyClientConfigurator
+        {
+            BaseAddress = Fixture.GetIggyAddress(Protocol.Tcp),
+            Protocol = Protocol.Tcp,
+            ReconnectionSettings = new ReconnectionSettings { Enabled = true },
+            AutoLoginSettings = new AutoLoginSettings
+            {
+                Enabled = true,
+                Username = "iggy",
+                Password = "iggy"
+            },
+            TlsSettings = new TlsSettings()
+            {
+                Enabled = true,
+                Hostname = "localhost",
+                CertificatePath = "Certs/iggy_ca_cert.pem"
+            }
+        });
+
+        await client.ConnectAsync();
+        var loginResult = await client.LoginUser("iggy", "iggy");
+
+        loginResult.ShouldNotBeNull();
+    }
 }
