@@ -40,7 +40,7 @@ public class IggyTlsServerFixture : IggyServerFixture
     /// </summary>
     protected override ResourceMapping[] ResourceMappings =>
     [
-        new ( "certs",  "/app/certs/")
+        new ( "Certs",  "/app/certs/")
     ];
     
     public override async Task InitializeAsync()

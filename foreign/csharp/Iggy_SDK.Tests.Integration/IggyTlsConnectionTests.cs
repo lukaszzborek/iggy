@@ -47,7 +47,7 @@ public class IggyTlsConnectionTests
             {
                 Enabled = true,
                 Hostname = "localhost",
-                CertificatePath = "certs/iggy_cert.pem"
+                CertificatePath = "Certs/iggy_cert.pem"
             }
         });
         
