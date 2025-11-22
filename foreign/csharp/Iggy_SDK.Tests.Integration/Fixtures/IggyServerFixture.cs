@@ -39,7 +39,7 @@ public class IggyServerFixture : IAsyncInitializer, IAsyncDisposable
     /// or by subclasses. Defaults to apache/iggy:edge if not specified.
     /// </summary>
     protected string DockerImage =>
-        Environment.GetEnvironmentVariable("IGGY_SERVER_DOCKER_IMAGE") ?? "apache/iggy2:edge";
+        Environment.GetEnvironmentVariable("IGGY_SERVER_DOCKER_IMAGE") ?? "iggy-server:test";
 
     /// <summary>
     /// Environment variables for the container. Override in subclasses to customize.
