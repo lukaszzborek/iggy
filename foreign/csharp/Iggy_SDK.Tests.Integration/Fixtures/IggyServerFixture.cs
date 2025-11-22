@@ -19,7 +19,9 @@ using Apache.Iggy.Configuration;
 using Apache.Iggy.Enums;
 using Apache.Iggy.Factory;
 using Apache.Iggy.IggyClient;
+using Apache.Iggy.Tests.Integrations.Helpers;
 using DotNet.Testcontainers.Builders;
+using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using TUnit.Core.Interfaces;
 using TUnit.Core.Logging;
@@ -28,46 +30,79 @@ namespace Apache.Iggy.Tests.Integrations.Fixtures;
 
 public class IggyServerFixture : IAsyncInitializer, IAsyncDisposable
 {
-    private readonly IContainer _iggyContainer = new ContainerBuilder().WithImage("apache/iggy:edge")
-        .WithPortBinding(3000, true)
-        .WithPortBinding(8090, true)
-        .WithOutputConsumer(Consume.RedirectStdoutAndStderrToConsole())
-        .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(8090))
-        .WithName($"{Guid.NewGuid()}")
-        .WithEnvironment("IGGY_ROOT_USERNAME", "iggy")
-        .WithEnvironment("IGGY_ROOT_PASSWORD", "iggy")
-        .WithEnvironment("IGGY_TCP_ADDRESS", "0.0.0.0:8090")
-        .WithEnvironment("IGGY_HTTP_ADDRESS", "0.0.0.0:3000")
-        //.WithEnvironment("IGGY_CLUSTER_ENABLED", "true")
-        // .WithEnvironment("IGGY_CLUSTER_NODES_0_NAME", "iggy-node-1")
-        // .WithEnvironment("IGGY_CLUSTER_NODES_0_ADDRESS", "127.0.0.1:8090")
-        // .WithEnvironment("IGGY_CLUSTER_NODES_1_NAME", "iggy-node-2")
-        // .WithEnvironment("IGGY_CLUSTER_NODES_1_ADDRESS", "127.0.0.1:8092")
-        // .WithEnvironment("IGGY_CLUSTER_ENABLED", "true")
-        // .WithEnvironment("IGGY_CLUSTER_ENABLED", "true")
-        // .WithEnvironment("IGGY_CLUSTER_ENABLED", "true")
-        //.WithEnvironment("IGGY_SYSTEM_LOGGING_LEVEL", "trace")
-        //.WithEnvironment("RUST_LOG", "trace")
-        .WithPrivileged(true)
-        .WithCleanUp(true)
-        .Build();
+    protected IContainer? IggyContainer;
 
-    private string? _iggyServerHost;
+    protected string? IggyServerHost;
 
+    /// <summary>
+    /// Docker image to use. Can be overridden via IGGY_SERVER_DOCKER_IMAGE environment variable
+    /// or by subclasses. Defaults to apache/iggy:edge if not specified.
+    /// </summary>
+    protected string DockerImage =>
+        Environment.GetEnvironmentVariable("IGGY_SERVER_DOCKER_IMAGE") ?? "apache/iggy2:edge";
+
+    /// <summary>
+    /// Environment variables for the container. Override in subclasses to customize.
+    /// </summary>
+    protected virtual Dictionary<string, string> EnvironmentVariables => new()
+    {
+        { "IGGY_ROOT_USERNAME", "iggy" },
+        { "IGGY_ROOT_PASSWORD", "iggy" },
+        { "IGGY_TCP_ADDRESS", "0.0.0.0:8090" },
+        { "IGGY_HTTP_ADDRESS", "0.0.0.0:3000" }
+    };
+
+    /// <summary>
+    /// Resource mappings (volumes, etc.) for the container. Override in subclasses to add custom mappings.
+    /// </summary>
+    protected virtual ResourceMapping[] ResourceMappings => [];
+
+    public IggyServerFixture()
+    {
+        var builder = new ContainerBuilder()
+            .WithImage(DockerImage)
+            .WithPortBinding(3000, true)
+            .WithPortBinding(8090, true)
+            .WithOutputConsumer(Consume.RedirectStdoutAndStderrToConsole())
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(8090))
+            .WithName($"{Guid.NewGuid()}")
+            .WithPrivileged(true)
+            .WithCleanUp(true);
+
+        // Add environment variables
+        foreach (var (key, value) in EnvironmentVariables)
+        {
+            builder = builder.WithEnvironment(key, value);
+        }
+
+        // Add resource mappings
+        foreach (var mapping in ResourceMappings)
+        {
+            builder = builder.WithResourceMapping(mapping.Source, mapping.Destination);
+        }
+
+        IggyContainer = builder.Build();
+    }
+    
     public async ValueTask DisposeAsync()
     {
-        await _iggyContainer.StopAsync();
+        if (IggyContainer == null)
+        {
+            return;
+        }
+        
+        await IggyContainer.StopAsync();
     }
 
     public virtual async Task InitializeAsync()
     {
         var logger = TestContext.Current!.GetDefaultLogger();
-        _iggyServerHost = Environment.GetEnvironmentVariable("IGGY_SERVER_HOST");
+        //IggyServerHost = Environment.GetEnvironmentVariable("IGGY_SERVER_HOST");
 
-        await logger.LogInformationAsync($"Iggy server host: {_iggyServerHost}");
-        if (string.IsNullOrEmpty(_iggyServerHost))
+        await logger.LogInformationAsync($"Iggy server host: {IggyServerHost}");
+        if (string.IsNullOrEmpty(IggyServerHost))
         {
-            await _iggyContainer.StartAsync();
+            await IggyContainer!.StartAsync();
         }
 
         await CreateTcpClient();
@@ -131,13 +166,13 @@ public class IggyServerFixture : IAsyncInitializer, IAsyncDisposable
         return client;
     }
 
-    public string GetIggyAddress(Protocol protocol)
+    public virtual string GetIggyAddress(Protocol protocol)
     {
-        if (string.IsNullOrEmpty(_iggyServerHost))
+        if (string.IsNullOrEmpty(IggyServerHost))
         {
             var port = protocol == Protocol.Tcp
-                ? _iggyContainer.GetMappedPublicPort(8090)
-                : _iggyContainer.GetMappedPublicPort(3000);
+                ? IggyContainer!.GetMappedPublicPort(8090)
+                : IggyContainer!.GetMappedPublicPort(3000);
 
             return protocol == Protocol.Tcp
                 ? $"127.0.0.1:{port}"
@@ -145,8 +180,8 @@ public class IggyServerFixture : IAsyncInitializer, IAsyncDisposable
         }
 
         return protocol == Protocol.Tcp
-            ? $"{_iggyServerHost}:8090"
-            : $"http://{_iggyServerHost}:3000";
+            ? $"{IggyServerHost}:8090"
+            : $"http://{IggyServerHost}:3000";
     }
 
     public static IEnumerable<Func<Protocol>> ProtocolData()
