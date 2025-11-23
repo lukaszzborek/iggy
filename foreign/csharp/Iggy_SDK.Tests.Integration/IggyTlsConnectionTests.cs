@@ -36,14 +36,14 @@ public class IggyTlsConnectionTests
         {
             BaseAddress = Fixture.GetIggyAddress(Protocol.Tcp),
             Protocol = Protocol.Tcp,
-            ReconnectionSettings = new ReconnectionSettings { Enabled = true },
+            ReconnectionSettings = new ReconnectionSettings { Enabled = false },
             AutoLoginSettings = new AutoLoginSettings
             {
                 Enabled = true,
                 Username = "iggy",
                 Password = "iggy"
             },
-            TlsSettings = new TlsSettings()
+            TlsSettings = new TlsSettings
             {
                 Enabled = true,
                 Hostname = "localhost",
@@ -70,22 +70,22 @@ public class IggyTlsConnectionTests
         await client.ConnectAsync();
         await Should.ThrowAsync<IggyZeroBytesException>(client.LoginUser("iggy", "iggy"));
     }
-    
+
     [Test]
-    public async Task Connect_WithTls_Pfx_Should_Connect_Successfully()
+    public async Task Connect_WithTls_CA_Should_Connect_Successfully()
     {
         using var client = IggyClientFactory.CreateClient(new IggyClientConfigurator
         {
             BaseAddress = Fixture.GetIggyAddress(Protocol.Tcp),
             Protocol = Protocol.Tcp,
-            ReconnectionSettings = new ReconnectionSettings { Enabled = true },
+            ReconnectionSettings = new ReconnectionSettings { Enabled = false },
             AutoLoginSettings = new AutoLoginSettings
             {
                 Enabled = true,
                 Username = "iggy",
                 Password = "iggy"
             },
-            TlsSettings = new TlsSettings()
+            TlsSettings = new TlsSettings
             {
                 Enabled = true,
                 Hostname = "localhost",

@@ -48,9 +48,9 @@ public sealed class TcpMessageStream : IIggyClient
     private readonly ILogger<TcpMessageStream> _logger;
     private readonly SemaphoreSlim _sendingSemaphore;
     private ClusterNode? _currentLeaderNode;
+    private X509Certificate2Collection _customCaStore = [];
     private bool _isConnecting;
     private DateTimeOffset _lastConnectionTime;
-    private X509Certificate2? _localCertificate;
     private ConnectionState _state = ConnectionState.Disconnected;
     private TcpConnectionStream _stream = null!;
 
@@ -825,7 +825,7 @@ public sealed class TcpMessageStream : IIggyClient
 
                 _stream = _configuration.TlsSettings.Enabled switch
                 {
-                    true => CreateSslStreamAndAuthenticate(socket, _configuration.TlsSettings),
+                    true => await CreateSslStreamAndAuthenticate(socket, _configuration.TlsSettings),
                     false => new TcpConnectionStream(new NetworkStream(socket, true))
                 };
 
@@ -913,28 +913,18 @@ public sealed class TcpMessageStream : IIggyClient
         }
     }
 
-    private TcpConnectionStream CreateSslStreamAndAuthenticate(Socket socket, TlsSettings tlsSettings)
+    private async Task<TcpConnectionStream> CreateSslStreamAndAuthenticate(Socket socket, TlsSettings tlsSettings)
     {
         ValidateCertificatePath(tlsSettings.CertificatePath);
 
-        _localCertificate = new X509Certificate2(tlsSettings.CertificatePath);
+        _customCaStore = new X509Certificate2Collection();
+        _customCaStore.ImportFromPemFile(tlsSettings.CertificatePath);
         var stream = new NetworkStream(socket, true);
-        var sslStream = new SslStream(stream, false,
-            (sender, x509Certificate, chain, errors) =>
-                RemoteCertificateValidationCallback(sender, (X509Certificate2?)x509Certificate, chain, errors));
+        var sslStream = new SslStream(stream, false, RemoteCertificateValidationCallback);
 
-        sslStream.AuthenticateAsClient(tlsSettings.Hostname);
+        await sslStream.AuthenticateAsClientAsync(tlsSettings.Hostname);
 
         return new TcpConnectionStream(sslStream);
-    }
-
-    private void ValidateCertificatePath(string tlsCertificatePath)
-    {
-        if (string.IsNullOrEmpty(tlsCertificatePath)
-            || !File.Exists(tlsCertificatePath))
-        {
-            throw new InvalidCertificatePathException(tlsCertificatePath);
-        }
     }
 
     private async Task<byte[]> SendWithResponseAsync(byte[] payload, CancellationToken token = default)
@@ -1110,7 +1100,16 @@ public sealed class TcpMessageStream : IIggyClient
         _connectionEvents.Publish(new ConnectionStateChangedEventArgs(previousState, newState));
     }
 
-    private bool RemoteCertificateValidationCallback(object sender, X509Certificate2? certificate, X509Chain? chain,
+    private void ValidateCertificatePath(string tlsCertificatePath)
+    {
+        if (string.IsNullOrEmpty(tlsCertificatePath)
+            || !File.Exists(tlsCertificatePath))
+        {
+            throw new InvalidCertificatePathException(tlsCertificatePath);
+        }
+    }
+
+    private bool RemoteCertificateValidationCallback(object sender, X509Certificate? certificate, X509Chain? chain,
         SslPolicyErrors sslPolicyErrors)
     {
         if (sslPolicyErrors == SslPolicyErrors.None)
@@ -1118,64 +1117,58 @@ public sealed class TcpMessageStream : IIggyClient
             return true;
         }
 
-        if (certificate == null)
+        if (certificate is null)
         {
-            _logger.LogWarning("Remote certificate is null");
             return false;
         }
 
-        if (_localCertificate == null)
+        if (certificate is not X509Certificate2 serverCert)
         {
-            _logger.LogWarning("Local certificate is null");
+            serverCert = new X509Certificate2(certificate);
+        }
+
+        if (_customCaStore.Any(ca => ca.Thumbprint == serverCert.Thumbprint))
+        {
+            if (DateTime.UtcNow <= serverCert.NotAfter && DateTime.UtcNow >= serverCert.NotBefore)
+            {
+                return true;
+            }
+
+            _logger.LogError(
+                "Server certificate matches trusted key but is expired. Valid from {NotBefore} to {NotAfter}",
+                serverCert.NotBefore, serverCert.NotAfter);
             return false;
         }
 
 
-        if (certificate.Thumbprint == _localCertificate.Thumbprint
-            && certificate.Issuer == _localCertificate.Issuer
-            && certificate.Subject == _localCertificate.Subject)
+        using var customChain = new X509Chain();
+        customChain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+        customChain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+        foreach (var ca in _customCaStore)
         {
-            return true;
+            customChain.ChainPolicy.CustomTrustStore.Add(ca);
+            customChain.ChainPolicy.ExtraStore.Add(ca);
         }
 
-        chain ??= GetChain();
-        chain.Reset();
-        chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
-        chain.ChainPolicy.CustomTrustStore.Add(_localCertificate);
-        chain.ChainPolicy.ExtraStore.Add(_localCertificate);
-        if (!chain.Build(certificate))
+        customChain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+
+        if (customChain.Build(new X509Certificate2(certificate)))
         {
-            var hasValidationErrors = false;
-            foreach (var status in chain.ChainStatus)
+            if (!sslPolicyErrors.HasFlag(SslPolicyErrors.RemoteCertificateNameMismatch))
             {
-                if (status.Status == X509ChainStatusFlags.NoError)
-                {
-                    continue;
-                }
-
-                _logger.LogWarning("Certificate chain validation error. Status: {StatusFlag}, Message: {StatusMessage}",
-                    status.Status, status.StatusInformation);
-                hasValidationErrors = true;
+                return true;
             }
 
-            if (hasValidationErrors)
-            {
-                return false;
-            }
+            _logger.LogError("Custom CA chain is valid, but hostname does not match");
+            return false;
         }
 
-        _logger.LogInformation(
-            "Validation successful. Certificate subject name: {SubjectName}, Issuer name: {IssuerName}",
-            certificate.SubjectName.Name, certificate.IssuerName.Name);
-        return true;
-    }
+        foreach (var chainStatus in customChain.ChainStatus)
+        {
+            _logger.LogWarning("Certificate validation failed: {ChainStatus} - {StatusInformation}", chainStatus.Status,
+                chainStatus.StatusInformation);
+        }
 
-    private X509Chain GetChain()
-    {
-        var chain = new X509Chain();
-        chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
-        chain.ChainPolicy.RevocationFlag = X509RevocationFlag.ExcludeRoot;
-        chain.ChainPolicy.VerificationFlags = X509VerificationFlags.AllowUnknownCertificateAuthority;
-        return chain;
+        return false;
     }
 }
