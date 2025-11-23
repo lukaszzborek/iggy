@@ -49,6 +49,11 @@ public class IggyServerFixture : IAsyncInitializer, IAsyncDisposable
     };
 
     /// <summary>
+    ///     Enables iggy server trace logs.
+    /// </summary>
+    protected bool EnabledServerTraceLogs => false;
+
+    /// <summary>
     ///     Resource mappings (volumes, etc.) for the container. Override in subclasses to add custom mappings.
     /// </summary>
     protected virtual ResourceMapping[] ResourceMappings => [];
@@ -68,6 +73,14 @@ public class IggyServerFixture : IAsyncInitializer, IAsyncDisposable
         foreach (var (key, value) in EnvironmentVariables)
         {
             builder = builder.WithEnvironment(key, value);
+        }
+
+        if (EnabledServerTraceLogs)
+        {
+            builder = builder
+                .WithEnvironment("IGGY_SYSTEM_LOGGING_LEVEL", "trace")
+                .WithEnvironment("RUST_LOG", "trace");
+
         }
 
         foreach (var mapping in ResourceMappings)
