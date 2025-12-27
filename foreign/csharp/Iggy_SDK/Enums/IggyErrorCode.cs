@@ -21,6 +21,7 @@
 //     Do not modify this file manually.
 //     To regenerate, run: dotnet iggy-error-codegen generate
 // </auto-generated>
+
 namespace Apache.Iggy.Enums;
 
 /// <summary>
