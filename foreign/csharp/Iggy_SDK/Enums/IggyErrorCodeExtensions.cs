@@ -21,36 +21,14 @@
 //     Do not modify this file manually.
 //     To regenerate, run: dotnet iggy-error-codegen generate
 // </auto-generated>
+
 namespace Apache.Iggy.Enums;
 
 /// <summary>
-///     Extension methods for <see cref="IggyErrorCode"/> to categorize and check error types.
+///     Extension methods for <see cref="IggyErrorCode" /> to categorize and check error types.
 /// </summary>
 public static class IggyErrorCodeExtensions
 {
-    /// <summary>
-    ///     Checks if the error code indicates that a resource was not found.
-    /// </summary>
-    public static bool IsNotFound(this IggyErrorCode code) => code switch
-    {
-        IggyErrorCode.StateFileNotFound => true,
-        IggyErrorCode.ResourceNotFound => true,
-        IggyErrorCode.ClientNotFound => true,
-        IggyErrorCode.StreamIdNotFound => true,
-        IggyErrorCode.StreamNameNotFound => true,
-        IggyErrorCode.StreamDirectoryNotFound => true,
-        IggyErrorCode.TopicIdNotFound => true,
-        IggyErrorCode.TopicNameNotFound => true,
-        IggyErrorCode.TopicDirectoryNotFound => true,
-        IggyErrorCode.PartitionNotFound => true,
-        IggyErrorCode.ConsumerOffsetNotFound => true,
-        IggyErrorCode.SegmentNotFound => true,
-        IggyErrorCode.ConsumerGroupIdNotFound => true,
-        IggyErrorCode.ConsumerGroupNameNotFound => true,
-        IggyErrorCode.ShardNotFound => true,
-        _ => false
-    };
-
     /// <summary>
     ///     Checks if the error code indicates that a resource already exists.
     /// </summary>
@@ -105,59 +83,6 @@ public static class IggyErrorCodeExtensions
     };
 
     /// <summary>
-    ///     Checks if the error code is related to streams.
-    /// </summary>
-    public static bool IsStreamError(this IggyErrorCode code) => code switch
-    {
-        IggyErrorCode.CannotCreateStreamsDirectory => true,
-        IggyErrorCode.CannotCreateStreamDirectory => true,
-        IggyErrorCode.CannotCreateStreamInfo => true,
-        IggyErrorCode.CannotUpdateStreamInfo => true,
-        IggyErrorCode.CannotOpenStreamInfo => true,
-        IggyErrorCode.CannotReadStreamInfo => true,
-        IggyErrorCode.CannotCreateStream => true,
-        IggyErrorCode.CannotDeleteStream => true,
-        IggyErrorCode.CannotDeleteStreamDirectory => true,
-        IggyErrorCode.StreamIdNotFound => true,
-        IggyErrorCode.StreamNameNotFound => true,
-        IggyErrorCode.StreamDirectoryNotFound => true,
-        IggyErrorCode.StreamNameAlreadyExists => true,
-        IggyErrorCode.InvalidStreamName => true,
-        IggyErrorCode.InvalidStreamId => true,
-        IggyErrorCode.CannotReadStreams => true,
-        _ => false
-    };
-
-    /// <summary>
-    ///     Checks if the error code is related to topics.
-    /// </summary>
-    public static bool IsTopicError(this IggyErrorCode code) => code switch
-    {
-        IggyErrorCode.CannotCreateTopicsDirectory => true,
-        IggyErrorCode.CannotCreateTopicDirectory => true,
-        IggyErrorCode.CannotCreateTopicInfo => true,
-        IggyErrorCode.CannotUpdateTopicInfo => true,
-        IggyErrorCode.CannotOpenTopicInfo => true,
-        IggyErrorCode.CannotReadTopicInfo => true,
-        IggyErrorCode.CannotCreateTopic => true,
-        IggyErrorCode.CannotDeleteTopic => true,
-        IggyErrorCode.CannotDeleteTopicDirectory => true,
-        IggyErrorCode.CannotPollTopic => true,
-        IggyErrorCode.TopicIdNotFound => true,
-        IggyErrorCode.TopicNameNotFound => true,
-        IggyErrorCode.TopicNameAlreadyExists => true,
-        IggyErrorCode.InvalidTopicName => true,
-        IggyErrorCode.TooManyPartitions => true,
-        IggyErrorCode.InvalidTopicId => true,
-        IggyErrorCode.CannotReadTopics => true,
-        IggyErrorCode.InvalidReplicationFactor => true,
-        IggyErrorCode.InvalidPartitionsCount => true,
-        IggyErrorCode.TopicDirectoryNotFound => true,
-        IggyErrorCode.TopicFull => true,
-        _ => false
-    };
-
-    /// <summary>
     ///     Checks if the error code is related to consumer groups.
     /// </summary>
     public static bool IsConsumerGroupError(this IggyErrorCode code) => code switch
@@ -167,6 +92,23 @@ public static class IggyErrorCodeExtensions
         IggyErrorCode.ConsumerGroupNameNotFound => true,
         IggyErrorCode.ConsumerGroupNameAlreadyExists => true,
         IggyErrorCode.InvalidConsumerGroupName => true,
+        _ => false
+    };
+
+    /// <summary>
+    ///     Checks if the error code indicates a limit has been reached.
+    /// </summary>
+    public static bool IsLimitReached(this IggyErrorCode code) => code switch
+    {
+        IggyErrorCode.PersonalAccessTokensLimitReached => true,
+        IggyErrorCode.UsersLimitReached => true,
+        IggyErrorCode.TooManyPartitions => true,
+        IggyErrorCode.TopicFull => true,
+        IggyErrorCode.TooBigUserHeaders => true,
+        IggyErrorCode.TooBigMessagePayload => true,
+        IggyErrorCode.TooManyMessages => true,
+        IggyErrorCode.BackgroundSendBufferFull => true,
+        IggyErrorCode.BackgroundSendBufferOverflow => true,
         _ => false
     };
 
@@ -204,18 +146,25 @@ public static class IggyErrorCodeExtensions
     };
 
     /// <summary>
-    ///     Checks if the error code is related to user management.
+    ///     Checks if the error code indicates that a resource was not found.
     /// </summary>
-    public static bool IsUserError(this IggyErrorCode code) => code switch
+    public static bool IsNotFound(this IggyErrorCode code) => code switch
     {
-        IggyErrorCode.InvalidUsername => true,
-        IggyErrorCode.InvalidPassword => true,
-        IggyErrorCode.InvalidUserStatus => true,
-        IggyErrorCode.UserAlreadyExists => true,
-        IggyErrorCode.UserInactive => true,
-        IggyErrorCode.CannotDeleteUser => true,
-        IggyErrorCode.CannotChangePermissions => true,
-        IggyErrorCode.UsersLimitReached => true,
+        IggyErrorCode.StateFileNotFound => true,
+        IggyErrorCode.ResourceNotFound => true,
+        IggyErrorCode.ClientNotFound => true,
+        IggyErrorCode.StreamIdNotFound => true,
+        IggyErrorCode.StreamNameNotFound => true,
+        IggyErrorCode.StreamDirectoryNotFound => true,
+        IggyErrorCode.TopicIdNotFound => true,
+        IggyErrorCode.TopicNameNotFound => true,
+        IggyErrorCode.TopicDirectoryNotFound => true,
+        IggyErrorCode.PartitionNotFound => true,
+        IggyErrorCode.ConsumerOffsetNotFound => true,
+        IggyErrorCode.SegmentNotFound => true,
+        IggyErrorCode.ConsumerGroupIdNotFound => true,
+        IggyErrorCode.ConsumerGroupNameNotFound => true,
+        IggyErrorCode.ShardNotFound => true,
         _ => false
     };
 
@@ -233,6 +182,30 @@ public static class IggyErrorCodeExtensions
     };
 
     /// <summary>
+    ///     Checks if the error code is related to streams.
+    /// </summary>
+    public static bool IsStreamError(this IggyErrorCode code) => code switch
+    {
+        IggyErrorCode.CannotCreateStreamsDirectory => true,
+        IggyErrorCode.CannotCreateStreamDirectory => true,
+        IggyErrorCode.CannotCreateStreamInfo => true,
+        IggyErrorCode.CannotUpdateStreamInfo => true,
+        IggyErrorCode.CannotOpenStreamInfo => true,
+        IggyErrorCode.CannotReadStreamInfo => true,
+        IggyErrorCode.CannotCreateStream => true,
+        IggyErrorCode.CannotDeleteStream => true,
+        IggyErrorCode.CannotDeleteStreamDirectory => true,
+        IggyErrorCode.StreamIdNotFound => true,
+        IggyErrorCode.StreamNameNotFound => true,
+        IggyErrorCode.StreamDirectoryNotFound => true,
+        IggyErrorCode.StreamNameAlreadyExists => true,
+        IggyErrorCode.InvalidStreamName => true,
+        IggyErrorCode.InvalidStreamId => true,
+        IggyErrorCode.CannotReadStreams => true,
+        _ => false
+    };
+
+    /// <summary>
     ///     Checks if the error code is related to TLS/certificates.
     /// </summary>
     public static bool IsTlsError(this IggyErrorCode code) => code switch
@@ -241,6 +214,51 @@ public static class IggyErrorCodeExtensions
         IggyErrorCode.InvalidTlsCertificatePath => true,
         IggyErrorCode.InvalidTlsCertificate => true,
         IggyErrorCode.FailedToAddCertificate => true,
+        _ => false
+    };
+
+    /// <summary>
+    ///     Checks if the error code is related to topics.
+    /// </summary>
+    public static bool IsTopicError(this IggyErrorCode code) => code switch
+    {
+        IggyErrorCode.CannotCreateTopicsDirectory => true,
+        IggyErrorCode.CannotCreateTopicDirectory => true,
+        IggyErrorCode.CannotCreateTopicInfo => true,
+        IggyErrorCode.CannotUpdateTopicInfo => true,
+        IggyErrorCode.CannotOpenTopicInfo => true,
+        IggyErrorCode.CannotReadTopicInfo => true,
+        IggyErrorCode.CannotCreateTopic => true,
+        IggyErrorCode.CannotDeleteTopic => true,
+        IggyErrorCode.CannotDeleteTopicDirectory => true,
+        IggyErrorCode.CannotPollTopic => true,
+        IggyErrorCode.TopicIdNotFound => true,
+        IggyErrorCode.TopicNameNotFound => true,
+        IggyErrorCode.TopicNameAlreadyExists => true,
+        IggyErrorCode.InvalidTopicName => true,
+        IggyErrorCode.TooManyPartitions => true,
+        IggyErrorCode.InvalidTopicId => true,
+        IggyErrorCode.CannotReadTopics => true,
+        IggyErrorCode.InvalidReplicationFactor => true,
+        IggyErrorCode.InvalidPartitionsCount => true,
+        IggyErrorCode.TopicDirectoryNotFound => true,
+        IggyErrorCode.TopicFull => true,
+        _ => false
+    };
+
+    /// <summary>
+    ///     Checks if the error code is related to user management.
+    /// </summary>
+    public static bool IsUserError(this IggyErrorCode code) => code switch
+    {
+        IggyErrorCode.InvalidUsername => true,
+        IggyErrorCode.InvalidPassword => true,
+        IggyErrorCode.InvalidUserStatus => true,
+        IggyErrorCode.UserAlreadyExists => true,
+        IggyErrorCode.UserInactive => true,
+        IggyErrorCode.CannotDeleteUser => true,
+        IggyErrorCode.CannotChangePermissions => true,
+        IggyErrorCode.UsersLimitReached => true,
         _ => false
     };
 
@@ -301,24 +319,7 @@ public static class IggyErrorCodeExtensions
     };
 
     /// <summary>
-    ///     Checks if the error code indicates a limit has been reached.
-    /// </summary>
-    public static bool IsLimitReached(this IggyErrorCode code) => code switch
-    {
-        IggyErrorCode.PersonalAccessTokensLimitReached => true,
-        IggyErrorCode.UsersLimitReached => true,
-        IggyErrorCode.TooManyPartitions => true,
-        IggyErrorCode.TopicFull => true,
-        IggyErrorCode.TooBigUserHeaders => true,
-        IggyErrorCode.TooBigMessagePayload => true,
-        IggyErrorCode.TooManyMessages => true,
-        IggyErrorCode.BackgroundSendBufferFull => true,
-        IggyErrorCode.BackgroundSendBufferOverflow => true,
-        _ => false
-    };
-
-    /// <summary>
-    ///     Tries to convert an integer status code to <see cref="IggyErrorCode"/>.
+    ///     Tries to convert an integer status code to <see cref="IggyErrorCode" />.
     /// </summary>
     /// <param name="statusCode">The integer status code.</param>
     /// <param name="errorCode">The resulting error code if conversion succeeds.</param>
@@ -336,11 +337,11 @@ public static class IggyErrorCodeExtensions
     }
 
     /// <summary>
-    ///     Converts an integer status code to <see cref="IggyErrorCode"/>.
-    ///     Returns <see cref="IggyErrorCode.Error"/> if the code is not recognized.
+    ///     Converts an integer status code to <see cref="IggyErrorCode" />.
+    ///     Returns <see cref="IggyErrorCode.Error" /> if the code is not recognized.
     /// </summary>
     /// <param name="statusCode">The integer status code.</param>
-    /// <returns>The corresponding error code or <see cref="IggyErrorCode.Error"/> if not found.</returns>
+    /// <returns>The corresponding error code or <see cref="IggyErrorCode.Error" /> if not found.</returns>
     public static IggyErrorCode FromStatusCode(int statusCode)
     {
         return TryFromStatusCode(statusCode, out var errorCode) ? errorCode : IggyErrorCode.Error;

@@ -68,6 +68,7 @@ public static class CSharpCodeGenerator
         var sb = new StringBuilder();
         sb.Append(license);
         sb.Append(GeneratedHeader);
+        sb.AppendLine();
         sb.AppendLine("namespace Apache.Iggy.Enums;");
         sb.AppendLine();
         sb.AppendLine("/// <summary>");
@@ -84,9 +85,6 @@ public static class CSharpCodeGenerator
                 .Replace("&", "&amp;")
                 .Replace("<", "&lt;")
                 .Replace(">", "&gt;")
-                //.Replace("{0}", "")
-                //.Replace("{1}", "")
-                //.Replace("{2}", "")
                 .Replace("  ", " ")
                 .Trim();
 
@@ -110,17 +108,18 @@ public static class CSharpCodeGenerator
         var sb = new StringBuilder();
         sb.Append(license);
         sb.Append(GeneratedHeader);
+        sb.AppendLine();
         sb.AppendLine("namespace Apache.Iggy.Enums;");
         sb.AppendLine();
         sb.AppendLine("/// <summary>");
         sb.AppendLine(
-            "///     Extension methods for <see cref=\"IggyErrorCode\"/> to categorize and check error types.");
+            "///     Extension methods for <see cref=\"IggyErrorCode\" /> to categorize and check error types.");
         sb.AppendLine("/// </summary>");
         sb.AppendLine("public static class IggyErrorCodeExtensions");
         sb.AppendLine("{");
 
         // Generate category methods
-        foreach (KeyValuePair<string, Func<string, bool>> category in ErrorCategories.Categories)
+        foreach (KeyValuePair<string, Func<string, bool>> category in ErrorCategories.Categories.OrderBy(c => c.Key))
         {
             List<RustErrorCode> matchingErrors = errors.Where(e => category.Value(e.Name)).ToList();
             if (matchingErrors.Count == 0)
@@ -149,7 +148,7 @@ public static class CSharpCodeGenerator
 
         // Generate TryFromStatusCode method
         sb.AppendLine("    /// <summary>");
-        sb.AppendLine("    ///     Tries to convert an integer status code to <see cref=\"IggyErrorCode\"/>.");
+        sb.AppendLine("    ///     Tries to convert an integer status code to <see cref=\"IggyErrorCode\" />.");
         sb.AppendLine("    /// </summary>");
         sb.AppendLine("    /// <param name=\"statusCode\">The integer status code.</param>");
         sb.AppendLine("    /// <param name=\"errorCode\">The resulting error code if conversion succeeds.</param>");
@@ -169,12 +168,12 @@ public static class CSharpCodeGenerator
 
         // Generate FromStatusCode method
         sb.AppendLine("    /// <summary>");
-        sb.AppendLine("    ///     Converts an integer status code to <see cref=\"IggyErrorCode\"/>.");
-        sb.AppendLine("    ///     Returns <see cref=\"IggyErrorCode.Error\"/> if the code is not recognized.");
+        sb.AppendLine("    ///     Converts an integer status code to <see cref=\"IggyErrorCode\" />.");
+        sb.AppendLine("    ///     Returns <see cref=\"IggyErrorCode.Error\" /> if the code is not recognized.");
         sb.AppendLine("    /// </summary>");
         sb.AppendLine("    /// <param name=\"statusCode\">The integer status code.</param>");
         sb.AppendLine(
-            "    /// <returns>The corresponding error code or <see cref=\"IggyErrorCode.Error\"/> if not found.</returns>");
+            "    /// <returns>The corresponding error code or <see cref=\"IggyErrorCode.Error\" /> if not found.</returns>");
         sb.AppendLine("    public static IggyErrorCode FromStatusCode(int statusCode)");
         sb.AppendLine("    {");
         sb.AppendLine(
