@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+using Apache.Iggy.Enums;
+
 namespace Apache.Iggy.Exceptions;
 
 /// <summary>
@@ -27,8 +29,46 @@ public sealed class IggyInvalidStatusCodeException : Exception
     /// </summary>
     public int StatusCode { get; init; }
 
+    /// <summary>
+    ///     Error code as <see cref="IggyErrorCode" /> enum.
+    /// </summary>
+    public IggyErrorCode ErrorCode { get; init; }
+
+    /// <summary>
+    ///     Checks if the error indicates that a resource was not found.
+    /// </summary>
+    public bool IsNotFound => ErrorCode.IsNotFound();
+
+    /// <summary>
+    ///     Checks if the error indicates that a resource already exists.
+    /// </summary>
+    public bool IsAlreadyExists => ErrorCode.IsAlreadyExists();
+
+    /// <summary>
+    ///     Checks if the error is related to authentication.
+    /// </summary>
+    public bool IsAuthenticationError => ErrorCode.IsAuthenticationError();
+
+    /// <summary>
+    ///     Checks if the error is related to connection issues.
+    /// </summary>
+    public bool IsConnectionError => ErrorCode.IsConnectionError();
+
+    internal IggyInvalidStatusCodeException(int statusCode)
+        : this(statusCode, IggyErrorCodeExtensions.FromStatusCode(statusCode))
+    {
+    }
+
+    internal IggyInvalidStatusCodeException(int statusCode, IggyErrorCode errorCode)
+        : base($"Invalid status code: {statusCode} ({errorCode.ToString()})")
+    {
+        StatusCode = statusCode;
+        ErrorCode = errorCode;
+    }
+
     internal IggyInvalidStatusCodeException(int statusCode, string message) : base(message)
     {
         StatusCode = statusCode;
+        ErrorCode = IggyErrorCodeExtensions.FromStatusCode(statusCode);
     }
 }
