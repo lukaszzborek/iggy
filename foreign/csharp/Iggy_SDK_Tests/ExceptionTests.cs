@@ -1,4 +1,4 @@
-﻿// // Licensed to the Apache Software Foundation (ASF) under one
+// // Licensed to the Apache Software Foundation (ASF) under one
 // // or more contributor license agreements.  See the NOTICE file
 // // distributed with this work for additional information
 // // regarding copyright ownership.  The ASF licenses this file
@@ -26,17 +26,17 @@ public class ExceptionTests
     public void Exception_ShouldHaveCorrectErrorCodeAndMessage()
     {
         var exception = new IggyInvalidStatusCodeException((int)IggyErrorCode.CannotCreateSegmentTimeIndexFile);
-        
+
         Assert.Equal(4005, exception.StatusCode);
         Assert.Equal(IggyErrorCode.CannotCreateSegmentTimeIndexFile, exception.ErrorCode);
         Assert.Equal("Invalid status code: 4005 (CannotCreateSegmentTimeIndexFile)", exception.Message);
     }
-    
+
     [Fact]
     public void Exception_ShouldHaveGenericError_When_ErrorIsOutOfRange()
     {
         var exception = new IggyInvalidStatusCodeException(9999999);
-        
+
         Assert.Equal(9999999, exception.StatusCode);
         Assert.Equal(IggyErrorCode.Error, exception.ErrorCode);
         Assert.Equal("Invalid status code: 9999999 (Error)", exception.Message);
@@ -46,31 +46,31 @@ public class ExceptionTests
     public void Exception_ShouldBeAlreadyExistsErrorCode()
     {
         var exception = new IggyInvalidStatusCodeException((int)IggyErrorCode.StreamNameAlreadyExists);
-        
+
         Assert.True(exception.IsAlreadyExists);
     }
-    
+
     [Fact]
     public void Exception_ShouldBeAuthenticationErrorCode()
     {
         var exception = new IggyInvalidStatusCodeException((int)IggyErrorCode.Unauthenticated);
-        
+
         Assert.True(exception.IsAuthenticationError);
     }
-    
+
     [Fact]
     public void Exception_ShouldBeNotFoundErrorCode()
     {
         var exception = new IggyInvalidStatusCodeException((int)IggyErrorCode.StreamIdNotFound);
-        
+
         Assert.True(exception.IsNotFound);
     }
-    
+
     [Fact]
     public void Exception_ShouldBeConnectionErrorCode()
     {
         var exception = new IggyInvalidStatusCodeException((int)IggyErrorCode.TcpError);
-        
+
         Assert.True(exception.IsConnectionError);
     }
 }
