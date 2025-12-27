@@ -21,6 +21,7 @@
 //     Do not modify this file manually.
 //     To regenerate, run: dotnet iggy-error-codegen generate
 // </auto-generated>
+
 namespace Apache.Iggy.Enums;
 
 /// <summary>
@@ -654,6 +655,5 @@ public enum IggyErrorCode
     TaskTimeout = 12001,
 
     /// <summary>IO error: {0}</summary>
-    IoError = 13000,
-
+    IoError = 13000
 }

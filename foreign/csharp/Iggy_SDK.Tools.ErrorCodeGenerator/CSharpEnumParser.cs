@@ -58,7 +58,10 @@ public static partial class CSharpEnumParser
                 break;
             }
 
-            if (!inEnum) continue;
+            if (!inEnum)
+            {
+                continue;
+            }
 
             // Check for enum value
             var match = EnumValueRegex().Match(line);

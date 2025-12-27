@@ -58,20 +58,20 @@ iggy-error-codegen validate -r <rust-file> -c <csharp-dir>
 
 Generates C# error code files from Rust source.
 
-| Option           | Alias | Default                                      | Description                              |
-|------------------|-------|----------------------------------------------|------------------------------------------|
-| `--rust-file`    | `-r`  | `../../core/common/src/error/iggy_error.rs`  | Path to the Rust `iggy_error.rs` file    |
-| `--output`       | `-o`  | `Iggy_SDK/Enums/`                            | Output directory for generated C# files  |
-| `--license-file` | `-l`  | `../../ASF_LICENSE.txt`                      | Path to license file                     |
-| `--dry-run`      | `-d`  | `false`                                      | Preview generated code without writing   |
+| Option           | Alias | Default                                     | Description                             |
+|------------------|-------|---------------------------------------------|-----------------------------------------|
+| `--rust-file`    | `-r`  | `../../core/common/src/error/iggy_error.rs` | Path to the Rust `iggy_error.rs` file   |
+| `--output`       | `-o`  | `Iggy_SDK/Enums/`                           | Output directory for generated C# files |
+| `--license-file` | `-l`  | `../../ASF_LICENSE.txt`                     | Path to license file                    |
+| `--dry-run`      | `-d`  | `false`                                     | Preview generated code without writing  |
 
 ### `validate`
 
 Validates that the C# enum matches the Rust source.
 
-| Option         | Alias | Default                                      | Description                              |
-|----------------|-------|----------------------------------------------|------------------------------------------|
-| `--rust-file`  | `-r`  | `../../core/common/src/error/iggy_error.rs`  | Path to the Rust `iggy_error.rs` file    |
-| `--csharp-dir` | `-c`  | `Iggy_SDK/Enums/`                            | Directory containing `IggyErrorCode.cs`  |
+| Option         | Alias | Default                                     | Description                             |
+|----------------|-------|---------------------------------------------|-----------------------------------------|
+| `--rust-file`  | `-r`  | `../../core/common/src/error/iggy_error.rs` | Path to the Rust `iggy_error.rs` file   |
+| `--csharp-dir` | `-c`  | `Iggy_SDK/Enums/`                           | Directory containing `IggyErrorCode.cs` |
 
 

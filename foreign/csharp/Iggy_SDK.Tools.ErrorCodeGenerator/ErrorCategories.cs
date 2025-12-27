@@ -28,53 +28,41 @@ public static class ErrorCategories
             name.Contains("NotFound") ||
             name == "ResourceNotFound" ||
             name == "StateFileNotFound",
-
         ["IsAlreadyExists"] = name =>
             name.Contains("AlreadyExists"),
-
         ["IsAuthenticationError"] = name =>
             name is "Unauthenticated" or "InvalidCredentials" or "InvalidUsername" or "InvalidPassword"
                 or "InvalidPersonalAccessToken" or "PersonalAccessTokenExpired" or "JwtMissing"
                 or "InvalidAccessToken" or "AccessTokenMissing",
-
         ["IsConnectionError"] = name =>
             name is "Disconnected" or "CannotEstablishConnection" or "StaleClient" or "TcpError"
                 or "QuicError" or "NotConnected" or "ClientShutdown" or "ConnectionClosed"
                 or "CannotSendMessagesDueToClientDisconnection" or "BackgroundWorkerDisconnected" ||
             name.StartsWith("WebSocket"),
-
         ["IsStreamError"] = name =>
             name.Contains("Stream") && !name.Contains("Connection"),
-
         ["IsTopicError"] = name =>
             name.Contains("Topic") || name is "InvalidReplicationFactor" or "InvalidPartitionsCount"
                 or "TooManyPartitions",
-
         ["IsConsumerGroupError"] = name =>
             name.Contains("ConsumerGroup"),
-
         ["IsMessageError"] = name =>
-            name.Contains("Message") && !name.Contains("Batch") ||
-            name.Contains("Header") && !name.Contains("Batch") ||
+            (name.Contains("Message") && !name.Contains("Batch")) ||
+            (name.Contains("Header") && !name.Contains("Batch")) ||
             name is "TooManyMessages" or "EmptyMessagePayload" or "InvalidKeyValueLength",
-
         ["IsUserError"] = name =>
             name is "InvalidUsername" or "InvalidPassword" or "InvalidUserStatus" or "UserAlreadyExists"
                 or "UserInactive" or "CannotDeleteUser" or "CannotChangePermissions" or "UsersLimitReached",
-
         ["IsPersonalAccessTokenError"] = name =>
             name.Contains("PersonalAccessToken"),
-
         ["IsTlsError"] = name =>
             name.Contains("Tls") || name == "FailedToAddCertificate",
-
         ["IsValidationError"] = name =>
             name.StartsWith("Invalid") &&
             !name.Contains("Token") &&
             !name.Contains("Credentials"),
-
         ["IsLimitReached"] = name =>
             name.Contains("LimitReached") || name.Contains("TooMany") || name.Contains("TooBig")
-                || name is "TopicFull" or "BackgroundSendBufferFull" or "BackgroundSendBufferOverflow",
+            || name is "TopicFull" or "BackgroundSendBufferFull" or "BackgroundSendBufferOverflow"
     };
 }

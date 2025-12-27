@@ -16,7 +16,6 @@
 // under the License.
 
 using System.CommandLine;
-using System.CommandLine.Parsing;
 using Apache.Iggy.Tools.ErrorCodeGenerator;
 
 var rootCommand = new RootCommand("Generates C# IggyErrorCode enum from Rust iggy_error.rs file");
@@ -36,10 +35,7 @@ var outputDirOption = new Option<DirectoryInfo>("--output", "-o")
     DefaultValueFactory = _ => new DirectoryInfo("Iggy_SDK/Enums/")
 };
 
-var dryRunOption = new Option<bool>("--dry-run", "-d")
-{
-    Description = "Preview generated code without writing files"
-};
+var dryRunOption = new Option<bool>("--dry-run", "-d") { Description = "Preview generated code without writing files" };
 
 var licenseFileOption = new Option<FileInfo>("--license-file", "-l")
 {
@@ -76,7 +72,7 @@ generateCommand.SetAction(async (parseResult, cancellationToken) =>
     var license = CSharpCodeGenerator.ConvertLicenseToComments(licenseContent);
 
     Console.WriteLine($"Parsing Rust file: {rustFile.FullName}");
-    var errors = await RustErrorParser.ParseFileAsync(rustFile.FullName);
+    List<RustErrorCode> errors = await RustErrorParser.ParseFileAsync(rustFile.FullName);
     Console.WriteLine($"Found {errors.Count} error codes");
 
     var enumCode = CSharpCodeGenerator.GenerateEnum(errors, license);
@@ -148,17 +144,17 @@ validateCommand.SetAction(async (parseResult, cancellationToken) =>
     }
 
     Console.WriteLine($"Parsing Rust file: {rustFile.FullName}");
-    var rustErrors = await RustErrorParser.ParseFileAsync(rustFile.FullName);
+    List<RustErrorCode> rustErrors = await RustErrorParser.ParseFileAsync(rustFile.FullName);
     Console.WriteLine($"Found {rustErrors.Count} error codes in Rust");
 
     Console.WriteLine($"Parsing C# file: {csharpFile.FullName}");
-    var csharpErrors = await CSharpEnumParser.ParseFileAsync(csharpFile.FullName);
+    List<CSharpErrorCode> csharpErrors = await CSharpEnumParser.ParseFileAsync(csharpFile.FullName);
     Console.WriteLine($"Found {csharpErrors.Count} error codes in C#");
 
     var hasErrors = false;
 
     // Check for missing in C#
-    var missingInCSharp = rustErrors
+    List<RustErrorCode> missingInCSharp = rustErrors
         .Where(r => !csharpErrors.Any(c => c.Name == r.Name && c.Code == r.Code))
         .ToList();
 
@@ -175,7 +171,7 @@ validateCommand.SetAction(async (parseResult, cancellationToken) =>
     }
 
     // Check for extra in C#
-    var extraInCSharp = csharpErrors
+    List<CSharpErrorCode> extraInCSharp = csharpErrors
         .Where(c => !rustErrors.Any(r => r.Name == c.Name && r.Code == c.Code))
         .ToList();
 
@@ -192,7 +188,7 @@ validateCommand.SetAction(async (parseResult, cancellationToken) =>
     }
 
     // Check for code mismatches
-    var codeMismatches = rustErrors
+    List<(RustErrorCode Rust, CSharpErrorCode CSharp)> codeMismatches = rustErrors
         .SelectMany(r => csharpErrors
             .Where(c => c.Name == r.Name && c.Code != r.Code)
             .Select(c => (Rust: r, CSharp: c)))
