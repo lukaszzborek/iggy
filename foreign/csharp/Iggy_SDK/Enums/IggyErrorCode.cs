@@ -47,7 +47,7 @@ public enum IggyErrorCode
     /// <summary>Invalid identifier</summary>
     InvalidIdentifier = 6,
 
-    /// <summary>Invalid version:</summary>
+    /// <summary>Invalid version: {0}</summary>
     InvalidVersion = 7,
 
     /// <summary>Disconnected</summary>
@@ -56,16 +56,16 @@ public enum IggyErrorCode
     /// <summary>Cannot establish connection</summary>
     CannotEstablishConnection = 9,
 
-    /// <summary>Cannot create base directory, Path:</summary>
+    /// <summary>Cannot create base directory, Path: {0}</summary>
     CannotCreateBaseDirectory = 10,
 
-    /// <summary>Cannot create runtime directory, Path:</summary>
+    /// <summary>Cannot create runtime directory, Path: {0}</summary>
     CannotCreateRuntimeDirectory = 11,
 
-    /// <summary>Cannot remove runtime directory, Path:</summary>
+    /// <summary>Cannot remove runtime directory, Path: {0}</summary>
     CannotRemoveRuntimeDirectory = 12,
 
-    /// <summary>Cannot create state directory, Path:</summary>
+    /// <summary>Cannot create state directory, Path: {0}</summary>
     CannotCreateStateDirectory = 13,
 
     /// <summary>State file not found</summary>
@@ -74,13 +74,13 @@ public enum IggyErrorCode
     /// <summary>State file corrupted</summary>
     StateFileCorrupted = 15,
 
-    /// <summary>Invalid state entry checksum: , expected: , for index:</summary>
+    /// <summary>Invalid state entry checksum: {0}, expected: {1}, for index: {2}</summary>
     InvalidStateEntryChecksum = 16,
 
-    /// <summary>Cannot open database, Path:</summary>
+    /// <summary>Cannot open database, Path: {0}</summary>
     CannotOpenDatabase = 19,
 
-    /// <summary>Resource with key: was not found.</summary>
+    /// <summary>Resource with key: {0} was not found.</summary>
     ResourceNotFound = 20,
 
     /// <summary>Cannot close WebSocket connection</summary>
@@ -101,10 +101,10 @@ public enum IggyErrorCode
     /// <summary>Invalid client address</summary>
     InvalidClientAddress = 34,
 
-    /// <summary>Invalid IP address: :</summary>
+    /// <summary>Invalid IP address: {0}:{1}</summary>
     InvalidIpAddress = 35,
 
-    /// <summary>Http error</summary>
+    /// <summary>Http error {0}</summary>
     HttpError = 36,
 
     /// <summary>Unauthenticated</summary>
@@ -131,25 +131,25 @@ public enum IggyErrorCode
     /// <summary>User inactive</summary>
     UserInactive = 47,
 
-    /// <summary>Cannot delete user with ID:</summary>
+    /// <summary>Cannot delete user with ID: {0}</summary>
     CannotDeleteUser = 48,
 
-    /// <summary>Cannot change permissions for user with ID:</summary>
+    /// <summary>Cannot change permissions for user with ID: {0}</summary>
     CannotChangePermissions = 49,
 
     /// <summary>Invalid personal access token name</summary>
     InvalidPersonalAccessTokenName = 50,
 
-    /// <summary>Personal access token: for user with ID: already exists</summary>
+    /// <summary>Personal access token: {0} for user with ID: {1} already exists</summary>
     PersonalAccessTokenAlreadyExists = 51,
 
-    /// <summary>User with ID: has reached the maximum number of personal access tokens:</summary>
+    /// <summary>User with ID: {0} has reached the maximum number of personal access tokens: {1}</summary>
     PersonalAccessTokensLimitReached = 52,
 
     /// <summary>Invalid personal access token</summary>
     InvalidPersonalAccessToken = 53,
 
-    /// <summary>Personal access token: for user with ID: has expired.</summary>
+    /// <summary>Personal access token: {0} for user with ID: {1} has expired.</summary>
     PersonalAccessTokenExpired = 54,
 
     /// <summary>Users limit reached.</summary>
@@ -182,7 +182,7 @@ public enum IggyErrorCode
     /// <summary>Cannot decrypt data</summary>
     CannotDecryptData = 72,
 
-    /// <summary>Invalid JWT algorithm:</summary>
+    /// <summary>Invalid JWT algorithm: {0}</summary>
     InvalidJwtAlgorithm = 73,
 
     /// <summary>Invalid JWT secret</summary>
@@ -215,7 +215,7 @@ public enum IggyErrorCode
     /// <summary>Invalid number value</summary>
     InvalidNumberValue = 84,
 
-    /// <summary>Client with ID: was not found.</summary>
+    /// <summary>Client with ID: {0} was not found.</summary>
     ClientNotFound = 100,
 
     /// <summary>Invalid client ID</summary>
@@ -224,10 +224,10 @@ public enum IggyErrorCode
     /// <summary>Connection closed</summary>
     ConnectionClosed = 206,
 
-    /// <summary>Cannot parse header kind from</summary>
+    /// <summary>Cannot parse header kind from {0}</summary>
     CannotParseHeaderKind = 209,
 
-    /// <summary>HTTP response error, status: , body:</summary>
+    /// <summary>HTTP response error, status: {0}, body: {1}</summary>
     HttpResponseError = 300,
 
     /// <summary>Invalid HTTP request</summary>
@@ -263,43 +263,43 @@ public enum IggyErrorCode
     /// <summary>WebSocket send error</summary>
     WebSocketSendError = 404,
 
-    /// <summary>Cannot create streams directory, Path:</summary>
+    /// <summary>Cannot create streams directory, Path: {0}</summary>
     CannotCreateStreamsDirectory = 1000,
 
-    /// <summary>Cannot create stream with ID: directory, Path:</summary>
+    /// <summary>Cannot create stream with ID: {0} directory, Path: {1}</summary>
     CannotCreateStreamDirectory = 1001,
 
-    /// <summary>Failed to create stream info file for stream with ID:</summary>
+    /// <summary>Failed to create stream info file for stream with ID: {0}</summary>
     CannotCreateStreamInfo = 1002,
 
-    /// <summary>Failed to update stream info for stream with ID:</summary>
+    /// <summary>Failed to update stream info for stream with ID: {0}</summary>
     CannotUpdateStreamInfo = 1003,
 
-    /// <summary>Failed to open stream info file for stream with ID:</summary>
+    /// <summary>Failed to open stream info file for stream with ID: {0}</summary>
     CannotOpenStreamInfo = 1004,
 
-    /// <summary>Failed to read stream info file for stream with ID:</summary>
+    /// <summary>Failed to read stream info file for stream with ID: {0}</summary>
     CannotReadStreamInfo = 1005,
 
-    /// <summary>Failed to create stream with ID:</summary>
+    /// <summary>Failed to create stream with ID: {0}</summary>
     CannotCreateStream = 1006,
 
-    /// <summary>Failed to delete stream with ID:</summary>
+    /// <summary>Failed to delete stream with ID: {0}</summary>
     CannotDeleteStream = 1007,
 
-    /// <summary>Failed to delete stream directory with ID:</summary>
+    /// <summary>Failed to delete stream directory with ID: {0}</summary>
     CannotDeleteStreamDirectory = 1008,
 
-    /// <summary>Stream with ID: was not found.</summary>
+    /// <summary>Stream with ID: {0} was not found.</summary>
     StreamIdNotFound = 1009,
 
-    /// <summary>Stream with name: was not found.</summary>
+    /// <summary>Stream with name: {0} was not found.</summary>
     StreamNameNotFound = 1010,
 
-    /// <summary>Stream with directory was not found.</summary>
+    /// <summary>Stream with directory {0} was not found.</summary>
     StreamDirectoryNotFound = 1011,
 
-    /// <summary>Stream with name: already exists.</summary>
+    /// <summary>Stream with name: {0} already exists.</summary>
     StreamNameAlreadyExists = 1012,
 
     /// <summary>Invalid stream name</summary>
@@ -311,43 +311,43 @@ public enum IggyErrorCode
     /// <summary>Cannot read streams</summary>
     CannotReadStreams = 1015,
 
-    /// <summary>Cannot create topics directory for stream with ID: , Path:</summary>
+    /// <summary>Cannot create topics directory for stream with ID: {0}, Path: {1}</summary>
     CannotCreateTopicsDirectory = 2000,
 
-    /// <summary>Failed to create directory for topic with ID: for stream with ID: , Path:</summary>
+    /// <summary>Failed to create directory for topic with ID: {0} for stream with ID: {1}, Path: {2}</summary>
     CannotCreateTopicDirectory = 2001,
 
-    /// <summary>Failed to create topic info file for topic with ID: for stream with ID: .</summary>
+    /// <summary>Failed to create topic info file for topic with ID: {0} for stream with ID: {1}.</summary>
     CannotCreateTopicInfo = 2002,
 
-    /// <summary>Failed to update topic info for topic with ID: for stream with ID: .</summary>
+    /// <summary>Failed to update topic info for topic with ID: {0} for stream with ID: {1}.</summary>
     CannotUpdateTopicInfo = 2003,
 
-    /// <summary>Failed to open topic info file for topic with ID: for stream with ID: .</summary>
+    /// <summary>Failed to open topic info file for topic with ID: {0} for stream with ID: {1}.</summary>
     CannotOpenTopicInfo = 2004,
 
-    /// <summary>Failed to read topic info file for topic with ID: for stream with ID: .</summary>
+    /// <summary>Failed to read topic info file for topic with ID: {0} for stream with ID: {1}.</summary>
     CannotReadTopicInfo = 2005,
 
-    /// <summary>Failed to create topic with ID: for stream with ID: .</summary>
+    /// <summary>Failed to create topic with ID: {0} for stream with ID: {1}.</summary>
     CannotCreateTopic = 2006,
 
-    /// <summary>Failed to delete topic with ID: for stream with ID: .</summary>
+    /// <summary>Failed to delete topic with ID: {0} for stream with ID: {1}.</summary>
     CannotDeleteTopic = 2007,
 
-    /// <summary>Failed to delete topic directory with ID: for stream with ID: , Path:</summary>
+    /// <summary>Failed to delete topic directory with ID: {0} for stream with ID: {1}, Path: {2}</summary>
     CannotDeleteTopicDirectory = 2008,
 
     /// <summary>Cannot poll topic</summary>
     CannotPollTopic = 2009,
 
-    /// <summary>Topic with ID: for stream with ID: was not found.</summary>
+    /// <summary>Topic with ID: {0} for stream with ID: {1} was not found.</summary>
     TopicIdNotFound = 2010,
 
-    /// <summary>Topic with name: for stream with ID: was not found.</summary>
+    /// <summary>Topic with name: {0} for stream with ID: {1} was not found.</summary>
     TopicNameNotFound = 2011,
 
-    /// <summary>Topic with name: for stream with ID: already exists.</summary>
+    /// <summary>Topic with name: {0} for stream with ID: {1} already exists.</summary>
     TopicNameAlreadyExists = 2013,
 
     /// <summary>Invalid topic name</summary>
@@ -359,7 +359,7 @@ public enum IggyErrorCode
     /// <summary>Invalid topic ID</summary>
     InvalidTopicId = 2016,
 
-    /// <summary>Cannot read topics for stream with ID:</summary>
+    /// <summary>Cannot read topics for stream with ID: {0}</summary>
     CannotReadTopics = 2017,
 
     /// <summary>Invalid replication factor</summary>
@@ -368,10 +368,10 @@ public enum IggyErrorCode
     /// <summary>Invalid partitions count</summary>
     InvalidPartitionsCount = 2019,
 
-    /// <summary>Topic directory: not found</summary>
+    /// <summary>Topic directory: {0} not found</summary>
     TopicDirectoryNotFound = 2020,
 
-    /// <summary>Cannot create partition with ID: for stream with ID: and topic with ID:</summary>
+    /// <summary>Cannot create partition with ID: {0} for stream with ID: {1} and topic with ID: {2}</summary>
     CannotCreatePartition = 3000,
 
     /// <summary>Cannot open partition log file</summary>
@@ -380,52 +380,52 @@ public enum IggyErrorCode
     /// <summary>Cannot read partitions directories.</summary>
     CannotReadPartitions = 3004,
 
-    /// <summary>Partition with ID: for topic with ID: for stream with ID: was not found.</summary>
+    /// <summary>Partition with ID: {0} for topic with ID: {1} for stream with ID: {2} was not found.</summary>
     PartitionNotFound = 3007,
 
-    /// <summary>Topic with ID: for stream with ID: has no partitions.</summary>
+    /// <summary>Topic with ID: {0} for stream with ID: {1} has no partitions.</summary>
     NoPartitions = 3008,
 
-    /// <summary>Cannot read partitions for topic with ID: for stream with ID:</summary>
+    /// <summary>Cannot read partitions for topic with ID: {0} for stream with ID: {1}</summary>
     TopicFull = 3009,
 
-    /// <summary>Failed to delete consumer offsets directory for path:</summary>
+    /// <summary>Failed to delete consumer offsets directory for path: {0}</summary>
     CannotDeleteConsumerOffsetsDirectory = 3010,
 
-    /// <summary>Failed to delete consumer offset file for path:</summary>
+    /// <summary>Failed to delete consumer offset file for path: {0}</summary>
     CannotDeleteConsumerOffsetFile = 3011,
 
-    /// <summary>Failed to create consumer offsets directory for path:</summary>
+    /// <summary>Failed to create consumer offsets directory for path: {0}</summary>
     CannotCreateConsumerOffsetsDirectory = 3012,
 
-    /// <summary>Failed to read consumers offsets from path:</summary>
+    /// <summary>Failed to read consumers offsets from path: {0}</summary>
     CannotReadConsumerOffsets = 3020,
 
-    /// <summary>Consumer offset for consumer with ID: was not found.</summary>
+    /// <summary>Consumer offset for consumer with ID: {0} was not found.</summary>
     ConsumerOffsetNotFound = 3021,
 
-    /// <summary>Failed to resolve consumer with ID:</summary>
+    /// <summary>Failed to resolve consumer with ID: {0}</summary>
     NotResolvedConsumer = 3022,
 
-    /// <summary>Cannot open consumer offsets file for path:</summary>
+    /// <summary>Cannot open consumer offsets file for path: {0}</summary>
     CannotOpenConsumerOffsetsFile = 3023,
 
     /// <summary>Segment not found</summary>
     SegmentNotFound = 4000,
 
-    /// <summary>Segment with start offset: and partition with ID: is closed</summary>
+    /// <summary>Segment with start offset: {0} and partition with ID: {1} is closed</summary>
     SegmentClosed = 4001,
 
     /// <summary>Segment size is invalid</summary>
     InvalidSegmentSize = 4002,
 
-    /// <summary>Failed to create segment log file for Path: .</summary>
+    /// <summary>Failed to create segment log file for Path: {0}.</summary>
     CannotCreateSegmentLogFile = 4003,
 
-    /// <summary>Failed to create segment index file for Path: .</summary>
+    /// <summary>Failed to create segment index file for Path: {0}.</summary>
     CannotCreateSegmentIndexFile = 4004,
 
-    /// <summary>Failed to create segment time index file for Path: .</summary>
+    /// <summary>Failed to create segment time index file for Path: {0}.</summary>
     CannotCreateSegmentTimeIndexFile = 4005,
 
     /// <summary>Cannot save messages to segment.</summary>
@@ -491,37 +491,37 @@ public enum IggyErrorCode
     /// <summary>Cannot read message checksum</summary>
     CannotReadMessageChecksum = 4026,
 
-    /// <summary>Invalid message checksum: , expected: , for offset:</summary>
+    /// <summary>Invalid message checksum: {0}, expected: {1}, for offset: {2}</summary>
     InvalidMessageChecksum = 4027,
 
     /// <summary>Invalid key value length</summary>
     InvalidKeyValueLength = 4028,
 
-    /// <summary>Command length error:</summary>
+    /// <summary>Command length error: {0}</summary>
     CommandLengthError = 4029,
 
-    /// <summary>Incorrect Segments Count size:</summary>
+    /// <summary>Incorrect Segments Count size: {0}</summary>
     InvalidSegmentsCount = 4030,
 
-    /// <summary>Non-zero offset: at index:</summary>
+    /// <summary>Non-zero offset: {0} at index: {1}</summary>
     NonZeroOffset = 4031,
 
-    /// <summary>Non-zero timestamp: at index:</summary>
+    /// <summary>Non-zero timestamp: {0} at index: {1}</summary>
     NonZeroTimestamp = 4032,
 
-    /// <summary>Missing index:</summary>
+    /// <summary>Missing index: {0}</summary>
     MissingIndex = 4033,
 
-    /// <summary>Invalid indexes byte size: B, should be divisible by 16</summary>
+    /// <summary>Invalid indexes byte size: {0}B, should be divisible by 16</summary>
     InvalidIndexesByteSize = 4034,
 
-    /// <summary>Invalid indexes count: , expected:</summary>
+    /// <summary>Invalid indexes count: {0}, expected: {1}</summary>
     InvalidIndexesCount = 4035,
 
-    /// <summary>Invalid messages byte size: B, expected: B</summary>
+    /// <summary>Invalid messages byte size: {0}B, expected: {1}B</summary>
     InvalidMessagesSize = 4036,
 
-    /// <summary>Too small message: B, expected: B</summary>
+    /// <summary>Too small message: {0}B, expected: {1}B</summary>
     TooSmallMessage = 4037,
 
     /// <summary>Cannot sed messages due to client disconnection</summary>
@@ -545,19 +545,19 @@ public enum IggyErrorCode
     /// <summary>Producer closed</summary>
     ProducerClosed = 4057,
 
-    /// <summary>Invalid offset:</summary>
+    /// <summary>Invalid offset: {0}</summary>
     InvalidOffset = 4100,
 
-    /// <summary>Consumer group with ID: for topic with ID: was not found.</summary>
+    /// <summary>Consumer group with ID: {0} for topic with ID: {1} was not found.</summary>
     ConsumerGroupIdNotFound = 5000,
 
     /// <summary>Invalid consumer group ID</summary>
     InvalidConsumerGroupId = 5002,
 
-    /// <summary>Consumer group with name: for topic with ID: was not found.</summary>
+    /// <summary>Consumer group with name: {0} for topic with ID: {1} was not found.</summary>
     ConsumerGroupNameNotFound = 5003,
 
-    /// <summary>Consumer group with name: for topic with ID: already exists.</summary>
+    /// <summary>Consumer group with name: {0} for topic with ID: {1} already exists.</summary>
     ConsumerGroupNameAlreadyExists = 5004,
 
     /// <summary>Invalid consumer group name</summary>
@@ -638,22 +638,22 @@ public enum IggyErrorCode
     /// <summary>Cannot read index timestamp</summary>
     CannotReadIndexTimestamp = 10012,
 
-    /// <summary>Timestamp out of range:</summary>
+    /// <summary>Timestamp out of range: {0}</summary>
     TimestampOutOfRange = 10013,
 
-    /// <summary>Shard not found for stream ID: , topic ID: , partition ID:</summary>
+    /// <summary>Shard not found for stream ID: {0}, topic ID: {1}, partition ID: {2}</summary>
     ShardNotFound = 11000,
 
     /// <summary>Shard communication error</summary>
     ShardCommunicationError = 11001,
 
-    /// <summary>Cannot bind to socket with addr:</summary>
+    /// <summary>Cannot bind to socket with addr: {0}</summary>
     CannotBindToSocket = 12000,
 
     /// <summary>Task execution timeout</summary>
     TaskTimeout = 12001,
 
-    /// <summary>IO error:</summary>
+    /// <summary>IO error: {0}</summary>
     IoError = 13000,
 
 }

@@ -84,9 +84,9 @@ public static class CSharpCodeGenerator
                 .Replace("&", "&amp;")
                 .Replace("<", "&lt;")
                 .Replace(">", "&gt;")
-                .Replace("{0}", "")
-                .Replace("{1}", "")
-                .Replace("{2}", "")
+                //.Replace("{0}", "")
+                //.Replace("{1}", "")
+                //.Replace("{2}", "")
                 .Replace("  ", " ")
                 .Trim();
 
