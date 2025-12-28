@@ -29,13 +29,14 @@ public sealed record RustErrorCode(string Name, int Code, string Message);
 /// </summary>
 public static partial class RustErrorParser
 {
-    // Matches: #[error("message")] or #[error("message {0} {1}")]
-    [GeneratedRegex(@"#\[error\(""([^""]+)""\)\]")]
-    private static partial Regex ErrorAttributeRegex();
-
-    // Matches: VariantName = 123, or VariantName(Type) = 123, or VariantName { field: Type } = 123,
-    [GeneratedRegex(@"^\s*([A-Z][a-zA-Z0-9_]*)(?:\s*\([^)]*\)|\s*\{[^}]*\})?\s*=\s*(\d+)\s*,?\s*$")]
-    private static partial Regex VariantRegex();
+    // Combined pattern that matches #[error("...")] followed by VariantName... = code
+    // Handles multiline definitions for both error attributes and struct variants.
+    // - \s* matches whitespace including newlines
+    // - [^"]+ captures the error message
+    // - [^)]* and [^}]* handle tuple/struct fields spanning multiple lines
+    [GeneratedRegex(
+        @"#\[error\(\s*""([^""]+)""\s*\)\]\s*([A-Z][a-zA-Z0-9_]*)(?:\s*\([^)]*\)|\s*\{[^}]*\})?\s*=\s*(\d+)")]
+    private static partial Regex ErrorVariantRegex();
 
     /// <summary>
     ///     Parses the Rust iggy_error.rs file and extracts error codes.
@@ -43,37 +44,15 @@ public static partial class RustErrorParser
     public static List<RustErrorCode> Parse(string rustFileContent)
     {
         var errors = new List<RustErrorCode>();
-        var lines = rustFileContent.Split('\n');
+        var matches = ErrorVariantRegex().Matches(rustFileContent);
 
-        string? currentErrorMessage = null;
-
-        foreach (var line in lines)
+        foreach (Match match in matches)
         {
-            // Check for #[error("...")] attribute
-            var errorMatch = ErrorAttributeRegex().Match(line);
-            if (errorMatch.Success)
-            {
-                currentErrorMessage = errorMatch.Groups[1].Value;
-                continue;
-            }
+            var message = match.Groups[1].Value;
+            var name = match.Groups[2].Value;
+            var code = int.Parse(match.Groups[3].Value);
 
-            // Check for variant definition with code
-            var variantMatch = VariantRegex().Match(line);
-            if (variantMatch.Success && currentErrorMessage != null)
-            {
-                var name = variantMatch.Groups[1].Value;
-                var code = int.Parse(variantMatch.Groups[2].Value);
-
-                errors.Add(new RustErrorCode(name, code, currentErrorMessage));
-                currentErrorMessage = null;
-            }
-
-            // Reset if we hit a line that doesn't continue the pattern
-            if (!string.IsNullOrWhiteSpace(line) && !line.TrimStart().StartsWith("//") &&
-                !line.TrimStart().StartsWith("#[") && !variantMatch.Success)
-            {
-                currentErrorMessage = null;
-            }
+            errors.Add(new RustErrorCode(name, code, message));
         }
 
         return errors;

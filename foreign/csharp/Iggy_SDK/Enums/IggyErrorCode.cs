@@ -312,6 +312,9 @@ public enum IggyErrorCode
     /// <summary>Cannot read streams</summary>
     CannotReadStreams = 1015,
 
+    /// <summary>Max topic size cannot be lower than segment size. Max topic size: {0} &lt; segment size: {1}.</summary>
+    InvalidTopicSize = 1019,
+
     /// <summary>Cannot create topics directory for stream with ID: {0}, Path: {1}</summary>
     CannotCreateTopicsDirectory = 2000,
 
@@ -375,11 +378,23 @@ public enum IggyErrorCode
     /// <summary>Cannot create partition with ID: {0} for stream with ID: {1} and topic with ID: {2}</summary>
     CannotCreatePartition = 3000,
 
+    /// <summary>Failed to create directory for partitions for stream with ID: {0} and topic with ID: {1}</summary>
+    CannotCreatePartitionsDirectory = 3001,
+
+    /// <summary>Failed to create directory for partition with ID: {0} for stream with ID: {1} and topic with ID: {2}</summary>
+    CannotCreatePartitionDirectory = 3002,
+
     /// <summary>Cannot open partition log file</summary>
     CannotOpenPartitionLogFile = 3003,
 
     /// <summary>Cannot read partitions directories.</summary>
     CannotReadPartitions = 3004,
+
+    /// <summary>Failed to delete partition with ID: {0} for stream with ID: {1} and topic with ID: {2}</summary>
+    CannotDeletePartition = 3005,
+
+    /// <summary>Failed to delete partition directory with ID: {0} for stream with ID: {1} and topic with ID: {2}</summary>
+    CannotDeletePartitionDirectory = 3006,
 
     /// <summary>Partition with ID: {0} for topic with ID: {1} for stream with ID: {2} was not found.</summary>
     PartitionNotFound = 3007,
@@ -543,6 +558,9 @@ public enum IggyErrorCode
     /// <summary>Background send buffer overflow</summary>
     BackgroundSendBufferOverflow = 4055,
 
+    /// <summary>Producer send failed</summary>
+    ProducerSendFailed = 4056,
+
     /// <summary>Producer closed</summary>
     ProducerClosed = 4057,
 
@@ -563,6 +581,15 @@ public enum IggyErrorCode
 
     /// <summary>Invalid consumer group name</summary>
     InvalidConsumerGroupName = 5005,
+
+    /// <summary>Consumer group member with client ID: {0} for group with ID: {1} for topic with ID: {2} was not found.</summary>
+    ConsumerGroupMemberNotFound = 5006,
+
+    /// <summary>Failed to create consumer group info file for ID: {0} for topic with ID: {1} for stream with ID: {2}.</summary>
+    CannotCreateConsumerGroupInfo = 5007,
+
+    /// <summary>Failed to delete consumer group info file for ID: {0} for topic with ID: {1} for stream with ID: {2}.</summary>
+    CannotDeleteConsumerGroupInfo = 5008,
 
     /// <summary>Base offset is missing</summary>
     MissingBaseOffsetRetainedMessageBatch = 6000,

@@ -92,6 +92,9 @@ public static class IggyErrorCodeExtensions
         IggyErrorCode.ConsumerGroupNameNotFound => true,
         IggyErrorCode.ConsumerGroupNameAlreadyExists => true,
         IggyErrorCode.InvalidConsumerGroupName => true,
+        IggyErrorCode.ConsumerGroupMemberNotFound => true,
+        IggyErrorCode.CannotCreateConsumerGroupInfo => true,
+        IggyErrorCode.CannotDeleteConsumerGroupInfo => true,
         _ => false
     };
 
@@ -164,6 +167,7 @@ public static class IggyErrorCodeExtensions
         IggyErrorCode.SegmentNotFound => true,
         IggyErrorCode.ConsumerGroupIdNotFound => true,
         IggyErrorCode.ConsumerGroupNameNotFound => true,
+        IggyErrorCode.ConsumerGroupMemberNotFound => true,
         IggyErrorCode.ShardNotFound => true,
         _ => false
     };
@@ -222,6 +226,7 @@ public static class IggyErrorCodeExtensions
     /// </summary>
     public static bool IsTopicError(this IggyErrorCode code) => code switch
     {
+        IggyErrorCode.InvalidTopicSize => true,
         IggyErrorCode.CannotCreateTopicsDirectory => true,
         IggyErrorCode.CannotCreateTopicDirectory => true,
         IggyErrorCode.CannotCreateTopicInfo => true,
@@ -296,6 +301,7 @@ public static class IggyErrorCodeExtensions
         IggyErrorCode.InvalidBytesResponse => true,
         IggyErrorCode.InvalidStreamName => true,
         IggyErrorCode.InvalidStreamId => true,
+        IggyErrorCode.InvalidTopicSize => true,
         IggyErrorCode.InvalidTopicName => true,
         IggyErrorCode.InvalidTopicId => true,
         IggyErrorCode.InvalidReplicationFactor => true,

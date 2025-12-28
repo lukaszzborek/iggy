@@ -21,6 +21,7 @@ namespace Apache.Iggy.Exceptions;
 
 /// <summary>
 ///     Exception thrown when the status code returned by the server is not valid.
+///     If status code is not in IggyErrorCode enum, ErrorCode will be set to Error.
 /// </summary>
 public sealed class IggyInvalidStatusCodeException : Exception
 {
@@ -54,7 +55,11 @@ public sealed class IggyInvalidStatusCodeException : Exception
     /// </summary>
     public bool IsConnectionError => ErrorCode.IsConnectionError();
 
-    internal IggyInvalidStatusCodeException(int statusCode)
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="IggyInvalidStatusCodeException" /> class.
+    /// </summary>
+    /// <param name="statusCode">Iggy status code</param>
+    public IggyInvalidStatusCodeException(int statusCode)
         : this(statusCode, IggyErrorCodeExtensions.FromStatusCode(statusCode))
     {
     }
