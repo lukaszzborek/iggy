@@ -806,9 +806,9 @@ public sealed class TcpMessageStream : IIggyClient
                 ? $"{_currentLeaderNode.Ip}:{_currentLeaderNode.Endpoints.Tcp}"
                 : _configuration.BaseAddress;
             var urlPortSplitter = connectionAddress.Split(":");
-            if (urlPortSplitter.Length > 2)
+            if (urlPortSplitter.Length != 2)
             {
-                throw new InvalidBaseAddressException();
+                throw new InvalidBaseAddressException(connectionAddress);
             }
 
             try
