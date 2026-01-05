@@ -24,7 +24,6 @@ use crate::binary::handlers::utils::receive_and_validate;
 use crate::shard::IggyShard;
 use crate::state::command::EntryCommand;
 use crate::streaming::session::Session;
-use anyhow::Result;
 use err_trail::ErrContext;
 use iggy_common::purge_topic::PurgeTopic;
 use iggy_common::{IggyError, SenderKind};
@@ -45,6 +44,7 @@ impl ServerCommandHandler for PurgeTopic {
         shard: &Rc<IggyShard>,
     ) -> Result<HandlerResult, IggyError> {
         debug!("session: {session}, command: {self}");
+        shard.ensure_authenticated(session)?;
         let topic_id = self.topic_id.clone();
         let stream_id = self.stream_id.clone();
 

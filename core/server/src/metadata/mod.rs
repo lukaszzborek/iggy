@@ -17,8 +17,8 @@
 
 //! Shared metadata module providing a single source of truth for all shards.
 //!
-//! This module provides an `ArcSwap`-based approach where all shards read from
-//! a shared snapshot, and only shard 0 can write (swap in new snapshots).
+//! This module provides a `LeftRight`-based approach where all shards read from
+//! a shared snapshot, and only shard 0 can write.
 //!
 //! # Architecture
 //!

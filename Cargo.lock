@@ -434,12 +434,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arcshift"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "809ce7e2c99d17c161c0ca1673665bab3a3e1aa277b0f793abffc66b57c32d9f"
-
-[[package]]
 name = "argon2"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5035,6 +5029,8 @@ dependencies = [
  "serde_json",
  "serial_test",
  "server",
+ "slab",
+ "strum 0.27.2",
  "strum_macros 0.27.2",
  "tempfile",
  "test-case",
@@ -8294,7 +8290,6 @@ version = "0.6.1-edge.3"
 dependencies = [
  "ahash 0.8.12",
  "anyhow",
- "arcshift",
  "argon2",
  "async-channel",
  "async_zip",

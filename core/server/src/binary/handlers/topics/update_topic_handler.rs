@@ -23,15 +23,12 @@ use crate::binary::handlers::topics::COMPONENT;
 use crate::binary::handlers::utils::receive_and_validate;
 
 use crate::shard::IggyShard;
-use crate::shard::transmission::event::ShardEvent;
 use crate::shard::transmission::frame::ShardResponse;
 use crate::shard::transmission::message::{
     ShardMessage, ShardRequest, ShardRequestPayload, ShardSendRequestResult,
 };
 use crate::state::command::EntryCommand;
 use crate::streaming::session::Session;
-use crate::streaming::{streams, topics};
-use anyhow::Result;
 use err_trail::ErrContext;
 use iggy_common::update_topic::UpdateTopic;
 use iggy_common::{Identifier, IggyError, SenderKind};
@@ -52,6 +49,7 @@ impl ServerCommandHandler for UpdateTopic {
         shard: &Rc<IggyShard>,
     ) -> Result<HandlerResult, IggyError> {
         debug!("session: {session}, command: {self}");
+        shard.ensure_authenticated(session)?;
 
         let request = ShardRequest {
             stream_id: Identifier::default(),
@@ -84,6 +82,10 @@ impl ServerCommandHandler for UpdateTopic {
                         ..
                     } = payload
                 {
+                    // Get numeric IDs BEFORE update (name might change during update)
+                    let (stream_id_num, topic_id_num) =
+                        shard.resolve_topic_id(&stream_id, &topic_id)?;
+
                     shard.update_topic(
                         session,
                         &stream_id,
@@ -95,38 +97,16 @@ impl ServerCommandHandler for UpdateTopic {
                         replication_factor,
                     )?;
 
-                    let name_changed = !name.is_empty();
-                    let lookup_topic_id = if name_changed {
-                        Identifier::named(&name).unwrap()
-                    } else {
-                        topic_id.clone()
-                    };
-
-                    self.message_expiry = shard.streams.with_topic_by_id(
-                        &stream_id,
-                        &lookup_topic_id,
-                        topics::helpers::get_message_expiry(),
-                    );
-                    self.max_topic_size = shard.streams.with_topic_by_id(
-                        &stream_id,
-                        &lookup_topic_id,
-                        topics::helpers::get_max_topic_size(),
-                    );
-
-                    let stream_id_num = shard
+                    let metadata = shard.metadata.load();
+                    let topic_meta = metadata
                         .streams
-                        .with_stream_by_id(&stream_id, streams::helpers::get_stream_id());
-
-                    let event = ShardEvent::UpdatedTopic {
-                        stream_id: stream_id.clone(),
-                        topic_id: topic_id.clone(),
-                        name: name.clone(),
-                        message_expiry: self.message_expiry,
-                        compression_algorithm: self.compression_algorithm,
-                        max_topic_size: self.max_topic_size,
-                        replication_factor: self.replication_factor,
-                    };
-                    shard.broadcast_event_to_all_shards(event).await?;
+                        .get(stream_id_num)
+                        .and_then(|s| s.topics.get(topic_id_num))
+                        .ok_or_else(|| {
+                            IggyError::TopicIdNotFound(topic_id.clone(), stream_id.clone())
+                        })?;
+                    self.message_expiry = topic_meta.message_expiry;
+                    self.max_topic_size = topic_meta.max_topic_size;
 
                     shard
                         .state
@@ -145,8 +125,9 @@ impl ServerCommandHandler for UpdateTopic {
             ShardSendRequestResult::Response(response) => match response {
                 ShardResponse::UpdateTopicResponse => {
                     let stream_id = shard
-                        .streams
-                        .with_stream_by_id(&self.stream_id, streams::helpers::get_stream_id());
+                        .metadata
+                        .get_stream_id(&self.stream_id)
+                        .unwrap_or_default();
 
                     shard
                         .state

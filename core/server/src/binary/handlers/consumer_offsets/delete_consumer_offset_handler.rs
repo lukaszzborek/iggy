@@ -23,7 +23,6 @@ use crate::binary::handlers::consumer_offsets::COMPONENT;
 use crate::binary::handlers::utils::receive_and_validate;
 use crate::shard::IggyShard;
 use crate::streaming::session::Session;
-use anyhow::Result;
 use err_trail::ErrContext;
 use iggy_common::delete_consumer_offset::DeleteConsumerOffset;
 use iggy_common::{IggyError, SenderKind};
@@ -43,6 +42,7 @@ impl ServerCommandHandler for DeleteConsumerOffset {
         shard: &Rc<IggyShard>,
     ) -> Result<HandlerResult, IggyError> {
         debug!("session: {session}, command: {self}");
+        shard.ensure_authenticated(session)?;
         shard
             .delete_consumer_offset(
                 session,

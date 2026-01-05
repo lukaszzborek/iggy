@@ -21,20 +21,16 @@ use crate::binary::command::{
 };
 use crate::binary::handlers::topics::COMPONENT;
 use crate::binary::handlers::utils::receive_and_validate;
-use crate::binary::mapper;
-
 use crate::shard::IggyShard;
 use crate::shard::transmission::event::ShardEvent;
 use crate::shard::transmission::frame::ShardResponse;
 use crate::shard::transmission::message::{
     ShardMessage, ShardRequest, ShardRequestPayload, ShardSendRequestResult,
 };
-use crate::slab::traits_ext::EntityMarker;
+
 use crate::state::command::EntryCommand;
 use crate::state::models::CreateTopicWithId;
 use crate::streaming::session::Session;
-use crate::streaming::streams;
-use anyhow::Result;
 use err_trail::ErrContext;
 use iggy_common::create_topic::CreateTopic;
 use iggy_common::{Identifier, IggyError, SenderKind};
@@ -55,6 +51,7 @@ impl ServerCommandHandler for CreateTopic {
         shard: &Rc<IggyShard>,
     ) -> Result<HandlerResult, IggyError> {
         debug!("session: {session}, command: {self}");
+        shard.ensure_authenticated(session)?;
 
         let request = ShardRequest {
             stream_id: Identifier::default(),
@@ -90,7 +87,7 @@ impl ServerCommandHandler for CreateTopic {
                     // Acquire topic lock to serialize filesystem operations
                     let _topic_guard = shard.fs_locks.topic_lock.lock().await;
 
-                    let topic = shard
+                    let topic_id = shard
                         .create_topic(
                             session,
                             &stream_id,
@@ -101,21 +98,24 @@ impl ServerCommandHandler for CreateTopic {
                             replication_factor,
                         )
                         .await?;
-                    self.message_expiry = topic.root().message_expiry();
-                    self.max_topic_size = topic.root().max_topic_size();
 
                     let stream_id_num = shard
+                        .metadata
+                        .get_stream_id(&stream_id)
+                        .ok_or_else(|| IggyError::StreamIdNotFound(stream_id.clone()))?;
+
+                    // Get topic metadata to update command fields
+                    let metadata = shard.metadata.load();
+                    if let Some(topic_meta) = metadata
                         .streams
-                        .with_stream_by_id(&stream_id, streams::helpers::get_stream_id());
-                    let topic_id = topic.id();
+                        .get(stream_id_num)
+                        .and_then(|s| s.topics.get(topic_id))
+                    {
+                        self.message_expiry = topic_meta.message_expiry;
+                        self.max_topic_size = topic_meta.max_topic_size;
+                    }
 
-                    let event = ShardEvent::CreatedTopic {
-                        stream_id: stream_id.clone(),
-                        topic,
-                    };
-
-                    shard.broadcast_event_to_all_shards(event).await?;
-                    let partitions = shard
+                    let partition_infos = shard
                         .create_partitions(
                             session,
                             &stream_id,
@@ -126,15 +126,11 @@ impl ServerCommandHandler for CreateTopic {
                     let event = ShardEvent::CreatedPartitions {
                         stream_id: stream_id.clone(),
                         topic_id: Identifier::numeric(topic_id as u32).unwrap(),
-                        partitions,
+                        partitions: partition_infos.clone(),
                     };
                     shard.broadcast_event_to_all_shards(event).await?;
 
-                    let response = shard.streams.with_topic_by_id(
-                        &stream_id,
-                        &Identifier::numeric(topic_id as u32).unwrap(),
-                        |(root, _, stats)| mapper::map_topic(&root, &stats),
-                    );
+                    let response = shard.get_topic_from_shared_metadata(stream_id_num, topic_id);
                     shard
                         .state
                         .apply(session.get_user_id(), &EntryCommand::CreateTopic(CreateTopicWithId {
@@ -155,20 +151,24 @@ impl ServerCommandHandler for CreateTopic {
                 }
             }
             ShardSendRequestResult::Response(response) => match response {
-                ShardResponse::CreateTopicResponse(topic) => {
-                    let topic_id = topic.id();
-                    self.message_expiry = topic.root().message_expiry();
-                    self.max_topic_size = topic.root().max_topic_size();
+                ShardResponse::CreateTopicResponse(topic_id) => {
+                    let stream_id_num = shard
+                        .metadata
+                        .get_stream_id(&self.stream_id)
+                        .ok_or_else(|| IggyError::StreamIdNotFound(self.stream_id.clone()))?;
 
-                    let stream_id = shard
+                    // Get topic metadata to update command fields
+                    let metadata = shard.metadata.load();
+                    if let Some(topic_meta) = metadata
                         .streams
-                        .with_stream_by_id(&self.stream_id, streams::helpers::get_stream_id());
+                        .get(stream_id_num)
+                        .and_then(|s| s.topics.get(topic_id))
+                    {
+                        self.message_expiry = topic_meta.message_expiry;
+                        self.max_topic_size = topic_meta.max_topic_size;
+                    }
 
-                    let response = shard.streams.with_topic_by_id(
-                        &self.stream_id,
-                        &Identifier::numeric(topic_id as u32).unwrap(),
-                        |(root, _, stats)| mapper::map_topic(&root, &stats),
-                    );
+                    let response = shard.get_topic_from_shared_metadata(stream_id_num, topic_id);
 
                     shard
                         .state
@@ -179,7 +179,7 @@ impl ServerCommandHandler for CreateTopic {
                         .await
                         .error(|e: &IggyError| {
                             format!(
-                                "{COMPONENT} (error: {e}) - failed to apply create topic for stream_id: {stream_id}, topic_id: {topic_id:?}"
+                                "{COMPONENT} (error: {e}) - failed to apply create topic for stream_id: {stream_id_num}, topic_id: {topic_id:?}"
                             )
                         })?;
 
