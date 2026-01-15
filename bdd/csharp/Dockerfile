@@ -21,6 +21,6 @@ COPY ./foreign/csharp ./foreign/csharp
 COPY ./bdd/scenarios ./bdd/scenarios
 
 WORKDIR /foreign/csharp/Iggy_SDK.Tests.BDD
-RUN dotnet build -c Release --framework net10.0
+RUN dotnet build -c Release
 
-CMD ["dotnet", "test"]
+CMD ["dotnet", "test" ]
