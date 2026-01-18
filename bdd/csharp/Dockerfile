@@ -23,4 +23,4 @@ COPY ./bdd/scenarios ./bdd/scenarios
 WORKDIR /foreign/csharp/Iggy_SDK.Tests.BDD
 RUN dotnet build -c Release
 
-CMD ["dotnet", "test" ]
+CMD ["dotnet", "test"]
