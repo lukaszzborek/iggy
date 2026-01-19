@@ -97,5 +97,5 @@ runs:
 
         # List build output
         echo "Build output:"
-        find . -name "*.dll" -path "*/bin/Release/*" | head -20 || echo "No DLLs found in Release folders"
+        find . -name "*.dll" -path "foreign/csharp/Iggy_SDK/bin/Release/*" | head -20 || echo "No DLLs found in Release folders"
       shell: bash
