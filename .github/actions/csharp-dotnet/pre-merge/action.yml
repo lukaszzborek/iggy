@@ -65,9 +65,10 @@ runs:
 
     - name: Test
       if: inputs.task == 'test'
+      working-directory: foreign/csharp
       run: |
         # Run unit tests
-        dotnet test foreign/csharp/Iggy_SDK_Tests --no-build --verbosity normal
+        dotnet test --project Iggy_SDK_Tests --no-build --verbosity normal
 
       shell: bash
 
@@ -91,11 +92,12 @@ runs:
 
     - name: Build Release
       if: inputs.task == 'build'
+      working-directory: foreign/csharp
       run: |
         # Build in Release mode
-        dotnet build foreign/csharp/Iggy_SDK.sln -c Release --no-restore
+        dotnet build Iggy_SDK.sln -c Release --no-restore
 
         # List build output
         echo "Build output:"
-        find . -name "*.dll" -path "foreign/csharp/Iggy_SDK/bin/Release/*" | head -20 || echo "No DLLs found in Release folders"
+        find . -name "*.dll" -path "Iggy_SDK/bin/Release/*" | head -20 || echo "No DLLs found in Release folders"
       shell: bash
