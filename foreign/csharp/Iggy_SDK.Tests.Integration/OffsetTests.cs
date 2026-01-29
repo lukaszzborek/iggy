@@ -82,7 +82,12 @@ public class OffsetTests
             .GetOffsetAsync(Consumer.Group("test_consumer_group"), Identifier.String(Fixture.StreamId.GetWithProtocol(protocol)),
                 Identifier.String(Fixture.TopicRequest.Name), 0);
 
-        offset.ShouldBeNull();
+        if (protocol == Protocol.Http)
+        {
+            offset.ShouldBeNull();
+        }
+        
+        offset.ShouldNotBeNull();
         offset.StoredOffset.ShouldBe(SetOffset);
         offset.PartitionId.ShouldBe(0);
         offset.CurrentOffset.ShouldBe(3u);
