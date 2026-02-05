@@ -147,13 +147,12 @@ public class HttpMessageStream : IIggyClient
         CompressionAlgorithm compressionAlgorithm = CompressionAlgorithm.None, byte? replicationFactor = null,
         TimeSpan? messageExpiry = null, ulong maxTopicSize = 0, CancellationToken token = default)
     {
-        var messageExpiryValue = (ulong)(messageExpiry?.TotalMicroseconds ?? 0);
         var json = JsonSerializer.Serialize(new CreateTopicRequest
         {
             Name = name,
             CompressionAlgorithm = compressionAlgorithm,
             MaxTopicSize = maxTopicSize,
-            MessageExpiry = messageExpiryValue,
+            MessageExpiry = DurationHelpers.ToDuration(messageExpiry),
             PartitionsCount = partitionsCount,
             ReplicationFactor = replicationFactor
         }, _jsonSerializerOptions);
@@ -177,9 +176,8 @@ public class HttpMessageStream : IIggyClient
         ulong maxTopicSize = 0, TimeSpan? messageExpiry = null, byte? replicationFactor = null,
         CancellationToken token = default)
     {
-        var messageExpiryValue = (ulong)(messageExpiry?.TotalMicroseconds ?? 0);
         var json = JsonSerializer.Serialize(
-            new UpdateTopicRequest(name, compressionAlgorithm, maxTopicSize, messageExpiryValue, replicationFactor),
+            new UpdateTopicRequest(name, compressionAlgorithm, maxTopicSize, DurationHelpers.ToDuration(messageExpiry), replicationFactor),
             _jsonSerializerOptions);
         var data = new StringContent(json, Encoding.UTF8, "application/json");
         var response = await _httpClient.PutAsync($"/streams/{streamId}/topics/{topicId}", data, token);

@@ -166,7 +166,7 @@ public class IggyPublisherConfig
     public byte? TopicReplicationFactor { get; set; }
 
     /// <summary>
-    ///     Gets or sets the message expiry time (0 for no expiry).
+    ///     Gets or sets the message expiry time (0 for server default, TimeSpan.MaxValue for no expiry).
     ///     Messages older than this will be automatically deleted.
     ///     Only used when <see cref="CreateTopic" /> is true.
     /// </summary>
