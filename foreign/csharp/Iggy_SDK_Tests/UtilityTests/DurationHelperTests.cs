@@ -66,6 +66,33 @@ public sealed class DurationHelperTests
     }
 
     [Fact]
+    public void FromDuration_ValueLongMaxValueDividedBy100_ReturnsNotTimeSpanMaxValue()
+    {
+        var microseconds = (ulong)long.MaxValue / 100;
+        var result = DurationHelpers.FromDuration(microseconds);
+
+        Assert.NotEqual(TimeSpan.MaxValue, result);
+    }
+
+    [Fact]
+    public void FromDuration_ValueLongMaxValueDividedByTicksPerMicrosecond_ReturnsTimeSpanMaxValue()
+    {
+        var microseconds = (ulong)long.MaxValue / TimeSpan.TicksPerMicrosecond;
+        var result = DurationHelpers.FromDuration(microseconds);
+
+        Assert.Equal(TimeSpan.MaxValue, result);
+    }
+
+    [Fact]
+    public void FromDuration_ValueLongMaxValue_ReturnsTimeSpanMaxValue()
+    {
+        var microseconds = (ulong)long.MaxValue;
+        var result = DurationHelpers.FromDuration(microseconds);
+
+        Assert.Equal(TimeSpan.MaxValue, result);
+    }
+
+    [Fact]
     public void FromDuration_UlongMaxValue_ReturnsTimeSpanMaxValue()
     {
         var result = DurationHelpers.FromDuration(ulong.MaxValue);

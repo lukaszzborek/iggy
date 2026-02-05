@@ -32,7 +32,7 @@ public static class DurationHelpers
     /// </summary>
     public static TimeSpan FromDuration(ulong duration)
     {
-        if (duration > long.MaxValue)
+        if (duration >= long.MaxValue / TimeSpan.TicksPerMicrosecond)
         {
             return TimeSpan.MaxValue;
         }
