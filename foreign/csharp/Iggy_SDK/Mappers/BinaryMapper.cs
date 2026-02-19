@@ -43,7 +43,7 @@ internal static class BinaryMapper
     {
         if (payload.Length == 0)
         {
-            return Array.Empty<PersonalAccessTokenResponse>();
+            return [];
         }
 
         var result = new List<PersonalAccessTokenResponse>();
@@ -78,7 +78,7 @@ internal static class BinaryMapper
     {
         if (payload.Length == 0)
         {
-            return Array.Empty<UserResponse>();
+            return [];
         }
 
         var result = new List<UserResponse>();
