@@ -305,14 +305,28 @@ jobs:
       - name: Run unit tests with coverage
         working-directory: foreign/csharp
         run: |
-          dotnet test --project Iggy_SDK_Tests --no-build --verbosity normal -coverage --coverage-output-format cobertura --results-directory ./reports/unit
+          dotnet test \
+            --project Iggy_SDK_Tests \
+            --no-build \
+            --verbosity normal \
+            --coverage \
+            --coverage-output-format cobertura \
+            --coverage-output coverage.cobertura.xml \
+            --results-directory ./reports/unit
 
       - name: Run integration tests with coverage
         working-directory: foreign/csharp
         env:
           IGGY_SERVER_DOCKER_IMAGE: ${{ steps.docker_build.outputs.docker_image }}
         run: |
-          dotnet test --project Iggy_SDK.Tests.Integration --no-build --verbosity normal -coverage --coverage-output-format cobertura --results-directory ./reports/integration
+          dotnet test \
+            --project Iggy_SDK.Tests.Integration \
+            --no-build \
+            --verbosity normal \
+            --coverage \
+            --coverage-output-format cobertura \
+            --coverage-output coverage.cobertura.xml \
+            --results-directory ./reports/integration
 
       - name: Merge coverage reports
         working-directory: foreign/csharp
