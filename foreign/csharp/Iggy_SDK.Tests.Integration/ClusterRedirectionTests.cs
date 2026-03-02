@@ -90,4 +90,40 @@ public class ClusterRedirectionTests
         address.ShouldNotBeNullOrEmpty();
         address.ShouldBe(Fixture.GetLeaderAddress());
     }
+
+    [Test]
+    [Skip("Currently personal access token exist only on leader. Unskip when it will be available on follower.")]
+    public async Task ConnectToFollowerWithPersonalAccessToken_Should_RedirectToLeader()
+    {
+        using var leaderClient = IggyClientFactory.CreateClient(new IggyClientConfigurator
+        {
+            BaseAddress = Fixture.GetLeaderAddress(),
+            Protocol = Protocol.Tcp,
+            ReconnectionSettings = new ReconnectionSettings { Enabled = false },
+            AutoLoginSettings = new AutoLoginSettings { Enabled = false }
+        });
+        await leaderClient.ConnectAsync();
+        await leaderClient.LoginUser("iggy", "iggy");
+
+        var name = $"pat-{Guid.NewGuid():N}"[..20];
+        var pat = await leaderClient.CreatePersonalAccessTokenAsync(name, TimeSpan.FromHours(1));
+        pat.ShouldNotBeNull();
+
+        using var client = IggyClientFactory.CreateClient(new IggyClientConfigurator
+        {
+            BaseAddress = Fixture.GetFollowerAddress(),
+            Protocol = Protocol.Tcp,
+            ReconnectionSettings = new ReconnectionSettings { Enabled = true },
+            AutoLoginSettings = new AutoLoginSettings { Enabled = false }
+        });
+        await client.ConnectAsync();
+        var authResponse = await client.LoginWithPersonalAccessToken(pat.Token);
+
+        authResponse.ShouldNotBeNull();
+        authResponse.UserId.ShouldBeGreaterThanOrEqualTo(0);
+
+        var address = client.GetCurrentAddress();
+        address.ShouldNotBeNullOrEmpty();
+        address.ShouldBe(Fixture.GetLeaderAddress());
+    }
 }

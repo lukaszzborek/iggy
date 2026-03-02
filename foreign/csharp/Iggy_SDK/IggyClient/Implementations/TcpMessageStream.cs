@@ -816,6 +816,7 @@ public sealed class TcpMessageStream : IIggyClient
         var payload = new byte[4 + BufferSizes.INITIAL_BYTES_LENGTH + message.Length];
         TcpMessageStreamHelpers.CreatePayload(payload, message, CommandCodes.LOGIN_WITH_PERSONAL_ACCESS_TOKEN_CODE);
 
+        SetConnectionStateAsync(ConnectionState.Authenticating);
         var responseBuffer = await SendWithResponseAsync(payload, ct);
 
         if (responseBuffer.Length <= 1)
@@ -825,8 +826,15 @@ public sealed class TcpMessageStream : IIggyClient
 
         var userId = BinaryPrimitives.ReadInt32LittleEndian(responseBuffer.AsSpan()[..4]);
 
-        //TODO: Figure out how to solve this workaround about default of TokenInfo
-        return new AuthResponse(userId, default);
+        SetConnectionStateAsync(ConnectionState.Authenticated);
+
+        if (await RedirectAsync(ct))
+        {
+            await ConnectAsync(ct);
+            return await LoginWithPersonalAccessToken(token, ct);
+        }
+
+        return new AuthResponse(userId, null);
     }
 
     private async Task TryEstablishConnectionAsync(CancellationToken token)
